@@ -309,6 +309,18 @@ static NSString *pixelAtPoint(UIView *view, CGPoint point) {
 
 #pragma mark - Spotify's classes, by name
 
+#include <stdatomic.h>
+static atomic_uint openingLayoutPasses;
+static dispatch_semaphore_t openingFinished;
+
+@interface SGROpeningHost : UIView @end
+@implementation SGROpeningHost
+- (void)layoutSubviews {
+    atomic_fetch_add(&openingLayoutPasses, 1);
+    [super layoutSubviews];
+}
+@end
+
 @interface _TtC19NowPlaying_ViewImpl24NowPlayingViewController : UIViewController @end
 @implementation _TtC19NowPlaying_ViewImpl24NowPlayingViewController @end
 
@@ -584,6 +596,10 @@ static void loadLyrics(void) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     if (getenv("HARNESS_LANDSCAPE")) {
+        if (self.view.bounds.size.width > self.view.bounds.size.height) {
+            [self buildWhenVisible];
+            return;
+        }
         [self.view.window.windowScene requestGeometryUpdateWithPreferences:
             [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscapeLeft]
             errorHandler:^(NSError *error) { HARNESS_FAIL(@"adaptive rotation: %@", error); }];
@@ -607,6 +623,7 @@ static void loadLyrics(void) {
     UICollectionView *_covers;
     UIScrollView *_list;
     UIView *_plane, *_host;
+    CGRect _openingSingleFrame;
     UIViewController *_background;
     UIView *_tilt;
     NSUInteger _failures, _checks;
@@ -620,6 +637,14 @@ static void loadLyrics(void) {
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
+    if (getenv("HARNESS_OPENING")) {
+        openingFinished = dispatch_semaphore_create(0);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            if (dispatch_semaphore_wait(openingFinished, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC))) {
+                HARNESS_FAIL(@"opening failed to settle/respond: %u host layout passes", atomic_load(&openingLayoutPasses));
+            }
+        });
+    }
     loadLyrics();
     if (getenv("HARNESS_NO_LYRICS")) SGKaraokeKeepLines(SGKaraokePlayingTrack(), nil);
     SGRHarnessPlayFrom(2400);
@@ -673,7 +698,8 @@ static void loadLyrics(void) {
     UIViewController *background = [_TtC21NowPlaying_ScrollImpl27NPVBackgroundViewController new];
     background.view = plane;
 
-    UIView *host = box(list, UIView.class, CGRectMake(0, 0, W, H), @"SPTNowPlayingView");
+    UIView *host = box(list, getenv("HARNESS_OPENING") ? SGROpeningHost.class : UIView.class,
+                      CGRectMake(0, 0, W, H), @"SPTNowPlayingView");
     if (getenv("HARNESS_RTL")) host.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
 
     // the content layers: the sideways list of covers
@@ -694,7 +720,7 @@ static void loadLyrics(void) {
     // The Encore.ImageView holding the picture (01.txt:40), which PlayerField.x reads the cover from.
     UIView *coverElement = box(tilt, UIView.class, tilt.bounds, @"Encore.ImageView");
     coverElement.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    UIImage *picture = artwork();
+    UIImage *picture = getenv("HARNESS_NO_ARTWORK") ? nil : artwork();
     UIImageView *cover = [[UIImageView alloc] initWithFrame:coverElement.bounds];
     cover.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     cover.image = picture;
@@ -857,6 +883,10 @@ static void loadLyrics(void) {
     _plane = plane;
     _host = host;
     _background = background;
+    if (getenv("HARNESS_OPENING")) {
+        host.frame = CGRectMake(0, 0, W, 64);
+        bottom.frame = CGRectMake(0, 64 - bottomHeight - 61.33, W, bottomHeight);
+    }
     // The player has not been opened yet: its background plane is laid out only when it is.
     if ([scenario() isEqualToString:@"motion"]) {
         [plane removeFromSuperview];
@@ -868,7 +898,7 @@ static void loadLyrics(void) {
     // Spotify lays its units out again as a track's elements arrive, which is what the redesign's
     // transforms and narrowed labels have to survive. The options scenario leaves layout to UIKit, so a switch
     // on the Player page is seen to reach the open player by itself.
-    if (![scenario() isEqualToString:@"options"] && ![scenario() isEqualToString:@"renderer"]) {
+    if (![scenario() isEqualToString:@"options"] && ![scenario() isEqualToString:@"renderer"] && !getenv("HARNESS_OPENING")) {
         [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t) { [self layOut]; }];
     }
 
@@ -885,7 +915,8 @@ static void loadLyrics(void) {
         NSLog(@"[harness] hit on the title: %@", NSStringFromClass([self.window hitTest:onTitle withEvent:nil].class));
         NSLog(@"[harness] hit on the lines: %@", NSStringFromClass([self.window hitTest:onLines withEvent:nil].class));
     });
-    if ([scenario() isEqualToString:@"adaptive"]) [self runAdaptiveChecks];
+    if (getenv("HARNESS_OPENING")) [self runOpeningChecks];
+    else if ([scenario() isEqualToString:@"adaptive"]) [self runAdaptiveChecks];
     else if ([scenario() isEqualToString:@"artwork"]) [self runArtworkChecks];
     else if ([scenario() isEqualToString:@"look"]) [self runLook];
     else if ([scenario() isEqualToString:@"scroll"]) [self runScrollChecks];
@@ -992,6 +1023,12 @@ static void after(NSTimeInterval seconds, dispatch_block_t block) {
 }
 
 - (void)start {
+    if (getenv("HARNESS_NO_ARTWORK")) {
+        [self showOnScreen:nil];
+        [self playTrack:@"spotify:track:harnessA" image:nil];
+        [_bar viewDidLayoutSubviews];
+        return;
+    }
     BOOL checks = [scenario() isEqualToString:@"artwork"];
     UIImage *first = checks ? solid(UIColor.redColor) : _cover.image;
     [self showOnScreen:first];

@@ -7,6 +7,72 @@ static UIButton *lyricsMenuIn(UIView *stage) {
     return menu;
 }
 
+- (void)runOpeningChecks {
+    HARNESS_CHECK(self.window.bounds.size.width > self.window.bounds.size.height);
+    HARNESS_CHECK(SGRPlayerIPadRegular(_host) && SGPlayerState().isPlaying);
+    UIView *bottom = SGRFindByIdentifier(_host, @"npv.bottomStackView", NULL);
+    CGFloat fullHeight = self.window.rootViewController.view.bounds.size.height;
+    NSArray<NSNumber *> *heights = getenv("HARNESS_SHORT") ? @[@200, @320, @480] :
+                                                             @[@200, @320, @480, @720, @(fullHeight)];
+    __block NSUInteger step = 0;
+    [NSTimer scheduledTimerWithTimeInterval:1.0 / 60 repeats:YES block:^(NSTimer *timer) {
+        CGFloat height = heights[step++].doubleValue;
+        self->_host.frame = CGRectMake(0, 0, self->_host.bounds.size.width, height);
+        self->_openingSingleFrame = CGRectMake(0, height - bottom.bounds.size.height - 61.33,
+                                               self->_host.bounds.size.width, bottom.bounds.size.height);
+        bottom.frame = self->_openingSingleFrame;
+        [self layOut];
+        if (step != heights.count) return;
+        [timer invalidate];
+        [self checkOpeningSettles];
+    }];
+}
+
+- (void)checkOpeningSettles {
+    __block unsigned lastPasses = atomic_load(&openingLayoutPasses);
+    __block CFTimeInterval quietSince = CACurrentMediaTime();
+    [NSTimer scheduledTimerWithTimeInterval:0.01 repeats:YES block:^(NSTimer *timer) {
+        unsigned passes = atomic_load(&openingLayoutPasses);
+        if (passes != lastPasses) {
+            lastPasses = passes;
+            quietSince = CACurrentMediaTime();
+            return;
+        }
+        // Observe an idle window, not merely the synchronous return from the last layout callback.
+        if (CACurrentMediaTime() - quietSince < 0.2) return;
+        [timer invalidate];
+        NSLog(@"[harness] opening settled: %u host layout passes", passes);
+        if (getenv("HARNESS_NO_ARTWORK")) HARNESS_CHECK(SGRNowPlayingArtwork(NULL, NULL) == nil);
+        if (getenv("HARNESS_NO_ARTWORK") || getenv("HARNESS_SHORT")) {
+            HARNESS_CHECK(!SGRPlayerTwoColumns());
+            // An unchanged Spotify layout notification must not start another layout transaction.
+            [self->_units.lastObject viewDidLayoutSubviews];
+            [self->_host layoutIfNeeded];
+            unsigned extra = atomic_load(&openingLayoutPasses) - passes;
+            if (extra) HARNESS_FAIL(@"unchanged fallback caused %u extra host layouts", extra);
+        } else {
+            HARNESS_CHECK(SGRPlayerTwoColumns());
+            UIView *bottom = SGRFindByIdentifier(self->_host, @"npv.bottomStackView", NULL);
+            CGRect moved = bottom.frame;
+            moved.origin.y -= 12;
+            moved.size.height += 8;
+            bottom.frame = moved;
+            [self layOut];
+            CGRect expected = self->_openingSingleFrame;
+            expected.origin.y -= 12;
+            expected.size.height += 8;
+            self.window.traitOverrides.horizontalSizeClass = UIUserInterfaceSizeClassCompact;
+            [self layOut];
+            if (!CGRectEqualToRect(bottom.frame, expected)) {
+                HARNESS_FAIL(@"vertical-change restoration %@, expected %@", NSStringFromCGRect(bottom.frame), NSStringFromCGRect(expected));
+            }
+        }
+        dispatch_semaphore_signal(openingFinished);
+        NSLog(@"[harness] adaptive checks: PASS (opening)");
+        fflush(stdout);
+    }];
+}
+
 - (void)runAdaptiveChecks {
     runScript(@[
         @[^BOOL {

@@ -21,12 +21,17 @@ def scenario(udid, bundle, name, variables, marker):
     env = dict(os.environ, **{"SIMCTL_CHILD_" + k: v for k, v in variables.items()})
     process = subprocess.Popen(["xcrun", "simctl", "launch", "--console-pty", udid, bundle],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
-    watchdog = threading.Timer(90, process.kill)
+    def timeout():
+        print("FAIL " + name + ": no completion within 90 seconds", flush=True)
+        process.kill()
+    watchdog = threading.Timer(90, timeout)
     watchdog.start()
     passed = False
     try:
         for line in process.stdout:
             print(line.rstrip(), flush=True)
+            if "[harness] FAIL" in line:
+                raise RuntimeError(name + ": app reported FAIL")
             if marker in line:
                 passed = True
                 run("xcrun", "simctl", "io", udid, "screenshot", str(args.screenshots / (name + ".png")))
@@ -59,6 +64,9 @@ with tempfile.TemporaryDirectory(prefix="adaptive-player-") as temp:
             cases = [("portrait", {})]
             if prefix == "ipad":
                 cases += [("landscape", {"HARNESS_LANDSCAPE": "1"}),
+                          ("opening-no-artwork", {"HARNESS_LANDSCAPE": "1", "HARNESS_OPENING": "1", "HARNESS_NO_ARTWORK": "1"}),
+                          ("opening-short", {"HARNESS_LANDSCAPE": "1", "HARNESS_OPENING": "1", "HARNESS_SHORT": "1"}),
+                          ("opening-restore", {"HARNESS_LANDSCAPE": "1", "HARNESS_OPENING": "1"}),
                           ("shrink", {"HARNESS_SHRINK": "1"}),
                           ("rtl", {"HARNESS_RTL": "1"}), ("compact", {"HARNESS_COMPACT": "1"}),
                           ("queue", {"HARNESS_NO_LYRICS": "1"})]

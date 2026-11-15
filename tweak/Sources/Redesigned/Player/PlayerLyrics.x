@@ -134,19 +134,25 @@ static BOOL horizontalAttribute(NSLayoutAttribute attribute) {
         || attribute == NSLayoutAttributeCenterX || attribute == NSLayoutAttributeWidth;
 }
 
-static void restoreColumn(SGRLyricsColumn *column) {
+static BOOL restoreColumn(SGRLyricsColumn *column) {
     if (column.autoresizing) {
-        if (CGRectEqualToRect(column.stack.frame, column.placedFrame)) column.stack.frame = column.originalFrame;
-        return;
+        CGRect frame = column.stack.frame;
+        // Restore only the horizontal values we still own; Spotify's latest vertical layout stays.
+        if (frame.origin.x == column.placedFrame.origin.x) frame.origin.x = column.originalFrame.origin.x;
+        if (frame.size.width == column.placedFrame.size.width) frame.size.width = column.originalFrame.size.width;
+        if (CGRectEqualToRect(frame, column.stack.frame)) return NO;
+        column.stack.frame = frame;
+        return YES;
     }
     [NSLayoutConstraint deactivateConstraints:@[column.left, column.width]];
-    column.stack.translatesAutoresizingMaskIntoConstraints = column.autoresizing;
     [NSLayoutConstraint activateConstraints:column.original];
+    return YES;
 }
 
 static void placeColumn(UIView *host, BOOL open) {
     if (!host || sg_placingColumn) return;
     sg_placingColumn = YES;
+    BOOL changed = NO;
     SGRLyricsColumn *column = objc_getAssociatedObject(host, &kColumnKey);
     UIView *stack = open && wideIn(host) ? SGRFindByIdentifier(host, @"npv.bottomStackView", &kStackKey) : nil;
     if (!column && !stack) {
@@ -154,16 +160,17 @@ static void placeColumn(UIView *host, BOOL open) {
         return;
     }
     if (column && column.stack != stack) {
-        restoreColumn(column);
+        changed = restoreColumn(column);
         objc_setAssociatedObject(host, &kColumnKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         column = nil;
-        [host setNeedsLayout];
+        if (changed) [host setNeedsLayout];
     }
     if (stack && !column) {
         column = [SGRLyricsColumn new];
         column.stack = stack;
         column.autoresizing = stack.translatesAutoresizingMaskIntoConstraints;
         column.originalFrame = stack.frame;
+        column.placedFrame = stack.frame;
         NSMutableArray *original = [NSMutableArray array];
         for (UIView *owner = stack; owner; owner = owner.superview) {
             for (NSLayoutConstraint *constraint in owner.constraints) {
@@ -178,6 +185,7 @@ static void placeColumn(UIView *host, BOOL open) {
         }
         column.original = original;
         [NSLayoutConstraint deactivateConstraints:original];
+        if (original.count) changed = YES;
         if (!column.autoresizing) {
             column.left = [stack.leftAnchor constraintEqualToAnchor:host.leftAnchor];
             column.width = [stack.widthAnchor constraintEqualToConstant:wideColumn(host).size.width];
@@ -187,20 +195,39 @@ static void placeColumn(UIView *host, BOOL open) {
     if (column) {
         CGRect frame = wideColumn(host);
         if (column.autoresizing) {
-            if (!CGRectEqualToRect(stack.frame, column.placedFrame)) column.originalFrame = stack.frame;
-            CGRect local = [host convertRect:frame toView:stack.superview];
             CGRect placed = stack.frame;
+            CGRect original = column.originalFrame;
+            // A vertical-only change must not teach the saved frame our narrowed width.
+            if (placed.origin.x != column.placedFrame.origin.x) original.origin.x = placed.origin.x;
+            if (placed.size.width != column.placedFrame.size.width) original.size.width = placed.size.width;
+            original.origin.y = placed.origin.y;
+            original.size.height = placed.size.height;
+            column.originalFrame = original;
+            CGRect local = [host convertRect:frame toView:stack.superview];
             placed.origin.x = local.origin.x;
             placed.size.width = local.size.width;
-            stack.frame = placed;
+            if (!CGRectEqualToRect(stack.frame, placed)) {
+                stack.frame = placed;
+                changed = YES;
+            }
             column.placedFrame = placed;
         } else {
-            column.left.constant = CGRectGetMinX(frame) - CGRectGetMinX(host.bounds);
-            column.width.constant = frame.size.width;
-            [NSLayoutConstraint activateConstraints:@[column.left, column.width]];
+            CGFloat left = CGRectGetMinX(frame) - CGRectGetMinX(host.bounds);
+            if (column.left.constant != left) {
+                column.left.constant = left;
+                changed = YES;
+            }
+            if (column.width.constant != frame.size.width) {
+                column.width.constant = frame.size.width;
+                changed = YES;
+            }
+            if (!column.left.active || !column.width.active) {
+                [NSLayoutConstraint activateConstraints:@[column.left, column.width]];
+                changed = YES;
+            }
         }
     }
-    [host layoutIfNeeded];
+    if (changed) [host layoutIfNeeded];
     sg_placingColumn = NO;
 }
 
@@ -333,14 +360,14 @@ static CGRect untransformed(UIView *view, UIView *host) {
     return CGRectOffset(frame, -t.tx, -t.ty);
 }
 
-static SGRLyricsLayout layoutIn(UIView *host) {
+static SGRLyricsLayout layoutIn(UIView *host, BOOL wide) {
     SGRLyricsLayout l = {0};
     UIView *info = sg_info.viewIfLoaded, *duration = sg_duration.viewIfLoaded, *title = sg_titleElement;
     if (!host || host.bounds.size.height < kLivingHeight || !info || !duration) return l;
     CGRect area = SGRPlayerArtworkAreaIn(host), cover = SGRPlayerCoverFrameIn(host);
     if (CGRectIsNull(area) || CGRectIsNull(cover)) return l;
     CGRect row = untransformed(info, host), bar = untransformed(duration, host);
-    if (wideIn(host) && objc_getAssociatedObject(host, &kColumnKey)) {
+    if (wide) {
         CGRect safe = SGRPlayerVisibleSafeArea(host), column = wideColumn(host);
         CGFloat top = MAX(CGRectGetMinY(area), CGRectGetMinY(safe)) + kThumbTop;
         // The cover ends over the chips (Switch to video), which stay over the title in the column.
@@ -722,7 +749,7 @@ static void setAlone(BOOL alone, BOOL animated) {
     // The two columns deliberately keep the cover and controls beside the lines, even while browsing.
     if (alone && sg_wide) return;
     if (alone == sg_alone || !host || (alone && !sg_open)) return;
-    SGRLyricsLayout l = layoutIn(host);
+    SGRLyricsLayout l = layoutIn(host, sg_wide);
     // Going alone needs somewhere to put the lines. Coming back never waits for it: the controls and the
     // lines' tap are given back even when the player can no longer be measured.
     if (alone && !l.ok) return;
@@ -767,7 +794,7 @@ static void setOpen(BOOL open, BOOL animated) {
         SGLog(@"redesign player: the lyrics were asked for before the player laid out");
         return;
     }
-    SGRLyricsLayout l = layoutIn(host);
+    SGRLyricsLayout l = layoutIn(host, sg_wide);
     if (open && !l.ok) {
         SGLog(@"redesign player: the lyrics have nowhere to go (stage %.0fx%.0f, lift %.0f)", l.stage.size.width, l.stage.size.height, l.lift);
         return;
@@ -980,14 +1007,15 @@ static void leaveWide(UIView *host) {
 // The columns put in place without animating: Spotify's stack in the leading one, the cover over it, the side column
 // beside them. Nothing until the player can be measured and the cover's picture has been read.
 static void placeWide(UIView *host) {
-    placeColumn(host, YES);
-    SGRLyricsLayout l = layoutIn(host);
+    // Fit uses Spotify's vertical geometry, not our narrowed width. Reject before touching its stack,
+    // so a missing cover or a short opening frame cannot install and restore constraints on every pass.
+    SGRLyricsLayout l = layoutIn(host, YES);
     UIImage *picture = SGRNowPlayingArtwork(NULL, NULL);
     if (!l.ok || !picture) {
         if (!l.ok) leaveWide(host);
-        if (!sg_wide) placeColumn(host, NO);
         return;
     }
+    placeColumn(host, YES);
     BOOL entering = !sg_wide;
     sg_wide = YES;
     SGRPlayerLyricsOverlay *overlay = overlayIn(host);
@@ -1061,7 +1089,7 @@ static void replace(void) {
     }
     leaveWide(host);
     answerLyricsOnOpen(host);
-    SGRLyricsLayout l = layoutIn(host);
+    SGRLyricsLayout l = layoutIn(host, NO);
     if (sg_open && !l.ok) return;
     placeTitleRow(l);
     sg_floating.viewIfLoaded.alpha = sg_open ? 0 : 1;
