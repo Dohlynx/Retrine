@@ -34,7 +34,7 @@ int main(void) {
         for (NSNumber *x in @[@0, @32, @(-62), @393, @(-393)]) {
             artworkArea = CGRectMake(x.doubleValue, 106, 393, 444);
             artworkCover = CGRectMake(x.doubleValue + 24, 150, 345, 345);
-            SGRLyricsLayout layout = layoutIn(host);
+            SGRLyricsLayout layout = layoutIn(host, NO);
             CGRect expected = CGRectMake(0, 206, 393, 400);
             if (!layout.ok || !CGRectEqualToRect(layout.stage, expected)) {
                 NSLog(@"FAIL artwork x=%@: lyric viewport %@, expected %@", x,
