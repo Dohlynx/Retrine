@@ -175,6 +175,8 @@
 "settings.appearance.amoled_background.title" = "AMOLED background";
 "settings.appearance.hide_explicit.subtitle" = "Hide the E mark, without changing content restrictions or VoiceOver";
 "settings.appearance.hide_explicit.title" = "Hide explicit badge";
+"settings.appearance.page_zoom.subtitle" = "Albums and playlists grow from the cover you tap and return to it when you go back. Restart to apply";
+"settings.appearance.page_zoom.title" = "Open pages from their artwork";
 "settings.appearance.plain_checkmark.subtitle" = "A saved song's tick without its circle, in the accent";
 "settings.appearance.plain_checkmark.title" = "Plain checkmark";
 "settings.appearance.play_page_color.subtitle" = "The Play button's symbol and word take the page's color. Off, they take the accent color";
@@ -185,8 +187,6 @@
 "settings.appearance.scroll_veil.title" = "Blur covers on scroll";
 "settings.appearance.scrolled_title.subtitle" = "Show the small title between Back and More on playlists, albums, artists and profiles";
 "settings.appearance.scrolled_title.title" = "Page title when scrolled";
-"settings.appearance.page_zoom.title" = "Open pages from their artwork";
-"settings.appearance.page_zoom.subtitle" = "Albums and playlists grow from the cover you tap and return to it when you go back. Restart to apply";
 "settings.appearance.title" = "Appearance";
 
 "settings.appicon.choice.default" = "Default";
@@ -1629,17 +1629,17 @@
 "settings.mod.import_settings.title" = "Import settings";
 "settings.mod.include_betas.subtitle" = "Offer test builds ahead of each release";
 "settings.mod.include_betas.title" = "Include betas";
-"settings.mod.language.title" = "Language";
-"settings.mod.language.system" = "System";
-"settings.mod.language.english" = "English";
-"settings.mod.language.korean" = "한국어";
-"settings.mod.language.footer" = "Applies after you restart Spotify.";
 "settings.mod.keychain.action.clear" = "Clear Keychain";
 "settings.mod.keychain.alert.message" = "The Gemini, Claude, OpenAI-compatible and DeepL API keys, the Spicy Lyrics key and the Deezer ARL are removed from this iPhone. Settings stay as they are.";
 "settings.mod.keychain.alert.title" = "Clear Keychain?";
 "settings.mod.keychain.failed.message" = "The Keychain could not remove every key, so some are still stored on this iPhone. Please try again.";
 "settings.mod.keychain.failed.title" = "Keychain not cleared";
 "settings.mod.keychain.title" = "Clear Keychain";
+"settings.mod.language.english" = "English";
+"settings.mod.language.footer" = "Applies after you restart Spotify.";
+"settings.mod.language.korean" = "한국어";
+"settings.mod.language.system" = "System";
+"settings.mod.language.title" = "Language";
 "settings.mod.licenses.autoeq.subtitle" = "Headphone corrections · MIT License";
 "settings.mod.licenses.bs2b.subtitle" = "Crossfeed · MIT License";
 "settings.mod.licenses.eevee.note" = "By whoeevee (whoeevee/EeveeSpotify), under the GNU General Public License v3.0, as Vitrine is.\n\nPorted from it, on the Premium, ads & privacy page: Hide ads (the ad services kept from starting, ad components taken out of Home and Search, ad sections out of the feeds, ad requests answered empty), Hide upsells (the Premium pop-ups, and the ad and upsell flags it turns off) and Spoof Premium (the account attributes and flag rules it rewrites, and crossfade under it).";
@@ -1752,6 +1752,9 @@
 "settings.page.unstable.action.open_github" = "Open GitHub";
 "settings.page.unstable.alert.title" = " is unstable";
 "settings.page.waiting.a11y" = "Turn on %@ first.";
+
+"settings.pages.cover_beside" = "Cover beside the title";
+"settings.pages.cover_beside.subtitle" = "Albums and playlists in wide iPad windows. Applies immediately.";
 
 "settings.pixie.action.cancel_download" = "Cancel download";
 "settings.pixie.action.download_current_album" = "Download current track's album";
@@ -2034,8 +2037,6 @@
 "settings.player.glass_lyrics.title" = "Glass lyrics";
 "settings.player.header_glass.subtitle" = "Glass circles behind the close and ⋯ buttons at the top of the player.";
 "settings.player.header_glass.title" = "Header glass";
-"settings.player.hide_context.title" = "Hide where it plays from";
-"settings.player.hide_context.subtitle" = "Hide the artist, album or playlist name at the top of the player.";
 "settings.player.hide.about_artist.title" = "About the artist";
 "settings.player.hide.add_to_playlist.title" = "Add to playlist";
 "settings.player.hide.connect.title" = "Connect to a device";
@@ -2053,6 +2054,8 @@
 "settings.player.hide.shuffle.title" = "Shuffle";
 "settings.player.hide.song_dna.title" = "SongDNA";
 "settings.player.hide_cards.header" = "Hide cards below the player";
+"settings.player.hide_context.subtitle" = "Hide the artist, album or playlist name at the top of the player.";
+"settings.player.hide_context.title" = "Hide where it plays from";
 "settings.player.hide_on_player.header" = "Hide on the player";
 "settings.player.hide_video_switch.subtitle" = "The chip over the title of a song with a music video";
 "settings.player.hide_video_switch.title" = "Switch to video";
@@ -2139,8 +2142,6 @@
 "settings.playlist.artwork_background.title" = "Artwork background";
 "settings.playlist.cover.header" = "Cover";
 "settings.playlist.cover_layout" = "Cover layout";
-"settings.pages.cover_beside" = "Cover beside the title";
-"settings.pages.cover_beside.subtitle" = "Albums and playlists in wide iPad windows. Applies immediately.";
 "settings.playlist.cover_viewer.cover" = "Playlist cover";
 "settings.playlist.full_screen_cover.subtitle" = "Tap the picture at the top of a playlist to zoom in or share it";
 "settings.playlist.header" = "Header";
