@@ -8,6 +8,7 @@
 # newer one is built. Only spotifyglass.dylib changes: a change to the extension, the App Group shim, a
 # plist or an icon needs the full pipeline (make install).
 set -euo pipefail
+export WIREGUARD="${WIREGUARD-1}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CACHE="$ROOT/out/quick"
@@ -40,7 +41,7 @@ if [ ! -f "$CACHE/.from" ] || [ "$IPA" -nt "$CACHE/.from" ] || [ "$(cat "$CACHE/
 fi
 APP="$(ls -d "$CACHE"/Payload/*.app | head -1)"
 
-if [ "${WIREGUARD:-0}" = 1 ]; then
+if [ "$WIREGUARD" = 1 ]; then
   python3 -B "$ROOT/scripts/spotify-transport-scan.py" "$APP" --wireguard-compatible
 fi
 
@@ -65,5 +66,15 @@ DYLIB="$APP/Frameworks/spotifyglass.dylib"
 cp "$ROOT/tweak/.theos/obj/spotifyglass.dylib" "$DYLIB"
 install_name_tool -change /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate \
   @rpath/CydiaSubstrate.framework/CydiaSubstrate "$DYLIB" 2>/dev/null
+
+# The license notice tweak/Makefile stages beside the strings, which a cache unpacked from a build
+# without WireGuard lacks; a build without it carries no notice.
+NOTICE="$APP/Vitrine.bundle/WireGuard-THIRD_PARTY_LICENSES.txt"
+if [ "$WIREGUARD" = 1 ]; then
+  mkdir -p "$(dirname "$NOTICE")"
+  cp "$ROOT/WireGuard/THIRD_PARTY_LICENSES.txt" "$NOTICE"
+else
+  rm -f "$NOTICE"
+fi
 
 exec "$ROOT/scripts/install.sh" "$APP"

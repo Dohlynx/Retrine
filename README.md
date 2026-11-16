@@ -51,6 +51,14 @@ No IPA is distributed. Bring a decrypted **Spotify 9.1.78**, **9.1.88** or **9.1
 injected by hand, the tweak alone misses the app changes the redesign needs (its glass tab bar), the Live
 Activity, Music Haptics in the background and Connect's local discovery, so build the IPA instead.
 
+App-local **WireGuard / proxy is included by default**, but stays off until you import a `.conf`
+or save a proxy, enable it and restart. It is **not a leak-proof or device-wide VPN**:
+background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions
+are outside coverage. See [coverage and limitations](docs/wireguard.md).
+The inspected WireGuard targets currently include 9.1.90, not 9.1.78 or 9.1.88;
+those versions require `WIREGUARD=0` (uncheck **Include app-local WireGuard / proxy** in Actions).
+A build without WireGuard drops enforcement even if it was previously enabled.
+
 ### Build with GitHub Actions
 
 Fork the repo, enable Actions, run **Build IPA from your own Spotify IPA**. It takes a direct link to
@@ -61,6 +69,10 @@ masked in the log and the result stays in your fork.
 
 Theos in `~/theos` and Xcode with an iPhoneOS 26+ SDK (`xcode-select` it). An SDK in `~/theos/sdks`
 alone builds too, but without the Live Activity. Then:
+
+Default IPA builds also require the exact Go release pinned in `WireGuard/go.mod`.
+`make release WIREGUARD=0` excludes WireGuard and needs no Go; direct tweak development
+builds remain Go-free by default.
 
     brew install make ldid dpkg zsign libimobiledevice
     uv tool install "cyan @ git+https://github.com/asdfzxcvbn/pyzule-rw"

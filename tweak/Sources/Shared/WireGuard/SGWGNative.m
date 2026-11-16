@@ -201,7 +201,7 @@ NSArray<NSString *> *SGWGNativeReportLines(void) {
         atomic_load(&expectedSlots), atomic_load(&installedSlots), atomic_load(&deferredSlots)],
         [NSString stringWithFormat:@"native.paths: Network TCP %u denied %u; BSD denied %u",
         atomic_load(&nwProxied), atomic_load(&nwBlocked), atomic_load(&bsdDenied)],
-        @"experimental: BSD remote TCP/UDP denied; local discovery exempt; not a leak-proof VPN"];
+        @"BSD remote TCP/UDP denied; local discovery exempt; not a leak-proof VPN"];
 }
 
 #ifdef SGWG_TESTING

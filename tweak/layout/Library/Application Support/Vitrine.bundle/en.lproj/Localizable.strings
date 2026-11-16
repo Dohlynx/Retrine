@@ -2895,7 +2895,7 @@
 "settings.wireguard.footer_checks" = "A successful country check does not mean music will play. Also test playback, next track and lock-screen playback, then copy the diagnostics right after any playback error.";
 "settings.wireguard.footer_profile" = "Standard WireGuard .conf with one [Peer] and AllowedIPs 0.0.0.0/0. The private key is stored only in this device's Keychain and is never shown or copied into diagnostics.";
 "settings.wireguard.footer_server" = "HTTP and HTTPS use CONNECT. HTTP sends proxy credentials without encryption; prefer HTTPS. HTTPS verifies the proxy certificate. Credentials are bound to the connection type, server, port and user, and cleared when these change.";
-"settings.wireguard.footer_tunnel" = "EXPERIMENTAL. Routes inspected Spotify paths through the tunnel or proxy and blocks guarded paths when unavailable. Not a leak-proof or device-wide VPN. Background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions are outside coverage. Builds without WireGuard drop enforcement even if enabled previously. Restart after changes.";
+"settings.wireguard.footer_tunnel" = "Routes inspected Spotify paths through the tunnel or proxy and blocks guarded paths when unavailable. Not a leak-proof or device-wide VPN. Background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions are outside coverage. Builds without WireGuard drop enforcement even if enabled previously. Restart after changes.";
 "settings.wireguard.guards_incomplete" = "Guard installation incomplete — protection unavailable";
 "settings.wireguard.guards_installed" = "Inspected-path guards installed";
 "settings.wireguard.handshake_ago" = "handshake %lld s ago";
@@ -2919,7 +2919,7 @@
 "settings.wireguard.password_saved" = "saved (leave empty to keep)";
 "settings.wireguard.port" = "Port";
 "settings.wireguard.recovery_message" = "Installed guards continue blocking unavailable paths. Other transports are not protected. Turn off the in-app VPN and restart Spotify to recover direct access.";
-"settings.wireguard.recovery_title" = "Experimental in-app VPN unavailable";
+"settings.wireguard.recovery_title" = "In-app VPN unavailable";
 "settings.wireguard.reimport_file" = "Replace from .conf file";
 "settings.wireguard.restart_message" = "Fully close and reopen Spotify to apply this setting.";
 "settings.wireguard.restart_needed" = "Restart the app to apply the change";

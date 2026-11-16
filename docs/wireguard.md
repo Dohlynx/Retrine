@@ -1,15 +1,20 @@
-# EXPERIMENTAL app-local WireGuard / proxy
+# App-local WireGuard / proxy
 
 **Routes the inspected Spotify paths through the tunnel/proxy and blocks
 installed guarded paths when it cannot. It is not a leak-proof or device-wide
-VPN.** Do not use this experimental feature as a security boundary for all
+VPN.** Do not use this feature as a security boundary for all
 traffic from the app or device.
 
-`WIREGUARD=0` (also unset) excludes its sources, Go archive, extra frameworks,
-license resource and Mod Settings row. Ordinary builds do not require Go.
+IPA builds include it by default: top-level `make build`, `make release`,
+`make install`, `make quick` and direct pipeline/quick script invocations use
+`WIREGUARD=1`. These builds require the Go release pinned in `WireGuard/go.mod`.
+`WIREGUARD=0` excludes its sources, Go archive, extra frameworks,
+license resource and Mod Settings row and does not require Go.
+Direct `tweak/Makefile` builds still default to `WIREGUARD=0` for development,
+compile-only CI and harnesses.
 Mode changes invalidate the link output without recompiling the settings source;
-default → enabled → default works without cleaning, retaining the output path
-used by `make quick`. A default build **drops all enforcement despite any saved runtime opt-in**.
+disabled → enabled → disabled works without cleaning, retaining the output path
+used by `make quick`. A `WIREGUARD=0` build **drops all enforcement despite any saved runtime opt-in**.
 
 When compiled in, it remains off until the user imports a profile or saves a
 proxy, explicitly enables it, then restarts. Import never enables it. It applies

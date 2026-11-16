@@ -19,6 +19,7 @@
 # Needs: Theos in $THEOS (default ~/theos), an iPhoneOS 26+ SDK from the selected Xcode or in $THEOS/sdks,
 # gmake, ldid, dpkg-deb (brew) and cyan (uv tool install "cyan @ git+https://github.com/asdfzxcvbn/pyzule-rw").
 set -euo pipefail
+export WIREGUARD="${WIREGUARD-1}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 THEOS="${THEOS:-$HOME/theos}"
@@ -55,7 +56,7 @@ done
 if [ "$PIXIE" = 1 ]; then
   python3 -B "$ROOT/NativeDownloads/tools/build_vitrine_9190.py" "$IN" --check-input ${OUT:+--output "$OUT"}
 fi
-if [ "${WIREGUARD:-0}" = 1 ]; then
+if [ "$WIREGUARD" = 1 ]; then
   command -v go >/dev/null 2>&1 || { echo "WIREGUARD=1 requires Go; install the toolchain from WireGuard/go.mod" >&2; exit 1; }
   python3 -B "$ROOT/scripts/spotify-transport-scan.py" "$IN" --wireguard-compatible
 fi

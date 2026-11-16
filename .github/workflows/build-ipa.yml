@@ -17,9 +17,9 @@ on:
         type: boolean
         default: false
       enable_wireguard:
-        description: "Include opt-in app-local WireGuard / proxy (inspected Spotify IPA only)"
+        description: "Include app-local WireGuard / proxy (inspected Spotify IPA only; off until enabled)"
         type: boolean
-        default: false
+        default: true
       bundle_id:
         description: "Bundle ID must match the signing App ID; extension IDs follow it (empty keeps Spotify's ID)"
         default: ""

@@ -210,7 +210,7 @@ static NSArray<NSString *> *Kinds(void) { return @[SGWGKindWireGuard, SGWGKindHT
 - (NSString *)footerTextForSection:(NSInteger)section {
     switch (section) {
         case WGSectionTunnel:
-            return SGL(@"settings.wireguard.footer_tunnel", @"EXPERIMENTAL. Routes inspected Spotify paths through the tunnel or proxy and blocks guarded paths when unavailable. Not a leak-proof or device-wide VPN. Background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions are outside coverage. Builds without WireGuard drop enforcement even if enabled previously. Restart after changes.");
+            return SGL(@"settings.wireguard.footer_tunnel", @"Routes inspected Spotify paths through the tunnel or proxy and blocks guarded paths when unavailable. Not a leak-proof or device-wide VPN. Background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions are outside coverage. Builds without WireGuard drop enforcement even if enabled previously. Restart after changes.");
         case WGSectionServer:
             return self.selectedWireGuard ? nil : SGL(@"settings.wireguard.footer_server", @"HTTP and HTTPS use CONNECT. HTTP sends proxy credentials without encryption; prefer HTTPS. HTTPS verifies the proxy certificate. Credentials are bound to the connection type, server, port and user, and cleared when these change.");
         case WGSectionProfile:
@@ -640,7 +640,7 @@ void SGWGNotifyRecovery(void) {
         while (presenter.presentedViewController) presenter = presenter.presentedViewController;
         if ([presenter isKindOfClass:UIAlertController.class]) return;
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:
-            SGL(@"settings.wireguard.recovery_title", @"Experimental in-app VPN unavailable")
+            SGL(@"settings.wireguard.recovery_title", @"In-app VPN unavailable")
             message:SGL(@"settings.wireguard.recovery_message", @"Installed guards continue blocking unavailable paths. Other transports are not protected. Turn off the in-app VPN and restart Spotify to recover direct access.")
             preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.wireguard.turn_off", @"Turn off in-app VPN")

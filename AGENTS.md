@@ -70,6 +70,11 @@ Rules:
 
 - Build: `make install` (signs and pushes to the phone), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). Tweak only:
   `env -u MAKELEVEL gmake -C tweak clean package`.
+  IPA builds include app-local WireGuard/proxy by default and require the exact Go release from
+  `WireGuard/go.mod`, including release builds. Use `WIREGUARD=0` to exclude it; direct tweak builds
+  remain Go-free by default. At runtime it stays off until a profile is imported or a proxy saved,
+  explicitly enabled and the app restarted. It is not a leak-proof or device-wide VPN; see
+  `docs/wireguard.md` for uncovered paths and the enforcement lost with `WIREGUARD=0`.
 - Handing over an IPA: upload it with `rclone copy out/vitrine-<version>.ipa dropbox:Vitrine/`, confirm it with
   `rclone check out/vitrine-<version>.ipa dropbox:Vitrine/ --one-way`, and give the `rclone link` URL with `dl=0`
   changed to `dl=1`. Then delete that IPA from `out/` (leave `out/extension/`, the extension build cache). Never
