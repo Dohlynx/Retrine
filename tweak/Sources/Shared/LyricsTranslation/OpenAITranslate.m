@@ -236,7 +236,8 @@ void SGLyricsTranslateWithOpenAIFormat(NSString *trackID, NSArray<SGKaraokeLine 
         }
         if (!hasText) { done([texts copy], nil); return; }
         if (!sg_done) sg_done = [NSMutableDictionary dictionary];
-        NSString *memo = [NSString stringWithFormat:@"%@|%@|%ld", trackID, languageTag, (long)format];
+        NSString *instruction = SGLyricsTranslationInstructionForLanguage(format, languageTag);
+        NSString *memo = [NSString stringWithFormat:@"%@|%@|%ld|%@", trackID, languageTag, (long)format, instruction];
         NSDictionary *cached = trackID ? sg_done[memo] : nil;
         if ([cached[@"texts"] isEqual:texts] && [cached[@"base"] isEqual:base] && [cached[@"model"] isEqual:model]) { done(cached[@"translations"], nil); return; }
         NSUInteger generation = SGLyricsCredentialGeneration(SGLyricsAIOpenAI);
@@ -245,7 +246,7 @@ void SGLyricsTranslateWithOpenAIFormat(NSString *trackID, NSArray<SGKaraokeLine 
         NSString *prompt = SGLyricsTranslationPromptForFormat(rows, languageTag, format);
         if (!prompt) { receive(nil, unreadable()); return; }
         NSString *requestProblem = nil;
-        NSURLRequest *request = SGOpenAIRequest(SGLyricsTranslationInstructionForFormat(format), prompt, format, &requestProblem);
+        NSURLRequest *request = SGOpenAIRequest(instruction, prompt, format, &requestProblem);
         if (!request || !request.HTTPBody || request.HTTPBody.length > 1024 * 1024) { receive(nil, requestProblem ?: unreadable()); return; }
         SGLyricsTranslationSendRequest(request, YES, ^BOOL { return generation == SGLyricsCredentialGeneration(SGLyricsAIOpenAI); }, ^(NSData *data, NSInteger status, NSError *error) {
             if (generation != SGLyricsCredentialGeneration(SGLyricsAIOpenAI)) { receive(nil, SGLyricsKeyChangedProblem()); return; }

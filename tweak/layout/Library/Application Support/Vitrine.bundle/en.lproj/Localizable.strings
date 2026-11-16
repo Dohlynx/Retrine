@@ -2783,6 +2783,13 @@
 "settings.translation.openaikey.model" = "Model";
 "settings.translation.openaikey.set" = "Set";
 "settings.translation.partial.title" = "Partly translated";
+"settings.translation.prompt.default" = "Default";
+"settings.translation.prompt.edited" = "Edited";
+"settings.translation.prompt.footer" = "Shared by Gemini, Claude and OpenAI-compatible. Use Translate Again in the lyrics menu to replace a saved translation.";
+"settings.translation.prompt.help" = "{language} is replaced with the target language. The app adds the reply format and line-preservation rules. Applies to lyric translation with all three AI services, not pronunciation or notes.";
+"settings.translation.prompt.limit" = "%lu / %lu characters";
+"settings.translation.prompt.restore" = "Restore default";
+"settings.translation.prompt.title" = "Translation prompt";
 "settings.translation.pronunciation.ipa" = "IPA";
 "settings.translation.pronunciation.latin" = "Latin letters";
 "settings.translation.pronunciation.native" = "In my language's letters";

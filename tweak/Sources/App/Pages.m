@@ -172,7 +172,7 @@ static UIViewController *translationPage(void) {
     // The on-device translators lead the services: they need no key or account.
     NSArray<SGModRow *> *services = [SGOnDeviceTranslatorRows() arrayByAddingObjectsFromArray:
         @[SGLyricsAIServiceRow(SGLyricsAIGemini), SGLyricsAIServiceRow(SGLyricsAIClaude), SGLyricsAIServiceRow(SGLyricsAIOpenAI),
-          SGDeepLKeyRow(), SGBingTranslateRow(), SGGoogleTranslateRow(), SGLyricsPronunciationNotationRow(), SGLyricsCulturalNotesRow()]];
+          SGLyricsTranslationPromptRow(), SGDeepLKeyRow(), SGBingTranslateRow(), SGGoogleTranslateRow(), SGLyricsPronunciationNotationRow(), SGLyricsCulturalNotesRow()]];
     return [[SGModPage alloc] initWithTitle:SGL(@"settings.lyrics.translation_ai.title", @"Translation & AI") intro:nil sections:@[
         SGSection(SGL(@"settings.lyrics.translation_ai.automatic.header", @"Automatic translation"),
                   @[SGLyricsTranslationLanguageRow(), SGRAutoTranslationRow(), SGRAutoTranslationOrderRow(),

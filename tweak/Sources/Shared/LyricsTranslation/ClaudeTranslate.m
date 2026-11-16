@@ -134,7 +134,8 @@ void SGLyricsTranslateWithClaudeFormat(NSString *trackID, NSArray<SGKaraokeLine 
         if (!prompt) { done(nil, unreadable()); return; }
         if (!SGClaudeKeySet()) { done(nil, SGL(@"settings.translation.claude.error.nokey", @"Add a Claude API key on the Lyrics page first.")); return; }
         NSString *model = SGClaudeModel();
-        NSString *memo = [NSString stringWithFormat:@"%@|%@|%ld", trackID, languageTag, (long)format];
+        NSString *instruction = SGLyricsTranslationInstructionForLanguage(format, languageTag);
+        NSString *memo = [NSString stringWithFormat:@"%@|%@|%ld|%@", trackID, languageTag, (long)format, instruction];
         if (!sg_done) sg_done = [NSMutableDictionary dictionary];
         NSDictionary *cached = trackID ? sg_done[memo] : nil;
         if ([cached[@"texts"] isEqual:texts] && [cached[@"model"] isEqual:model]) { done(cached[@"answer"], nil); return; }
@@ -142,7 +143,7 @@ void SGLyricsTranslateWithClaudeFormat(NSString *trackID, NSArray<SGKaraokeLine 
         NSUInteger generation = SGLyricsCredentialGeneration(SGLyricsAIClaude);
         SGLyricsTranslateAIRows(texts, format, ^(NSArray *rows, void (^receive)(NSArray *, NSString *)) {
             if (generation != SGLyricsCredentialGeneration(SGLyricsAIClaude)) { receive(nil, SGLyricsKeyChangedProblem()); return; }
-            SGLyricsAIAskWithFormat(SGLyricsAIClaude, SGLyricsTranslationInstructionForFormat(format),
+            SGLyricsAIAskWithFormat(SGLyricsAIClaude, instruction,
                 SGLyricsTranslationPromptForFormat(rows, languageTag, format), rows.count, format, receive);
         }, ^(NSArray *answer, NSString *problem) {
             if (generation != SGLyricsCredentialGeneration(SGLyricsAIClaude)) { done(nil, SGLyricsKeyChangedProblem()); return; }

@@ -48,6 +48,8 @@ NSTimeInterval SGLyricsTitleTestTime(void) { return titleTestClock; }
 @end
 @implementation SGModRow
 @end
+@implementation SGPage
+@end
 static NSSet *testKeys;
 static NSMutableDictionary<NSString *, NSData *> *openAIKeys;
 static OSStatus keyReadFailure, keyWriteFailure, keyDeleteFailure;
@@ -127,6 +129,7 @@ OSStatus SGLyricsTestKeyDelete(CFDictionaryRef query) {
 #define openAIKeys credentialFixture().hosts
 SGModRow *SGMenuRow(NSString *t, NSArray *c, NSString *(^v)(void), void (^chosen)(NSInteger)) { SGModRow *r = [SGModRow new]; r.title = t; r.menu = c; r.value = v; r.chosen = chosen; return r; }
 SGModRow *SGChoiceRow(NSString *t, NSString *s, NSString *k, NSArray *c, NSInteger f) { return nil; }
+SGModRow *SGPageRow(NSString *t, UIViewController *(^page)(void)) { SGModRow *r = [SGModRow new]; r.title = t; r.page = page; return r; }
 // What the files reach outside what is checked here; none of it is called.
 @implementation SGLyricsResult
 @end
@@ -591,6 +594,7 @@ static void checkProviders(void) {
 #include "check-kept.m"
 #include "check-bing-completion.m"
 #include "check-ai-gaps.m"
+#include "check-prompt.m"
 
 int main(int argc, const char **argv) {
     @autoreleasepool {
@@ -606,6 +610,7 @@ int main(int argc, const char **argv) {
         }
         if (argc > 1 && strcmp(argv[1], "--auto-retry-only") == 0) { checkAutoRetry(); return 0; }
         if (argc > 1 && strcmp(argv[1], "--ai-gaps-only") == 0) { checkAIGaps(); return 0; }
+        if (argc > 1 && strcmp(argv[1], "--prompt-only") == 0) { checkTranslationPrompt(); return 0; }
         if (argc > 1 && strcmp(argv[1], "--bing-completion-only") == 0) { checkBing(); checkBingCompletion(); return 0; }
         if (argc > 1 && strcmp(argv[1], "--kept-only") == 0) { checkKeptTranslation(); return 0; }
         if (argc > 1 && strcmp(argv[1], "--storage-only") == 0) { checkDurableStorage(); return 0; }
@@ -658,6 +663,7 @@ int main(int argc, const char **argv) {
         checkAutoRetry();
         checkBingCompletion();
         checkAIGaps();
+        checkTranslationPrompt();
         puts("lyrics translation: all checks passed");
     }
     return 0;

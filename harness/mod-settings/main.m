@@ -365,6 +365,11 @@ static void pageStyleChecks(void) {
 }
 
 - (void)run:(NSString *)action {
+    if ([action isEqualToString:@"prompt-check"]) {
+        extern void SGCheckTranslationPromptUI(UINavigationController *);
+        SGCheckTranslationPromptUI(self.nav);
+        return;
+    }
     NSArray<NSString *> *parts = [action componentsSeparatedByString:@"="];
     NSString *verb = parts.firstObject, *value = parts.count > 1 ? parts[1] : @"";
     UITableView *table = self.table;

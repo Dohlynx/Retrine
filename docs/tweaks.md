@@ -394,6 +394,17 @@ Shared:
                   in the translation language's letters, Latin letters or IPA (SGKeyLyricsPronunciationNotation), and a
                   one-sentence cultural note for the few lines a listener would miss (SGKeyLyricsCulturalNotes, off);
                   The lyrics menu keeps its translator choices after a generated translation, under Translate Again.
+                  Lyrics → Translation & AI has a shared Translation prompt row, also beside each AI service's key
+                  and model. It edits the style instruction for Gemini, Claude and OpenAI-compatible lyric jobs;
+                  titles, prose, pronunciation and cultural notes stay unchanged. The app retains the indexed-row
+                  contract, exact count/order, empty rows and untrusted-lyrics rules. Edited text is explicitly
+                  subordinate style guidance, followed by the fixed format/data rules. An unset prompt produces the
+                  same request text as before. {language} is replaced literally with the target language, never
+                  interpreted as a format string. Save accepts at most 4000 UTF-16 units; blank or default text
+                  removes the setting, and invalid restored values use the default. Each job snapshots the
+                  instruction into its per-launch memo identity, including repairs; saved track/language keys
+                  are unchanged. Use Translate Again to replace an existing saved translation. Restore default
+                  changes the editor's draft; Save applies it and Cancel discards it.
                   Switching service replaces generated translations as answers arrive, while source translations and
                   the previous answer to a failed line stay. Durable storage now uses the same JSON filenames in
                   Application Support/Vitrine/{Translations,AI}, with backup-eligible, after-first-unlock protection.

@@ -40,7 +40,9 @@ PAGE(SGDSPHeadphonesPage) PAGE(SGDSPPresetsPage) PAGE(SGFontLibraryPage)
 PAGE(SGRHomeSettingsPage) PAGE(SGRLibrarySettingsPage) PAGE(SGRVisualiserSettingsPage)
 PAGE(SGSingSettingsPage) PAGE(SGSpatialVoiceSettingsPage) PAGE(SGVibrationsSettingsPage)
 UIViewController *SGRPlayerSettingsPage(NSArray *more) { return blank(@"SGRPlayerSettingsPage"); }
-UIViewController *SGRLyricsSettingsPage(NSString *title, NSString *intro, NSArray<SGModSection *> *sections) { return blank(title); }
+UIViewController *SGRLyricsSettingsPage(NSString *title, NSString *intro, NSArray<SGModSection *> *sections) {
+    return [[SGModPage alloc] initWithTitle:title intro:intro sections:sections footer:nil];
+}
 // Redesigned/Lyrics/LyricsStylesSettings.m, whose cards play the real karaoke view: a blank page here.
 PAGE(SGRLyricsStylesSettingsPage)
 PAGE(SGLicensesPage) PAGE(SGUpdatePage) PAGE(SGReportListPage)
@@ -57,6 +59,7 @@ void SGImportSettings(UIViewController *presenter) {}
 void SGShareDiagnostics(UIViewController *presenter) {}
 void SGAutoMixApply(BOOL on) {}
 void SGLosslessLowerQuality(BOOL lower) {}
+void SGAudioQualitySettingChanged(void) {}
 BOOL SGGeminiForgetKey(void) { return YES; }
 BOOL SGClaudeForgetKey(void) { return YES; }
 BOOL SGOpenAIForgetKeys(void) { return YES; }

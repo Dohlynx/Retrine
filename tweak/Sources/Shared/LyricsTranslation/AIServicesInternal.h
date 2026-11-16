@@ -34,6 +34,8 @@ void SGLyricsTranslateSegments(NSArray<NSString *> *texts, NSUInteger maxSize, S
     void (^done)(NSArray<NSString *> *, NSString *));
 // Only new lyric jobs use indexed rows. Titles and other AI jobs explicitly retain JSON.
 NSString *SGLyricsTranslationInstructionForFormat(SGLyricsReplyFormat format);
+// Snapshot once per job, including in memo identity. JSON title/prose jobs keep their original instructions.
+NSString *SGLyricsTranslationInstructionForLanguage(SGLyricsReplyFormat format, NSString *languageTag);
 NSString *SGLyricsTranslationPromptForFormat(NSArray<NSString *> *texts, NSString *languageTag, SGLyricsReplyFormat format);
 // One source entry stays one row: CRLF is one space; other newline characters and tabs become spaces.
 NSString *SGLyricsTranslationRowText(NSString *text);

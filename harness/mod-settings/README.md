@@ -58,6 +58,18 @@ parser takes a plain XML plist as well as a signed one, so one written by hand w
 What it does not cover: other feature pages, the row the mod adds to Spotify's settings list and side drawer
 in Spotify's real lists (`rows` uses stand-ins of the same names), and iOS below 26, where the switch warns first.
 
+`prompt-check` navigates the production Lyrics/Translation & AI row declarations and uses the real prompt
+editor, while unrelated feature rows and the lyrics preview remain stubs. Launch with
+`-AppleLanguages '(en)' -spotifyglass.language 1 redesign prompt-check`, or `(ko)` and `2` for Korean.
+It checks the visible value and disclosure chevron, pushes through the real row selection, checks Spotify's
+page protocol, Save/pop/value refresh, back-navigation draft discard, the enabled back gesture,
+Restore default, overlong drafts, keyboard clearance, Dynamic Type and accessibility labels, then exits
+with PASS or a nonzero FAIL. It writes `prompt-row.png` and `prompt-editor.png` into the
+harness app's Documents directory; these window captures omit the system keyboard window. Use a disposable
+simulator clone and copy screenshots before the next language run overwrites them.
+`PROMPT_SOURCE` can select an isolated source mutation; removing the row's page must fail the visible
+value-plus-chevron check without crashing the app.
+
 `refactor-check` runs offline and exits: the real About page's Reset row keeps its trash symbol, opening
 Mod Settings finds a navigation controller through the source's parents, and a deeper first-child stack
 wins over a shallower later sibling. About's external actions remain stubs.

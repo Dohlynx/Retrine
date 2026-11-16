@@ -283,7 +283,8 @@ void SGLyricsTranslateWithGeminiFormat(NSString *trackID, NSArray<SGKaraokeLine 
         return;
     }
     if (!sg_done) sg_done = [NSMutableDictionary dictionary];
-    NSString *memo = [NSString stringWithFormat:@"%@|%@|%ld|%@", trackID, languageTag, (long)format, geminiThinkingLevel()];
+    NSString *instruction = SGLyricsTranslationInstructionForLanguage(format, languageTag);
+    NSString *memo = [NSString stringWithFormat:@"%@|%@|%ld|%@|%@", trackID, languageTag, (long)format, geminiThinkingLevel(), instruction];
     NSArray<NSString *> *texts = SGLyricsAITexts(lines);
     NSString *prompt = texts ? SGLyricsTranslationPromptForFormat(texts, languageTag, format) : nil;
     if (!prompt) { done(nil, SGL(@"settings.translation.error.unreadable", @"Gemini's answer could not be read. Try again.")); return; }
@@ -297,7 +298,7 @@ void SGLyricsTranslateWithGeminiFormat(NSString *trackID, NSArray<SGKaraokeLine 
     NSUInteger generation = SGLyricsCredentialGeneration(SGLyricsAIGemini);
     SGLyricsTranslateAIRows(texts, format, ^(NSArray *rows, void (^receive)(NSArray *, NSString *)) {
     if (generation != SGLyricsCredentialGeneration(SGLyricsAIGemini)) { receive(nil, SGLyricsKeyChangedProblem()); return; }
-    NSDictionary *body = geminiBody(SGLyricsTranslationInstructionForFormat(format), SGLyricsTranslationPromptForFormat(rows, languageTag, format), format);
+    NSDictionary *body = geminiBody(instruction, SGLyricsTranslationPromptForFormat(rows, languageTag, format), format);
     NSMutableURLRequest *request = geminiRequest(key, body);
     if (!request.HTTPBody || request.HTTPBody.length > 1024 * 1024) { receive(nil, SGL(@"settings.translation.error.unreadable", @"Gemini's answer could not be read. Try again.")); return; }
     NSMutableURLRequest *plain = [request mutableCopy];

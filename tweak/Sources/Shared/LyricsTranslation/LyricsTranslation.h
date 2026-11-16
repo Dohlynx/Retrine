@@ -40,9 +40,17 @@ void SGLyricsAlertKeyNotSaved(void);
 #define SGKeyAITimeout @"spotifyglass.lyrics.ai.timeout"
 NSArray<SGModRow *> *SGGeminiTuningRows(void);
 
+// Shared lyric-only instructions. Invalid restored values use the default; saves reject overlong text.
+#define SGKeyLyricsTranslationPrompt @"spotifyglass.lyrics.translationPrompt"
+enum { SGLyricsTranslationPromptMaxLength = 4000 };
+NSString *SGLyricsTranslationDefaultPrompt(void);
+NSString *SGLyricsTranslationPromptTemplate(void);
+BOOL SGLyricsTranslationSetPrompt(NSString *text);
+SGModRow *SGLyricsTranslationPromptRow(void);
+
 // One translation per line, in order, or nil and a message to show. New remote AI lyric requests use
 // immutable indexed rows; a malformed answer is rejected in full. Saved translations are unchanged.
-// Main queue. The same song in the same language is asked once a launch.
+// Main queue. Completed answers are reused per launch while source, language, model and prompt match.
 void SGLyricsTranslateWithGemini(NSString *trackID, NSArray<SGKaraokeLine *> *lines, NSString *languageTag,
                                  void (^done)(NSArray<NSString *> *translations, NSString *error));
 

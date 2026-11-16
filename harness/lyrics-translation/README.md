@@ -7,6 +7,12 @@ An explicit `--bing-live` run, described below, contacts Bing.
 
 The checks cover:
 
+- Shared translation instructions (`check-prompt.m`): `sh harness/lyrics-translation/build.sh --prompt-only`
+  checks pre-editor literal wire text, edited instructions in all three providers' real request bodies,
+  fixed row/data contracts, prompt-aware memo reuse/reset, literal `{language}` substitution, read/write
+  bounds and isolation from JSON titles, pronunciation and notes. `AI_SERVICES_SOURCE` can select a
+  disposable mutated source for the negative check; ignoring the saved prompt must fail the edited-answer
+  assertion. No real credentials or service calls are used.
 - Durable per-record storage (`check-storage.m`): root recreation, retention beyond 200,
   resumable copy-only migration, preserved conflicts, downgrade-proof deletion suppression,
   admission failures, opaque identity transfers, merge/replacement, complete validation before

@@ -72,6 +72,13 @@
 "common.reset" = "재설정";
 
 "common.save" = "저장";
+"settings.translation.prompt.title" = "번역 프롬프트";
+"settings.translation.prompt.default" = "기본값";
+"settings.translation.prompt.edited" = "수정됨";
+"settings.translation.prompt.restore" = "기본값 복원";
+"settings.translation.prompt.help" = "{language}는 번역할 언어로 바뀝니다. 응답 형식과 가사 줄을 유지하는 규칙은 앱이 추가합니다. 세 AI 서비스의 가사 번역에만 적용되며, 발음과 맥락 설명에는 적용되지 않습니다.";
+"settings.translation.prompt.limit" = "%lu / %lu자";
+"settings.translation.prompt.footer" = "Gemini, Claude, OpenAI 호환 서비스가 함께 사용합니다. 저장된 번역을 바꾸려면 가사 메뉴에서 다시 번역을 선택하세요.";
 
 "player.audio_quality.accessibility" = "오디오 품질, %@";
 "player.audio_quality.hardware_rate" = "출력";
