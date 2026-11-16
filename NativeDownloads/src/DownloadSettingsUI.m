@@ -328,7 +328,7 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
 }
 - (void)confirmRelease:(NSDictionary *)plan devices:(NSArray *)devices {
     NSMutableArray *names=[NSMutableArray array],*ids=[NSMutableArray array];
-    for(NSDictionary *device in devices){NSString *cache=device[@"cache_id"];[ids addObject:cache];[names addObject:[NSString stringWithFormat:@"%@ · %@",device[@"name"],[cache substringToIndex:MIN(cache.length,8)]]];}
+    for(NSDictionary *device in devices){NSString *cache=device[@"cache_id"];[ids addObject:device[@"selection_token"]];[names addObject:[NSString stringWithFormat:@"%@ · %@ · %@",SAPDeviceL([device[@"is_current_device"]boolValue]?@"this_copy":@"other_copy"),device[@"name"],[cache substringToIndex:MIN(cache.length,8)]]];}
     NSString *message=[NSString stringWithFormat:SAPL(@"settings.pixie.alert.release_confirm.message_format",@"Only use this to fix download problems, such as a device-limit error. Do not reset slots if downloads work normally.\n\nDisable offline registration for:\n%@\n\nCached tracks in these copies may become unavailable offline. The app will verify the device list and free-slot count after each command."),[names componentsJoinedByString:@"\n"]];
     UIAlertController *confirm=[UIAlertController alertControllerWithTitle:SAPL(@"settings.pixie.alert.release_confirm.title",@"Release offline registrations?") message:message preferredStyle:UIAlertControllerStyleAlert];
     [confirm addAction:[UIAlertAction actionWithTitle:SAPL(@"common.cancel",@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
@@ -352,10 +352,11 @@ static UITableViewCell *SAPSettingsCell(UITableView *table,NSString *title,NSStr
         self.checkingCompatibility=NO;[self refresh];
         if(error){[self slotMessage:SAPL(@"settings.pixie.alert.no_registration_changed.title",@"No registration changed") message:error];return;}
         NSArray *devices=plan[@"active_devices"];
-        UIAlertController *sheet=[UIAlertController alertControllerWithTitle:SAPL(@"settings.pixie.sheet.occupied_slots.title",@"Occupied offline slots") message:[NSString stringWithFormat:SAPL(@"settings.pixie.sheet.occupied_slots.message_format",@"Free slots: %@ of %@. Only release registrations to fix download problems. Old copies may lose offline access. Select a registration to review; nothing changes until you confirm."),plan[@"free_licenses"],plan[@"max_licenses"]] preferredStyle:UIAlertControllerStyleActionSheet];
+        NSString *message=[NSString stringWithFormat:@"%@\n\n%@",[NSString stringWithFormat:SAPL(@"settings.pixie.sheet.occupied_slots.message_format",@"Free slots: %@ of %@. Only release registrations to fix download problems. Old copies may lose offline access. Select a registration to review; nothing changes until you confirm."),plan[@"free_licenses"],plan[@"max_licenses"]],plan[@"state_summary"]];
+        UIAlertController *sheet=[UIAlertController alertControllerWithTitle:SAPL(@"settings.pixie.sheet.occupied_slots.title",@"Occupied offline slots") message:message preferredStyle:UIAlertControllerStyleActionSheet];
         for(NSDictionary *device in devices) {
             NSString *cache=device[@"cache_id"];
-            NSString *name=[NSString stringWithFormat:@"%@ · %@",device[@"name"],[cache substringToIndex:MIN(cache.length,8)]];
+            NSString *name=[NSString stringWithFormat:@"%@ · %@ · %@",SAPDeviceL([device[@"is_current_device"]boolValue]?@"this_copy":@"other_copy"),device[@"name"],[cache substringToIndex:MIN(cache.length,8)]];
             [sheet addAction:[UIAlertAction actionWithTitle:name style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){[self confirmRelease:plan devices:@[device]];}]];
         }
         if(devices.count>1)[sheet addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:SAPL(@"settings.pixie.sheet.release_all_format",@"Release all %lu registrations…"),(unsigned long)devices.count] style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){[self confirmRelease:plan devices:devices];}]];

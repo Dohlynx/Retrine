@@ -16,6 +16,11 @@ int main(int argc,char **argv) { @autoreleasepool {
     }
     assert((dlsym(RTLD_DEFAULT,"SGL")!=NULL)==bridge);
     BOOL korean=[language isEqual:@"ko"];
+    assert([SAPDeviceL(@"this_copy")isEqual:korean?@"이 사본":@"This copy"]);
+    assert([SAPDeviceL(@"not_registered")isEqual:korean?@"등록되지 않음":@"Not registered"]);
+    NSString *snapshot=[NSString stringWithFormat:SAPDeviceL(@"snapshot_format"),@1,@5,@2,@5,SAPDeviceL(@"received"),SAPDeviceL(@"unavailable")];
+    assert([snapshot isEqual:korean?@"마지막으로 확인한 상태(성공을 의미하지 않음)\n사용 가능한 슬롯: 1 / 5 · 앱 슬롯: 2 / 5\n앱: 수신됨 · 직접 응답: 사용 불가":
+        @"Last observed state (not proof of success)\nFree slots: 1 of 5 · Native slots: 2 of 5\nNative: received · Direct: unavailable"]);
     assert([SAPL(@"common.cancel",@"Cancel") isEqual:korean?@"취소":@"Cancel"]);
     assert([SAPL(@"settings.pixie.missing_fixture_key",@"Missing translation") isEqual:@"Missing translation"]);
     assert([SAPL(@"common.cancel",@"Invalid format %ld") isEqual:@"Invalid format %ld"]);

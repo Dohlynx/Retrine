@@ -1818,9 +1818,7 @@
 "settings.pixie.devices.error.identifiers_incomplete" = "The direct device response has incomplete identifiers; the current state cannot be confirmed.";
 "settings.pixie.devices.error.invalid_url" = "Invalid management URL";
 "settings.pixie.devices.error.license_invalid_protobuf" = "The direct license response is not a valid LicenseStatus protobuf; the current state cannot be confirmed.";
-"settings.pixie.devices.error.no_active_registrations" = "No occupied offline registrations were confirmed. Nothing was changed.";
 "settings.pixie.devices.error.no_free_slots" = "No free offline-device slot was reported. Release a reviewed old registration first. No enable command was sent.";
-"settings.pixie.devices.error.no_identifiable_devices" = "The direct API returned no identifiable devices; the current state cannot be confirmed.";
 "settings.pixie.devices.error.no_transport_error" = "no transport error";
 "settings.pixie.devices.error.operation_in_progress" = "Another offline-device operation is in progress.";
 "settings.pixie.devices.error.selection_invalid" = "The reviewed device selection is missing, expired or invalid. Refresh it before changing registrations.";
