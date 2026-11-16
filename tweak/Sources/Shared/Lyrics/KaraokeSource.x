@@ -1,7 +1,7 @@
 // Where the karaoke page gets its lines and its clock. The color-lyrics body is copied as it passes
 // the same URLSession delegates AdBlock/AdNetwork.x reads, untouched, and kept per track, since the
-// page may open long after the request finished. The clock is SPTEsperantoPlayer's state, asked for on
-// every frame: the player is caught the first time the app asks it, and its position runs on by itself.
+// page may open long after the request finished. Track and clock use PlayerState's shared report,
+// like artwork, falling back to the player only before the first report.
 // With a source of the mod's on, the color-lyrics body is Shared/LyricsSources' to answer and it
 // hands the lines over.
 #import "Core/SGCore.h"
@@ -759,6 +759,8 @@ id SGKaraokePlayer(void) {
 }
 
 static SPTPlayerState *playerState(void) {
+    SPTPlayerState *reported = SGPlayerState();
+    if (reported) return reported;
     id player = sg_player;
     return [player respondsToSelector:@selector(state)] ? [(id<SPTPlayer>)player state] : nil;
 }

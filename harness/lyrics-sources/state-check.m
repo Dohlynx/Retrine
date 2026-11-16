@@ -183,10 +183,12 @@ double SGSingLeadOf(SPTPlayerState *state) { return 0; }
 @interface HarnessLyricsState : NSObject
 @property (nonatomic, strong) HarnessLyricsTrack *track;
 @property (nonatomic) BOOL isPaused;
+@property (nonatomic) double position, positionAsOfTimestamp;
 @property (nonatomic, copy) NSArray *future;
 @end
 @implementation HarnessLyricsState
 @end
+#include "spotify-check.inc"
 @interface HarnessApplication : NSObject
 @property (nonatomic) UIApplicationState applicationState;
 @end
@@ -2726,6 +2728,8 @@ static void checkUpNext(void) {
 
 int main(void) {
     @autoreleasepool {
+        checkSpotifySyllables();
+        checkSpotifyPublishedClock();
         checkHeaderOrigin();
         BOOL aheadOnly = getenv("VITRINE_UP_NEXT_ONLY") != NULL;
         if (!aheadOnly) {

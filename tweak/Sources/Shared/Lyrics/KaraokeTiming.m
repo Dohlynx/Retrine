@@ -404,8 +404,7 @@ static NSArray<SGKaraokeLine *> *fromProtobuf(NSData *body) {
     return synced ? SGKaraokeEstimatedLines(starts, texts) : SGKaraokeStaticLines(texts);
 }
 
-// { "lyrics": { "syncType": "LINE_SYNCED", "lines": [ { "startTimeMs": "1234", "words": "..." } ] } },
-// or "UNSYNCED" with every start 0.
+// Spotify's decimal millisecond strings (and integral JSON numbers), never coerced.
 static BOOL jsonTime(id value, NSInteger *ms) {
     double number;
     if ([value isKindOfClass:NSNumber.class] && CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID()) {
@@ -420,24 +419,119 @@ static BOOL jsonTime(id value, NSInteger *ms) {
     return YES;
 }
 
+// Shilog62's color-lyrics port identifies numChars as UTF-16 units, excluding the
+// whitespace between slices. Do not guess a different unit from a mismatching row.
+// Incomplete clocks or composed-glyph boundaries use line timing; malformed data
+// is rejected instead of silently becoming an estimate.
+static BOOL spotifySyllableLine(NSDictionary *row, NSInteger *lineStart, SGKaraokeLine **timed) {
+    NSString *text = row[@"words"];
+    id raw = row[@"syllables"];
+    if (raw && ![raw isKindOfClass:NSArray.class]) return NO;
+    NSArray *syllables = raw;
+    id startValue = row[@"startTimeMs"];
+    if (!startValue && [syllables.firstObject isKindOfClass:NSDictionary.class])
+        startValue = syllables.firstObject[@"startTimeMs"];
+    if (!jsonTime(startValue, lineStart)) return NO;
+    NSInteger lineEnd = 0;
+    if (row[@"endTimeMs"] && !jsonTime(row[@"endTimeMs"], &lineEnd)) return NO;
+    // Spotify uses a zero line end for an unspecified end, including timed rows.
+    if (lineEnd && lineEnd < *lineStart) return NO;
+    if (lineEnd && !isBreak(text)) {
+        SGKaraokeLine *line = timedLine(text, *lineStart, lineEnd - *lineStart);
+        line.end = lineEnd;
+        // The estimator treats a zero gap as unknown, not a supplied empty interval.
+        if (lineEnd == *lineStart)
+            for (SGKaraokeWord *word in line.words) word.start = word.end = *lineStart;
+        *timed = line;
+    }
+    if (!syllables.count) return YES;
+
+    NSCharacterSet *whitespace = NSCharacterSet.whitespaceAndNewlineCharacterSet;
+    NSMutableArray<SGKaraokePiece *> *pieces = [NSMutableArray arrayWithCapacity:syllables.count];
+    NSUInteger offset = 0;
+    NSInteger previousStart = *lineStart, lastEnd = *lineStart;
+    BOOL precise = YES;
+    for (id value in syllables) {
+        if (![value isKindOfClass:NSDictionary.class]) return NO;
+        NSDictionary *syllable = value;
+        NSInteger count, start = 0, end = 0;
+        if (!jsonTime(syllable[@"numChars"], &count) || count == 0) return NO;
+        BOOL hasStart = syllable[@"startTimeMs"] != nil, hasEnd = syllable[@"endTimeMs"] != nil;
+        if (hasStart) {
+            if (!jsonTime(syllable[@"startTimeMs"], &start) || start < previousStart ||
+                (lineEnd && start > lineEnd)) return NO;
+            previousStart = start;
+        }
+        if (hasEnd) {
+            if (!jsonTime(syllable[@"endTimeMs"], &end) || end < previousStart ||
+                (lineEnd && end > lineEnd)) return NO;
+            lastEnd = MAX(lastEnd, end);
+        }
+        if (!hasStart || !hasEnd || end == start) precise = NO;
+
+        BOOL spaceBefore = NO;
+        while (offset < text.length && [whitespace characterIsMember:[text characterAtIndex:offset]]) {
+            offset++;
+            spaceBefore = YES;
+        }
+        if ((NSUInteger)count > text.length - offset) return NO;
+        NSRange range = NSMakeRange(offset, (NSUInteger)count);
+        NSUInteger after = NSMaxRange(range);
+        if (after < text.length && CFStringIsSurrogateHighCharacter([text characterAtIndex:after - 1]) &&
+            CFStringIsSurrogateLowCharacter([text characterAtIndex:after])) return NO;
+        if (!NSEqualRanges(range, [text rangeOfComposedCharacterSequencesForRange:range])) precise = NO;
+        SGKaraokePiece *piece = [SGKaraokePiece new];
+        piece.text = [text substringWithRange:range];
+        piece.start = start;
+        piece.end = end;
+        piece.spaceBefore = spaceBefore;
+        piece.spaceAfter = after < text.length && [whitespace characterIsMember:[text characterAtIndex:after]];
+        [pieces addObject:piece];
+        offset = after;
+    }
+    while (offset < text.length && [whitespace characterIsMember:[text characterAtIndex:offset]]) offset++;
+    if (offset != text.length) return NO;
+    if (precise) {
+        SGKaraokeLine *line = SGKaraokePieceLine(pieces, *lineStart, lineEnd ?: lastEnd);
+        // The model normalizes whitespace. If that would change the supplied text,
+        // retain the existing line estimator rather than publish sliced word timing.
+        if ([SGKaraokeLineText(line) isEqualToString:text]) *timed = line;
+    }
+    return YES;
+}
+
 static NSArray<SGKaraokeLine *> *fromJSON(NSData *body) {
     NSDictionary *root = [NSJSONSerialization JSONObjectWithData:body options:0 error:nil];
     NSDictionary *lyrics = [root isKindOfClass:NSDictionary.class] ? root[@"lyrics"] : nil;
     if (![lyrics isKindOfClass:NSDictionary.class]) return nil;
     BOOL synced = [lyrics[@"syncType"] isEqual:@"LINE_SYNCED"];
-    if (!synced && ![lyrics[@"syncType"] isEqual:@"UNSYNCED"]) return nil;
+    BOOL syllableSynced = [lyrics[@"syncType"] isEqual:@"SYLLABLE_SYNCED"];
+    if (!synced && !syllableSynced && ![lyrics[@"syncType"] isEqual:@"UNSYNCED"]) return nil;
     if (![lyrics[@"lines"] isKindOfClass:NSArray.class]) return nil;
     NSMutableArray<NSNumber *> *starts = [NSMutableArray array];
     NSMutableArray<NSString *> *texts = [NSMutableArray array];
+    NSMutableArray *timed = syllableSynced ? [NSMutableArray array] : nil;
     for (NSDictionary *line in lyrics[@"lines"]) {
-        if (![line isKindOfClass:NSDictionary.class]) continue;
+        if (![line isKindOfClass:NSDictionary.class]) {
+            if (syllableSynced) return nil;
+            continue;
+        }
         id words = line[@"words"];
         NSInteger start = 0;
-        if (synced && !jsonTime(line[@"startTimeMs"], &start)) return nil;
+        if (syllableSynced) {
+            SGKaraokeLine *precise = nil;
+            if (![words isKindOfClass:NSString.class] || !spotifySyllableLine(line, &start, &precise)) return nil;
+            if (!isBreak(words)) [timed addObject:precise ?: NSNull.null];
+        } else if (synced && !jsonTime(line[@"startTimeMs"], &start)) return nil;
         [starts addObject:@(start)];
         [texts addObject:[words isKindOfClass:NSString.class] ? words : @""];
     }
-    return synced ? SGKaraokeEstimatedLines(starts, texts) : SGKaraokeStaticLines(texts);
+    if (!synced && !syllableSynced) return SGKaraokeStaticLines(texts);
+    NSArray<SGKaraokeLine *> *estimated = SGKaraokeEstimatedLines(starts, texts);
+    if (!syllableSynced) return estimated;
+    for (NSUInteger i = 0; i < timed.count; i++)
+        if (timed[i] == NSNull.null) timed[i] = estimated[i];
+    return timed.count ? timed : nil;
 }
 
 NSArray<SGKaraokeLine *> *SGKaraokeLinesFromBody(NSData *body) {

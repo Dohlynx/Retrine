@@ -1,6 +1,6 @@
 // The lyrics engine: timed lines and the player's clock, for the redesign's Apple Music style lyrics
-// (Redesigned/Lyrics/SGRKaraokeView.h) and the lock screen (Shared/LockScreenLyrics). Spotify only
-// times whole lines, and so do many sources; every line says how finely it was really timed
+// (Redesigned/Lyrics/SGRKaraokeView.h) and the lock screen (Shared/LockScreenLyrics). Spotify times
+// whole lines or syllables; every line says how finely it was really timed
 // (SGKaraokeTiming), so a line timed by the line lights up whole unless the user asks for the words
 // inside it to be estimated (KaraokeTiming.m) and swept. The lines are read from the color-lyrics
 // response as it arrives, or handed over by Shared/LyricsSources, and the position from the player's
