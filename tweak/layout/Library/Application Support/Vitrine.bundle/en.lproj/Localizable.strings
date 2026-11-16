@@ -1449,6 +1449,7 @@
 "settings.lyricssources.netease.subtitle" = "Word timing, censored";
 "settings.lyricssources.offers.empty" = "No Source Has Lyrics";
 "settings.lyricssources.offers.loading" = "Asking…";
+"settings.lyricssources.petitlyrics.subtitle" = "Word and line timing, Japanese catalog";
 "settings.lyricssources.pick.automatic" = "Automatic";
 "settings.lyricssources.pick.menu" = "Lyrics Source";
 "settings.lyricssources.pick.order" = "As the order chooses";

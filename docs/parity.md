@@ -52,6 +52,7 @@ fixed in the commits that follow `956e65c`.
 | 111, 88, 124 | Landscape lyrics, with the meanings sheet |
 | 94 | Translation: Musixmatch's community translations, or Gemini with your own key |
 | 31, 138 | Spicy Lyrics with your own Developer Platform key |
+| — | PetitLyrics: request and response knowledge from EeveeSpotifyReincarnated (GPL-3, `0d9feaa`); asynchronous matching and retained word timing in Vitrine |
 | 82, 93, 125, 60 | Lock screen lyrics as full-screen artwork, a clip per line, Still by default, no progress jump |
 
 ### Player and audio

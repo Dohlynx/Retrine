@@ -804,8 +804,99 @@ static void checkTimingNames(void) {
     puts("timing diagnostic: word, line, untimed, empty and nil names passed");
 }
 
+// Invented metadata and lyrics in the endpoint's XML/base64 WSY format; no captured user data.
+static NSString *petitSong(NSString *identifier, NSString *title, NSString *artist, NSString *duration, NSString *type, NSString *text) {
+    NSString *encoded = [[text dataUsingEncoding:NSUTF8StringEncoding] base64EncodedStringWithOptions:0];
+    return [NSString stringWithFormat:@"<song><lyricsId>%@</lyricsId><title>%@</title><artist>%@</artist><duration>%@</duration><availableLyricsType>%@</availableLyricsType><lyricsType>%@</lyricsType><lyricsData>%@</lyricsData></song>",
+        identifier, title, artist, duration, type, type, encoded];
+}
+static void checkPetitLyrics(void) {
+    SGLyricsQuery *query = [SGLyricsQuery new];
+    query.title = @"Fixture + Song";
+    query.artist = @"Fixture Artist";
+    query.seconds = 180;
+    query.requestContext = [SGLyricsRequestContext new];
+    NSString *wsy = @"<wsy><line><linestring>空 &amp; 海</linestring>"
+        "<word><wordstring>空</wordstring><starttime>1200</starttime><endtime>1500</endtime></word>"
+        "<word><wordstring>&amp;</wordstring><starttime>1700</starttime><endtime>1900</endtime></word>"
+        "<word><wordstring>海</wordstring><starttime>2200</starttime><endtime>2900</endtime></word></line></wsy>";
+    NSString *(^wrap)(NSString *) = ^(NSString *body) {
+        return [NSString stringWithFormat:@"<response><status>00000000</status><songs>%@</songs></response>", body];
+    };
+    NSString *search = wrap([@[
+        petitSong(@"1", @"Wrong Song", query.artist, @"180000", @"3", @""),
+        petitSong(@"2", query.title, @"Wrong Artist", @"180000", @"3", @""),
+        petitSong(@"3", query.title, query.artist, @"200000", @"3", @""),
+        petitSong(@"4", query.title, query.artist, @"183000", @"3", @""),
+        petitSong(@"5", query.title, query.artist, @"180000", @"3", @"")
+    ] componentsJoinedByString:@""]);
+    sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) {
+        CHECK([url.host isEqual:@"p1.petitlyrics.com"]);
+        CHECK([headers[@"Content-Type"] isEqual:@"application/x-www-form-urlencoded"]);
+        NSString *form = [[NSString alloc] initWithData:body encoding:NSUTF8StringEncoding];
+        CHECK([form containsString:@"clientAppId=p1110417"] && [form containsString:@"terminalType=10"]);
+        if ([form containsString:@"key_title="]) {
+            CHECK([form containsString:@"key_title=Fixture%20%2B%20Song"] && [form containsString:@"max_count=30"]);
+            return search;
+        }
+        CHECK([form containsString:@"key_lyricsId=5"] && [form containsString:@"lyricsType=3"]);
+        return wrap(petitSong(@"5", query.title, query.artist, @"180000", @"3", wsy));
+    };
+    SGLyricsResult *got = awaitReply(^(void (^done)(id)) { SGPetitLyricsAsk(query, done); }, nil);
+    CHECK(got.synced && got.wordTimed && [got.provider isEqual:@"PetitLyrics"]);
+    SGKaraokeLine *line = got.karaokeLines.firstObject;
+    CHECK([SGKaraokeLineText(line) isEqual:@"空 & 海"]);
+    CHECK(line.start == 1200 && line.end == 2900 && line.words.count == 3);
+    CHECK(line.words[1].start == 1700 && line.words[1].end == 1900);
+
+    NSString *overlap = @"<wsy><line><linestring>空海</linestring>"
+        "<word><wordstring>空</wordstring><starttime>1000</starttime><endtime>5000</endtime></word>"
+        "<word><wordstring>海</wordstring><starttime>2000</starttime><endtime>3000</endtime></word></line></wsy>";
+    sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) {
+        return wrap(petitSong(@"5", query.title, query.artist, @"180000", @"3", overlap));
+    };
+    got = awaitReply(^(void (^done)(id)) { SGPetitLyricsAsk(query, done); }, nil);
+    CHECK(got.wordTimed && got.karaokeLines.firstObject.end == 5000);
+
+    // Eevee requests type 1 for type 2 availability. Live type 2 is MHDROBJT
+    // binary, not the fabricated LRC formerly used here. Plain text is never timed.
+    for (NSString *available in @[@"1", @"2"]) {
+        sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) {
+            NSString *form = [[NSString alloc] initWithData:body encoding:NSUTF8StringEncoding];
+            if ([form containsString:@"key_title="])
+                return wrap(petitSong(@"5", query.title, query.artist, @"180000", available, @""));
+            CHECK([form containsString:@"lyricsType=1"]);
+            return wrap(petitSong(@"5", query.title, query.artist, @"180000", @"1", @"Invented line\nNext line"));
+        };
+        got = awaitReply(^(void (^done)(id)) { SGPetitLyricsAsk(query, done); }, nil);
+        CHECK(got && !got.synced && !got.wordTimed);
+        CHECK([got.texts isEqual:(@[@"Invented line", @"Next line"])]);
+    }
+
+    sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) {
+        return wrap(petitSong(@"1", @"Unrelated", query.artist, @"180000", @"3", wsy));
+    };
+    CHECK(!awaitReply(^(void (^done)(id)) { SGPetitLyricsAsk(query, done); }, nil));
+    CHECK(!query.requestContext.emptyNameSearch);
+    sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) { return wrap(@""); };
+    CHECK(!awaitReply(^(void (^done)(id)) { SGPetitLyricsAsk(query, done); }, nil));
+    CHECK(query.requestContext.emptyNameSearch != nil);
+    query.requestContext = [SGLyricsRequestContext new];
+    sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) {
+        *status = 429; return @"<response><status>rate limited</status></response>";
+    };
+    CHECK(!awaitReply(^(void (^done)(id)) { SGPetitLyricsAsk(query, done); }, nil));
+    CHECK(query.requestContext.failed && !query.requestContext.emptyNameSearch);
+    query.requestContext = [SGLyricsRequestContext new];
+    sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) { return @"<response><songs>"; };
+    CHECK(!awaitReply(^(void (^done)(id)) { SGPetitLyricsAsk(query, done); }, nil));
+    CHECK(query.requestContext.failed);
+    puts("PetitLyrics: XML/base64, overlapping word timing, plain fallback, ranked matching, empty and failure checks passed");
+}
+
 int main(int argc, char **argv) {
     @autoreleasepool {
+        checkPetitLyrics();
         checkTimingNames();
         checkMalformedTiming();
         checkVoiceScaling();

@@ -107,6 +107,7 @@ static SGLyricsRequestContext *sg_providerContext;
 SGLyricsAsk SGMusixmatchAsk = ^(SGLyricsQuery *q, void (^done)(SGLyricsResult *)) { sg_providerReply = done; sg_providerTrack = q.trackID; sg_providerContext = q.requestContext; };
 SGLyricsAsk SGBiniLyricsAsk, SGUnisonAsk, SGNetEaseAsk, SGQQMusicAsk, SGKuGouAsk;
 SGLyricsAsk SGBugsAsk, SGGenieAsk, SGLyricsPlusAsk, SGDeezerAsk, SGImportedLRCAsk, SGGeniusAsk;
+SGLyricsAsk SGPetitLyricsAsk;
 NSString *const SGImportedLRCKey = @"importedlrc";
 @implementation SGSource
 + (instancetype)sourceWithKey:(NSString *)key name:(NSString *)name detail:(NSString *)detail { return [self new]; }
@@ -1419,8 +1420,21 @@ static void checkUntimedFailureSuppliesPage(void) {
 static void checkAskModeMigration(void) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSArray *expected = @[SGImportedLRCKey, SGSpicyLyricsKey, @"binilyrics", @"lyricsplus",
-        @"musixmatch", @"unison", @"deezer", @"netease", @"lrclib", @"bugs", @"genie", @"qqmusic", @"kugou", @"genius"];
+        @"musixmatch", @"unison", @"deezer", @"netease", @"petitlyrics", @"lrclib", @"bugs", @"genie", @"qqmusic", @"kugou", @"genius"];
     CHECK([SGLyricsOrder() isEqual:expected]);
+    // Simulate a saved order from before catalog tracking, without restoring disabled sources.
+    [defaults setObject:@[@"musixmatch", @"lrclib", @"genius"] forKey:SGKeyLyricsProviders];
+    [defaults removeObjectForKey:SGKeyLyricsKnownProviders];
+    NSArray *migrated = @[@"musixmatch", @"petitlyrics", @"lrclib", @"genius"];
+    CHECK([SGLyricsOrder() isEqual:migrated]);
+    CHECK([[defaults arrayForKey:SGKeyLyricsProviders] isEqual:migrated]);
+    CHECK([SGLyricsOrder() isEqual:migrated]);
+    SGLyricsSetOrder(@[@"musixmatch", @"lrclib", @"genius"]);
+    CHECK([SGLyricsOrder() isEqual:(@[@"musixmatch", @"lrclib", @"genius"])]);
+    [defaults setObject:@[] forKey:SGKeyLyricsProviders];
+    [defaults removeObjectForKey:SGKeyLyricsKnownProviders];
+    CHECK(SGLyricsOrder().count == 0);
+    CHECK([[defaults arrayForKey:SGKeyLyricsKnownProviders] containsObject:@"petitlyrics"]);
     // Exercise both early returns in the migration, and a pre-existing new preference.
     for (NSArray *stored in @[@[], @[@"unison"]]) {
         SGLyricsSetOrder(stored);

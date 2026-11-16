@@ -1486,6 +1486,7 @@
 "settings.lyricssources.intro" = "드래그하여 소스 우선순위를 정하세요. 요청 방식 및 가사 유형에서 소스 요청 방식을 선택할 수 있습니다. 모두 동시에 모드에서는 순서와 관계없이 단어 단위 싱크가 있는 첫 응답을 사용합니다. Deezer는 직접 추가한 로그인 쿠키를 사용합니다.";
 "settings.lyricssources.kugou.subtitle" = "단어 단위 싱크, 중국 카탈로그";
 "settings.lyricssources.lrclib.subtitle" = "줄 단위 싱크, 공개 대체 소스";
+"settings.lyricssources.petitlyrics.subtitle" = "단어 및 줄 단위 싱크, 일본 카탈로그";
 "settings.lyricssources.lyricsplus.subtitle" = "단어 단위 싱크 및 줄 단위 싱크, 여러 음원";
 "settings.lyricssources.musixmatch.subtitle" = "Spotify 라이선스 카탈로그";
 "settings.lyricssources.netease.subtitle" = "단어 단위 싱크, 검열됨";

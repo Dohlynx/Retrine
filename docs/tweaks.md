@@ -318,6 +318,10 @@ Shared:
                   value goes to main, where the caches and the walk live; checked on the Mac against harness/lyrics-sources/. Also: LyricsPlus.m (word
                   and syllable timing, backing vocals, prjktla.my.id then binimum.org), Bugs.m and Genie.m (Korean catalogs, line timed;
                   Genie requests the desktop site to avoid a mobile redirect),
+                  PetitLyrics.m (Japanese and some international catalogs, base64 plain text or WSY with word clocks retained;
+                  type-2 binary sheets are requested as type-1 plain text, following Eevee, rather than claiming LRC timing;
+                  title/artist and four-second duration matching, closest matching candidates tried asynchronously;
+                  uses the shared cache, failure backoff and bounded transport, with XML parsing off main),
                   and Deezer.m on the user's own ARL in the Keychain, off until one is set, its JWT kept in memory and
                   renewed once on a refusal; their requests go through SGLyricsSourceRequest, which caps a reply at
                   2 MiB, follows no redirect and keeps no cookie. LRCLIB, LyricsPlus, Genie and BiniLyrics decode their
@@ -340,9 +344,11 @@ Shared:
                   after a failure or a rejected match, nor for Spotify-ID or ISRC lookups. BiniLyrics prefers a
                   candidate whose duration is known and close, LRCLIB breaks equal-distance ties, and Spicy
                   lines with null bounds take them from their words.
-                  The old Type first boolean migrates to 0/1. Stored source orders are unchanged; unset
+                  The old Type first boolean migrates to 0/1. Saved source orders track known providers:
+                  new providers are inserted once at their default relative position, without restoring disabled known
+                  providers or enabling an empty order. PetitLyrics is inserted before LRCLIB. Unset
                   orders prioritize Imported lyrics, Spicy Lyrics, BiniLyrics, LyricsPlus, Musixmatch, Unison,
-                  Deezer, NetEase, LRCLIB, Bugs, Genie, QQ Music, KuGou and Genius. Genius.m, last: untimed words for a track no
+                  Deezer, NetEase, PetitLyrics, LRCLIB, Bugs, Genie, QQ Music, KuGou and Genius. Genius.m, last: untimed words for a track no
                   other source has, the song found by the search the line meanings share (SGGeniusSongIn in SongMatch.m, whose match LRCLIB's search shares too)
                   and the words read from its embed script, which is scraping (no API gives the text); checked on
                   the Mac against harness/genius-lyrics/. color-lyrics is answered with whichever won

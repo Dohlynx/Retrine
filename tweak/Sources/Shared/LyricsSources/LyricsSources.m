@@ -334,6 +334,7 @@ NSArray<SGLyricsProvider *> *SGLyricsAllProviders(void) {
             make(@"lrclib", @"LRCLIB", SGL(@"settings.lyricssources.lrclib.subtitle", @"Line timing, open fallback"), SGLrcLibAsk),
             make(@"bugs", @"Bugs", SGL(@"settings.lyricssources.bugs.subtitle", @"Line timing, Korean catalog"), SGBugsAsk),
             make(@"genie", @"Genie", SGL(@"settings.lyricssources.genie.subtitle", @"Line timing, Korean catalog"), SGGenieAsk),
+            make(@"petitlyrics", @"PetitLyrics", SGL(@"settings.lyricssources.petitlyrics.subtitle", @"Word and line timing, Japanese catalog"), SGPetitLyricsAsk),
             make(SGSpicyLyricsKey, @"Spicy Lyrics", SGL(@"settings.lyricssources.spicylyrics.subtitle", @"Community word syncs, your own key"), SGSpicyLyricsAsk),
             make(@"qqmusic", @"QQ Music", SGL(@"settings.lyricssources.qqmusic.subtitle", @"Line timing, Chinese catalog"), SGQQMusicAsk),
             make(@"kugou", @"KuGou", SGL(@"settings.lyricssources.kugou.subtitle", @"Word timing, Chinese catalog"), SGKuGouAsk),
@@ -363,14 +364,44 @@ static NSArray<NSString *> *fromLegacyKeys(void) {
 
 // With nothing stored and nothing to carry over, every source is on: the user's own files first,
 // word timing ahead of line timing, and the two Chinese catalogs after the rest.
-// Stored orders are untouched. Sources needing a key pass straight on without one.
-static NSArray<NSString *> *defaultOrder(void) {
+// The catalog before known-source tracking is the bootstrap for old saved orders.
+// Keep this historical set fixed: missing members were deliberately disabled.
+static NSArray<NSString *> *sourcesBeforeCatalogTracking(void) {
     return @[SGImportedLRCKey, SGSpicyLyricsKey, @"binilyrics", @"lyricsplus", @"musixmatch",
              @"unison", @"deezer", @"netease", @"lrclib", @"bugs", @"genie", @"qqmusic", @"kugou", @"genius"];
 }
 
+static NSArray<NSString *> *defaultOrder(void) {
+    NSMutableArray *order = [sourcesBeforeCatalogTracking() mutableCopy];
+    [order insertObject:@"petitlyrics" atIndex:[order indexOfObject:@"lrclib"]];
+    return order;
+}
+
 NSArray<NSString *> *SGLyricsOrder(void) {
-    id stored = [NSUserDefaults.standardUserDefaults arrayForKey:SGKeyLyricsProviders];
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSArray *stored = [defaults arrayForKey:SGKeyLyricsProviders];
+    if (stored) {
+        NSArray *known = [defaults arrayForKey:SGKeyLyricsKnownProviders] ?: sourcesBeforeCatalogTracking();
+        NSArray *catalog = defaultOrder();
+        NSMutableArray *updated = [stored mutableCopy];
+        NSMutableOrderedSet *seen = [NSMutableOrderedSet orderedSetWithArray:known];
+        for (NSUInteger i = 0; i < catalog.count; i++) {
+            NSString *key = catalog[i];
+            if ([seen containsObject:key]) continue;
+            [seen addObject:key];
+            if (!stored.count || [updated containsObject:key]) continue;
+            NSUInteger insertion = updated.count;
+            for (NSUInteger j = i + 1; j < catalog.count; j++) {
+                NSUInteger next = [updated indexOfObject:catalog[j]];
+                if (next != NSNotFound) { insertion = next; break; }
+            }
+            [updated insertObject:key atIndex:insertion];
+        }
+        if (![updated isEqual:stored]) [defaults setObject:updated forKey:SGKeyLyricsProviders];
+        if (![[defaults arrayForKey:SGKeyLyricsKnownProviders] isEqual:seen.array])
+            [defaults setObject:seen.array forKey:SGKeyLyricsKnownProviders];
+        stored = updated;
+    }
     // A reset leaves sources off until the user saves an order, including an explicitly empty one.
     if (!stored && SGHidden(SGKeyStock)) return @[];
     NSArray *legacy = fromLegacyKeys();
@@ -384,6 +415,7 @@ NSArray<NSString *> *SGLyricsOrder(void) {
 
 void SGLyricsSetOrder(NSArray<NSString *> *keys) {
     [NSUserDefaults.standardUserDefaults setObject:keys ?: @[] forKey:SGKeyLyricsProviders];
+    [NSUserDefaults.standardUserDefaults setObject:defaultOrder() forKey:SGKeyLyricsKnownProviders];
 }
 
 // With EeveeSpotify injected, its own lyrics answer Spotify's requests and the mod's stand aside: two

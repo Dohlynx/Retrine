@@ -25,6 +25,9 @@
   Genie must use a desktop User-Agent for both requests;
 - LyricsPlus' Line, Word and Syllable shapes, joining, backing vocals, catalog credit, primary success without a second request,
   and fallback to lyricsplus.binimum.org when the primary fails;
+- PetitLyrics' minimal XML/base64 WSY and plain-text fixtures, maximum overlapping word ends and entities,
+  type-2 availability requested as plain type 1 (the live type-2 payload is binary MHDROBJT, not LRC),
+  title/artist/duration rejection and closest-candidate ranking, empty searches, malformed XML and HTTP 429;
 - Deezer's word/line/plain preference, title/artist/duration matching, missing or unsafe ARL, in-memory
   JWT reuse, and one refresh on either a GraphQL or HTTP authentication failure. Cookies, tokens and
   lyrics in these checks are invented; no Keychain item is read or written;

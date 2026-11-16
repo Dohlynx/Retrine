@@ -10,8 +10,9 @@
 #import "Shared/Lyrics/Lyrics.h"
 
 // The sources in priority order, as their keys. Unset uses the current default order;
-// a stored order, including an empty one, is left alone.
+// saved orders gain newly introduced sources once; disabled known sources and empty orders stay off.
 #define SGKeyLyricsProviders @"spotifyglass.lyricsProviders"
+#define SGKeyLyricsKnownProviders @"spotifyglass.lyrics.knownProviders"
 // Offers the lyrics card on tracks Spotify itself has no lyrics for.
 #define SGKeyLyricsAllTracks @"spotifyglass.lyricsAllTracks"
 // The walk goes on past a line-timed answer to the first source with words timed; read by every walk.
@@ -289,6 +290,7 @@ extern SGLyricsAsk SGQQMusicAsk;
 extern SGLyricsAsk SGKuGouAsk;
 extern SGLyricsAsk SGBugsAsk;
 extern SGLyricsAsk SGGenieAsk;
+extern SGLyricsAsk SGPetitLyricsAsk;
 extern SGLyricsAsk SGLyricsPlusAsk;
 extern SGLyricsAsk SGDeezerAsk;
 
