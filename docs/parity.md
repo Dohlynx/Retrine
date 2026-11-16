@@ -14,6 +14,13 @@ Numbers are the line's position in the three release notes, in order. Status:
 A completeness audit on 2026-10-05 checked every done item below against its release note. Its gaps were
 fixed in the commits that follow `956e65c`.
 
+## EeveeSpotifyReincarnated (GPL-3)
+
+| Source commits | Scoped port |
+|---|---|
+| `5f7b82e` | NativeDownloads offline-device manager: opaque device/cache selection tokens, current/other/unregistered-copy visibility and credential-free failure snapshots, adapted from `OfflineDeviceManager.m:147–251,275–306`. Confirmation, fresh-state checks and 9.1.90 routes/profile retained; companion-owned Korean/English strings. Fixture tests only; real-account registration/disable behavior remains unverified. Eevee's quality UI, 9.2.0 profile and other download features excluded. |
+| `43b9ca3`, `350aa15`, `d4daa49`; audit ideas `1010573`, `7a617a7`, `e2abe5a` | Terminal `/ads` and pre-send ad cancellation under Hide ads; six 9.1.90-verified service selectors with individual runtime guards; binary coverage audit with explicit DI/regulatory and missing-selector exemptions. `2a9d4ae` shuffle/full-song hooks and d4daa49 realtime/instrumentation/element/native-element hooks were not ported: no Objective-C `load` in 9.1.90. CTA cards keep `registerScrollProviderIn:`. Static 9.1.90 proof and Foundation harnesses only; no 9.1.78/9.1.88 binary or device verification. |
+
 ## Done
 
 ### Apple Music artwork

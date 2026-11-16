@@ -13,4 +13,14 @@ for ads in 0 1; do
         HIDE_ADS=$ads HIDE_UPSELLS=$upsells "$OUT/adblock-check"
     done
 done
+"${THEOS:-$HOME/theos}/bin/logos.pl" -c generator=internal "${ADSERVICES_SOURCE:-$SRC/Shared/AdBlock/AdServices.x}" > "$OUT/AdServices.m"
+xcrun clang -fobjc-arc -fblocks -O0 -Wall -Werror -I "$OUT" -I shim -I "$SRC/Shared/AdBlock" \
+    services-check.m -framework Foundation -o "$OUT/services-check"
+for ads in 0 1; do
+    for upsells in 0 1; do
+        HIDE_ADS=$ads HIDE_UPSELLS=$upsells "$OUT/services-check"
+    done
+done
 python3 dj-check.py
+sh network-build.sh
+python3 -B audit-check.py ../../scripts/audit-ad-services.py

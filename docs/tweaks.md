@@ -86,6 +86,36 @@ Shared:
                   and automix switched on in the player core, the core and Settings both kept on the audio.crossfade
                   prefs rather than the account's Playback Settings, and crossfade's switch kept in step with its
                   slider (Crossfade.x).
+                  Hide ads also cancels ad tasks before resume, including terminal /ads routes, without
+                  Spoof Premium or its startup delay; Esperanto matching still uses whole tokens.
+                  SPTDataLoaderService, HttpClientURLSession and SPTCoreURLSessionDataDelegate all receive
+                  one synthesized empty HTTP 200 response, empty data and one successful completion for
+                  blocked ads, including pre-send cancellation. An existing response is not delivered
+                  twice. An asynchronous response decision returns data/completion to the session's
+                  delegate queue; a rejected response completes as canceled instead. Unknown delegates
+                  and completion-handler requests retain Foundation's cancellation contract.
+                  EeveeSpotifyReincarnated 43b9ca3/350aa15 supplied those gaps; d4daa49 supplied six
+                  additional -load targets verified in the decrypted 9.1.90 binary: AdsBaseSwift,
+                  AudioAdPictureInPictureCoordinator, RewardedAdFetchController, OnDemandAdEventLogger,
+                  AdOnAppOpen and EmbeddedPlaylist. AdServices.x installs each service only if its class,
+                  instance selector and void/object ABI match; an inherited method is replaced only on
+                  the target class. View fallbacks also require UIView ancestry and a matching selector.
+                  Embedded CTA cards retain registerScrollProviderIn:, not a nonexistent -load.
+                  The upstream realtime, instrumentation, element, native-element, shuffle-toggle and
+                  full-song services have no Objective-C -load in 9.1.90, so their new hooks are not ported
+                  (including 2a9d4ae). Existing legacy targets without -load are inert there. DI services,
+                  regulatory notices and 9.2-only renames are untouched.
+                  Run harness/adblock/build.sh for Hub, DJ, service-guard and pre-send checks; run
+                  python3 -B scripts/audit-ad-services.py ipa/Spotify-9.1.90.ipa for class/selector coverage.
+                  The audit adapts Eevee 1010573/7a617a7/e2abe5a: every discovered intended service must
+                  have an installed selector with compatible ABI and the independently specified
+                  ads/upsells gate, or an explicit protected/no-load exemption, with no-load
+                  exemptions checked against the binary. It includes AudioAd services.
+                  This is static 9.1.90 evidence, Foundation doubles and a real macOS URLSession with
+                  a local URLProtocol transport, not device playback evidence.
+                  No local 9.1.78/9.1.88 IPA or recorded class tree was available for this port; Eevee's
+                  d4daa49 cites 9.1.88 class symbols, not proof of callable Objective-C selectors.
+                  Both older versions rely on the per-target runtime guards and remain untested here.
                   With Spoof Premium on, the DJ's eligibility check answers yes, which keeps the full DJ with requests; a
                   Free account is then told "DJ is not available in your country" at each start while the DJ plays on, so
                   that dialog alone is closed before it shows (DJ.x: a PopUpPresentableContainer whose title equals the

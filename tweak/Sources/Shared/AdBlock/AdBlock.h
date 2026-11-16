@@ -1,6 +1,7 @@
 // EeveeSpotify's layers, ported, at the top of the Premium, ads & privacy page. Three switches, each off until asked for. Hide ads
 // keeps the ad services from starting (AdServices.x), takes ad components out of Home and Search
-// before they render (AdHubs.x, Feeds.m) and answers the requests behind them empty (AdNetwork.x).
+// before they render (AdHubs.x, Feeds.m) and cancels ad tasks before sending, with empty responses
+// as a delegate fallback (AdNetwork.x).
 // Hide upsells drops the Premium prompts (AdPopups.x, AdServices.x) and forces the flags that show
 // them off (AdBlock.m, through Flags.x). Spoof Premium rewrites the product state and remote
 // config as they arrive (Premium.m), crossfade and automix included (Crossfade.x), enables shuffle

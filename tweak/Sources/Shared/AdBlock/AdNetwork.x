@@ -14,7 +14,7 @@ static BOOL ads, premium;
 static NSDate *started;
 static NSObject *cacheLock;
 static NSData *cachedCustomize;   // the last rewritten customize body, for a 304 and the re-fetches
-static char kBufferKey, kServedKey, kPassKey, kCoreAdKey, kKindKey;
+static char kBufferKey, kServedKey, kPassKey, kKindKey, kAdResponseKey, kAdDispositionKey, kAdCompleteKey;
 
 typedef NS_ENUM(NSInteger, SGNet) { SGNetPass, SGNetBlock, SGNetPatch };
 
@@ -69,6 +69,8 @@ static BOOL isEsperantoAd(NSString *path) {
 }
 
 static BOOL isAd(NSURL *url, NSString *path) {
+    // EeveeSpotifyReincarnated 43b9ca3: spclient also uses a terminal /ads.
+    if ([path hasSuffix:@"/ads"]) return YES;
     for (size_t i = 0; i < sizeof(adPaths) / sizeof(adPaths[0]); i++) {
         if (has(path, adPaths[i])) return YES;
     }
@@ -157,6 +159,64 @@ static void deliver(id<NSURLSessionDataDelegate> delegate, NSURLSession *session
     objc_setAssociatedObject(task, &kPassKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+static BOOL blockedAdTask(NSURLSessionTask *task) {
+    NSURL *url = task.currentRequest.URL ?: task.originalRequest.URL;
+    return ads && isAd(url, url.path.lowercaseString ?: @"");
+}
+
+static NSHTTPURLResponse *emptyAdResponse(NSURLSessionTask *task) {
+    return [[NSHTTPURLResponse alloc] initWithURL:task.currentRequest.URL ?: task.originalRequest.URL
+                                     statusCode:200 HTTPVersion:@"HTTP/2.0"
+                                   headerFields:@{@"Content-Length": @"0"}];
+}
+
+// All three Spotify delegates consume response -> data -> completion, even when resume canceled
+// before Foundation produced headers. Reuse an already delivered response rather than send two.
+typedef void (^SGResponseHandler)(NSURLSessionResponseDisposition);
+static BOOL receiveAdResponse(NSURLSessionTask *task, SGResponseHandler handler,
+                              void (^receive)(NSHTTPURLResponse *, SGResponseHandler)) {
+    if (!blockedAdTask(task)) return NO;
+    if (objc_getAssociatedObject(task, &kAdResponseKey)) {
+        handler(NSURLSessionResponseCancel);
+        return YES;
+    }
+    objc_setAssociatedObject(task, &kAdResponseKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    receive(emptyAdResponse(task), ^(NSURLSessionResponseDisposition disposition) {
+        objc_setAssociatedObject(task, &kAdDispositionKey, @(disposition), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        handler(disposition);
+    });
+    return YES;
+}
+
+static BOOL completeAd(id<NSURLSessionDataDelegate> delegate, NSURLSession *session, NSURLSessionTask *task,
+                       void (^finish)(NSError *)) {
+    if (!blockedAdTask(task)) return NO;
+    if (objc_getAssociatedObject(task, &kAdCompleteKey)) return YES;
+    objc_setAssociatedObject(task, &kAdCompleteKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    void (^accepted)(NSURLSessionResponseDisposition) = ^(NSURLSessionResponseDisposition disposition) {
+        void (^end)(void) = ^{
+            if (disposition != NSURLSessionResponseAllow) {
+                finish([NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]);
+                return;
+            }
+            SGAdBlockSawOne(@"Requests");
+            SGAdBlockCountOne(@"Requests");
+            deliver(delegate, session, task, [NSData data]);
+            finish(nil);
+        };
+        // A delegate may answer the response handler asynchronously on another queue.
+        // Data and the original completion still belong to Foundation's delegate queue.
+        if (NSOperationQueue.currentQueue == session.delegateQueue) end();
+        else [session.delegateQueue addOperationWithBlock:end];
+    };
+    // Foundation waits for the response decision before issuing its completion.
+    if (objc_getAssociatedObject(task, &kAdResponseKey))
+        accepted([objc_getAssociatedObject(task, &kAdDispositionKey) integerValue]);
+    else [delegate URLSession:session dataTask:(NSURLSessionDataTask *)task
+           didReceiveResponse:emptyAdResponse(task) completionHandler:accepted];
+    return YES;
+}
+
 // A customize the server says has not changed, answered with the rewritten one from last time.
 static NSHTTPURLResponse *replayFor(NSURLSessionTask *task, NSURLResponse *response) {
     if (!premium || ![response isKindOfClass:NSHTTPURLResponse.class] || ((NSHTTPURLResponse *)response).statusCode != 304) return nil;
@@ -185,6 +245,7 @@ static BOOL holds(NSURLSessionTask *task, NSData *data) {
 }
 
 static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *session, NSURLSessionTask *task, NSError *error, void (^finish)(NSError *)) {
+    if (completeAd(delegate, session, task, finish)) return;
     NSURL *url = task.currentRequest.URL;
     NSString *path = url.path.lowercaseString ?: @"";
     NSMutableData *buffer = objc_getAssociatedObject(task, &kBufferKey);
@@ -223,6 +284,8 @@ static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *sessio
 
 %hook SPTDataLoaderService
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
+    BOOL consumed = receiveAdResponse(task, handler, ^(NSHTTPURLResponse *empty, SGResponseHandler decision) { %orig(session, task, empty, decision); });
+    if (consumed) return;
     NSHTTPURLResponse *replay = replayFor(task, response);
     %orig(session, task, replay ?: response, handler);
     if (replay) deliver((id)self, session, task, cached());
@@ -237,6 +300,8 @@ static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *sessio
 
 %hook _TtC26Connectivity_HttpClientKit20HttpClientURLSession
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
+    BOOL consumed = receiveAdResponse(task, handler, ^(NSHTTPURLResponse *empty, SGResponseHandler decision) { %orig(session, task, empty, decision); });
+    if (consumed) return;
     NSHTTPURLResponse *replay = replayFor(task, response);
     %orig(session, task, replay ?: response, handler);
     if (replay) deliver((id)self, session, task, cached());
@@ -251,43 +316,40 @@ static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *sessio
 
 // The C++ core's requests: most of Spotify's traffic, the access point lookup among it. Only its ad
 // requests are touched. Each gets an empty 200 of the mod's own in place of the server's headers and
-// body. Spoof Premium's rules stay off this path, and a failed request keeps its error.
+// body, including pre-send cancellation. Spoof Premium's rules stay off this path;
+// non-ad failures keep their errors.
 %hook SPTCoreURLSessionDataDelegate
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
-    NSURL *url = task.currentRequest.URL;
-    if (ads && isAd(url, url.path.lowercaseString ?: @"")) {
-        objc_setAssociatedObject(task, &kCoreAdKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        response = [[NSHTTPURLResponse alloc] initWithURL:url statusCode:200 HTTPVersion:@"HTTP/2.0" headerFields:@{}];
-    }
+    BOOL consumed = receiveAdResponse(task, handler, ^(NSHTTPURLResponse *empty, SGResponseHandler decision) { %orig(session, task, empty, decision); });
+    if (consumed) return;
     %orig(session, task, response, handler);
 }
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
-    if (!objc_getAssociatedObject(task, &kCoreAdKey) || objc_getAssociatedObject(task, &kPassKey)) %orig;
+    if (!blockedAdTask(task) || objc_getAssociatedObject(task, &kPassKey)) %orig;
 }
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-    if (!error && objc_getAssociatedObject(task, &kCoreAdKey)) {
-        SGAdBlockSawOne(@"Requests");
-        SGAdBlockCountOne(@"Requests");
-        SGLog(@"answered the core's %@ empty", task.currentRequest.URL.path);
-        deliver((id)self, session, task, [NSData data]);
-    }
+    BOOL consumed = completeAd((id)self, session, task, ^(NSError *passed) { %orig(session, task, passed); });
+    if (consumed) return;
     %orig;
 }
 %end
 
 #pragma mark - before a request leaves
 
-// The re-fetches that could put the real product state back, or drop the push token, use sessions
-// of their own that the delegate hooks do not see; they are canceled at the task. login5 and the
-// Google token stay: blocking those was a crash loop.
-%group Premium
+// Ad tasks are canceled immediately under Hide ads, including sessions the delegates do not see.
+// Premium's re-fetches retain their startup window. login5 and the Google token stay:
+// blocking those was a crash loop.
+%group TaskRequests
 %hook NSURLSessionTask
 - (void)resume {
     NSURL *url = self.currentRequest.URL ?: self.originalRequest.URL;
     NSString *host = url.host.lowercaseString ?: @"", *path = url.path.lowercaseString ?: @"";
     BOOL spotify = has(host, @"spotify") || has(host, @"spclient");
-    if (spotify && elapsed() > 30 && (has(path, @"deletetoken") || has(path, @"signup/public") || has(path, @"pses/screenconfig")
-                                      || isCustomize(path) || has(host, @"apresolve"))) {
+    // EeveeSpotifyReincarnated 350aa15, with Hide ads independent of Spoof Premium.
+    if ((ads && isAd(url, path)) ||
+        (premium && spotify && elapsed() > 30 &&
+         (has(path, @"deletetoken") || has(path, @"signup/public") || has(path, @"pses/screenconfig")
+          || isCustomize(path) || has(host, @"apresolve")))) {
         SGAdBlockSawOne(@"Requests");
         SGAdBlockCountOne(@"Requests");
         SGLog(@"canceled %@%@ before it left", host, path);
@@ -340,8 +402,8 @@ static NSURLRequest *unconditional(NSURLRequest *request) {
     started = NSDate.date;
     cacheLock = [NSObject new];
     %init;
+    %init(TaskRequests);
     if (premium) {
-        %init(Premium);
         %init(PremiumRequests);
         SEL selector = @selector(dataTaskWithRequest:);
         Class local = objc_getClass("__NSURLSessionLocal");
