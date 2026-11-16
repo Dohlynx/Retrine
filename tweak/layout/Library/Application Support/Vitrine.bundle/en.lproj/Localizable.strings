@@ -2672,13 +2672,14 @@
 "settings.translation.error.keychanged" = "The API key changed while this was translating. Try again.";
 "settings.translation.error.keyinvalid" = "Gemini turned the key down. Check it on the Lyrics page.";
 "settings.translation.error.linecount" = "Gemini answered %lu lines for the song's %lu. Try again.";
+"settings.translation.error.modelunavailable" = "This Gemini model is unavailable. Choose another model in Mod Settings > Lyrics > Translation & AI > Gemini.";
 "settings.translation.error.nokey" = "Add a Gemini API key on the Lyrics page first.";
 "settings.translation.error.ratelimit" = "Gemini's limit for this key is reached for now.";
 "settings.translation.error.recitation" = "Gemini stopped because its answer repeated published lyrics.";
 "settings.translation.error.safety" = "Gemini's filters blocked this song's lyrics.";
 "settings.translation.error.status" = "Gemini did not translate the song (%ld).";
 "settings.translation.error.stopped" = "Gemini stopped before translating the song (%@).";
-"settings.translation.error.timeout" = "Gemini timed out. Try a longer timeout in Gemini settings.";
+"settings.translation.error.timeout" = "Gemini timed out. Try a longer timeout or choose another model in Mod Settings > Lyrics > Translation & AI > Gemini.";
 "settings.translation.error.toolong" = "The song is too long for one answer from Gemini.";
 "settings.translation.error.unreachable" = "Gemini could not be reached.";
 "settings.translation.error.unreadable" = "Gemini's answer could not be read. Try again.";

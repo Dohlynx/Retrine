@@ -207,8 +207,8 @@ Shared:
                   position before placement, including restyles and resizes; previews, plain lyrics and unknown
                   positions skip the refresh. No new timer is used.
                   The lyrics engine for the redesign's Apple Music style lyrics and the lock screen: lines read from
-                  color-lyrics and the player's clock (KaraokeSource.x), words timed by estimate inside Spotify's line
-                  times (KaraokeTiming.m, which splits Thai, Lao, Khmer and Burmese at the system's dictionary words), which line to name where two voices sing at once (the one that came in first,
+                  color-lyrics and the published player state (KaraokeSource.x), words timed by Spotify's syllable clocks
+                  when a song has them and otherwise by estimate inside Spotify's line times (KaraokeTiming.m, which splits Thai, Lao, Khmer and Burmese at the system's dictionary words), which line to name where two voices sing at once (the one that came in first,
                   for the lock screen and the Live Activity), a line in another alphabet in the alphabet chosen, Latin
                   letters or Hangul, offline by Apple's transforms, kanji read the Japanese way in a song with kana
                   (Romanise.m; checked on the simulator by harness/lyrics' -romanise and on the Mac by
@@ -461,7 +461,7 @@ Shared:
                   100.64.0.0/10 HTTP exception required by newer ATS policies; scripts/merge-overlay.py
                   preserves Spotify's other transport policies rather than enabling arbitrary HTTP.
                   Model-list network failures distinguish ATS refusal, DNS, refused connections, timeout
-                  and disconnection without exposing credentials. Gemini's model (SGKeyLyricsGeminiModel) defaults to gemini-3.8-flash.
+                  and disconnection without exposing credentials. Gemini's model (SGKeyLyricsGeminiModel) defaults to gemini-4-hydrogen.
                   Its own settings page adds Thinking (Low, Medium, High; default Low) and Timeout (30–300 s;
                   default 120). These tune Gemini without replacing the fork's separate AI providers, and thinking
                   participates in Gemini's per-launch translation cache identity. AIServices.m
@@ -1401,7 +1401,8 @@ Redesigned:
                   including compact width, RTL and accessibility text size, and captures the layouts.
                   Its more button opens the system
                   menu (ContextMenu/), Spotify's rows and then Speed, Pitch & Reverb, which opens the sliders, Pitch
-                  follows speed and Keep for This Song in a popover from the ⋯ (SpeedPitchMenu.x, Shared/Player), and the backgrounds it can switch
+                  follows speed and Keep for This Song in a popover from the ⋯ (SpeedPitchMenu.x, Shared/Player), then Audio effects, which
+                  opens the Audio effects page in a sheet with its summary under the name (SGDSPShowSettingsSheet, Shared/AudioEffects), and the backgrounds it can switch
                   to (PlayerMenu.m), and a hold on either side of the
                   cover plays at the Gestures page's hold speed (2× unless changed) until the finger lifts
                   (PlayerArtwork.x), higher in pitch while Pitch follows speed is on (an octave at 2×). Hide on the player's Shuffle and Repeat (spotifyglass.redesign.player.hideShuffle,

@@ -2685,7 +2685,8 @@
 "settings.translation.error.safety" = "Gemini 필터가 이 노래의 가사를 차단했습니다.";
 "settings.translation.error.status" = "Gemini에서 노래를 번역하지 못했습니다(%ld).";
 "settings.translation.error.stopped" = "노래를 번역하기 전에 Gemini가 중단되었습니다(%@).";
-"settings.translation.error.timeout" = "Gemini 응답 대기 시간이 초과되었습니다. Gemini 설정에서 대기 시간을 늘려 보세요.";
+"settings.translation.error.modelunavailable" = "이 Gemini 모델은 사용할 수 없습니다. 모드 설정 > 가사 > 번역 및 AI > Gemini에서 다른 모델을 선택하세요.";
+"settings.translation.error.timeout" = "Gemini 응답 대기 시간이 초과되었습니다. 모드 설정 > 가사 > 번역 및 AI > Gemini에서 대기 시간을 늘리거나 다른 모델을 선택하세요.";
 "settings.translation.error.toolong" = "Gemini의 1회 답변 허용 길이에 비해 노래가 너무 깁니다.";
 "settings.translation.error.unreachable" = "Gemini에 연결할 수 없습니다.";
 "settings.translation.error.unreadable" = "Gemini의 응답을 읽을 수 없습니다. 다시 시도하세요.";

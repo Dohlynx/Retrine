@@ -327,6 +327,15 @@ today's look until it is changed.
 | Hide the scrolled page title | Redesign → Appearance → Page title when scrolled; shown by default (Chroma hides it), live. |
 | Inline Up Next, Track Info, page snapshots, search-ahead warming, cover-look backgrounds, stand-in mask reveal | Not taken: the behavior could not be read completely enough to specify, or it adds unannounced Spotify traffic |
 
+### Chroma 1.1.0-beta.3 (clean-room behavior)
+
+| Item | Where Vitrine stands |
+|---|---|
+| Hide the playback-context title, SF Symbols for Spotify's tabs, a separate tweak-language page | Already in Vitrine (Redesigned/Player/PlayerHeader.x, Redesigned/Navbar/TabBar.x, App/About/AboutSettings.m), defaults unchanged |
+| iPad: lyrics or queue beside the artwork, mini-player capsule controls, side-by-side album and playlist headers | Already in Vitrine (see the iPad entries in docs/tweaks.md) |
+| Spotify 9.1.98 | Not taken: only the target version changed in what could be read; supporting it needs Vitrine's own Spotify inspection and regression runs on every supported build |
+| Nine more interface languages, artwork-origin page transitions, reset to defaults, Live Activity countdown wording | Not taken: coverage, timings or resulting state could not be read; Vitrine's reset stays stock-off and its countdown already shows |
+
 ### Upstream Plus features, Vitrine's own versions (described by behavior)
 
 Vitrine has no paid tier, so where a Plus feature could be built from its behavior alone it now has one of its own,
@@ -361,6 +370,11 @@ with no gate and nothing from upstream's code, server or content.
 | jadetheda `d10fb43`, `6e9056b` (with `af6e54e`, `181a58f`); upstream `69730d1` (#150) | Mini player Next button and artwork shape; a tap on the player's cover opening the full screen cover as a switch of its own | Done (Redesigned/NowPlayingBar/NowPlayingBar.x, Redesigned/Player/PlayerMorph.x, each look's PlayerGestures.x): `spotifyglass.redesign.nowPlayingBar.nextButton`, off; `spotifyglass.redesign.nowPlayingBar.artworkShape`, Circle (the fork's default was Rounded square, and its smaller cover for a 56 pt capsule is not needed on Vitrine's 24 pt corners); `spotifyglass.hide.fullScreenCover`, shown; harness/now-playing-bar/ |
 | upstream `9221256` | ElleKit/Substrate inline audio hooks on jailbreaks | Core/SGRebind.m and SpeedPitch.x: Start/Stop/Dispose installed inline all-or-none at tweak load, optional speed hook last, Spotify-__TEXT caller filter, canonicalized jailbreak paths; sideloaded installs keep the rebind path; harness/prefs/rebind.m. Not run on a real jailbreak. The SGPrefs per-key invalidation of `430766c` is not taken: nested writes needed app-wide notification interception for a small gain. |
 | ciowfreshh `d829851` (archive codec only) | Saved lyric translations export/import | Core/TranslationStore: the ZIP field codec; storage, migration, recovery and the management page are Vitrine's own (Shared/LyricsTranslation/SavedTranslations.m, TranslationLibrary.m); harness/lyrics-translation/check-storage.m. |
+| Shilog62 `814d12460c`, `3a685eb69a` | Canvas with late authentication headers; lock-screen artwork from the track already playing | Shared/AnimatedArtwork/MotionSources.m waits for Spotify's asynchronously delivered headers with cancellation-aware waiters, not the fork's fixed eight-second timer; LockScreenMotion.x starts its follower from the current state without a second lookup; harness/motion/, harness/now-playing/ |
+| Shilog62 `cf9d77ee17`, `8a75b08de6`, `caa81f0c60` | Spotify's syllable-synced lyrics; the lyric clock from the published player state | Shared/Lyrics/KaraokeTiming.m reads `SYLLABLE_SYNCED` through Vitrine's strict time parsing (the fork's lenient integer parsing is not taken) and keeps line timing where syllable clocks are incomplete; KaraokeSource.x prefers `SGPlayerState()`; harness/lyrics-sources/ |
+| upstream `910823a0`; jadetheda `b82cfbaeb6` | Gemini model guidance | Shared/LyricsTranslation/LyricsTranslation.m: 404 and timeouts point to the model setting; the unset default is `gemini-4-hydrogen`, a saved model stays the user's; no model rankings or quota claims; harness/lyrics-translation/ |
+| upstream `87adc60c`; jadetheda `a56b51c018` | SF Symbol custom tabs | Redesigned/Navbar/TabBar.x hands UIKit the real symbol and its `.fill` selected variant for custom and Apple-symbol tabs, previews included; Native unchanged; harness/tabbar/ |
+| Mate5000 `d666f10def`–`9eb0064c7d` (access only) | Quick EQ | Redesigned/Player/PlayerMenu.m: Audio effects in the player's ⋯ opens Vitrine's existing Audio effects page in a sheet; the fork's second equalizer engine is not taken (it would stack on the existing effects on the render thread); Native keeps Spotify's sheet; harness/system-menu/ `effects` |
 
 ### Before the fork point, or not needed any more
 
