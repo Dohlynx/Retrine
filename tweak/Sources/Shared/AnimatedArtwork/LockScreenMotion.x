@@ -372,6 +372,8 @@ static void retryPresentation(void) {
             } else if (file) show(file);
             else if (sg_choice == SGLockArtworkEverySong) showCover(sg_picture);
         }];
+        // Observer registration does not replay a track that was already playing.
+        [sg_follower restart];
         [NSNotificationCenter.defaultCenter addObserverForName:SGNowPlayingInfoDidChangeNotification object:nil queue:nil
                                                     usingBlock:^(NSNotification *note) {
             retryPresentation();

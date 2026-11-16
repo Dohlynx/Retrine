@@ -95,6 +95,7 @@ static NSUInteger coverLoads;
 @end
 
 static NSArray *keys(id self, SEL cmd) { return supported ?: @[]; }
+static void alreadyPlaying(void);
 __attribute__((constructor)) static void artworkBoundary(void) {
     coverRequests = [NSMutableDictionary dictionary];
     [NSURLProtocol registerClass:CoverProtocol.class];
@@ -113,6 +114,7 @@ __attribute__((constructor)) static void artworkBoundary(void) {
                                        @selector(initWithArtworkID:previewImageRequestHandler:videoAssetFileURLRequestHandler:)),
                                    class_getInstanceMethod(MPMediaItemAnimatedArtwork.class,
                                        @selector(initHarnessWithArtworkID:previewImageRequestHandler:videoAssetFileURLRequestHandler:)));
+    alreadyPlaying();
 }
 
 static SGLockArtwork choice;
@@ -123,6 +125,12 @@ static NSUInteger lookups, posters;
 static NSURL *sourceFile;
 static NSMutableArray *posterCallbacks;
 static UIImage *red, *blue;
+static void alreadyPlaying(void) {
+    // This boundary constructor runs before LockScreenMotion's, with no observer replay.
+    state = harnessState(@"spotify:track:already-playing", @"Song");
+    choice = SGLockArtworkMotion;
+    sourceFile = [cacheRoot URLByAppendingPathComponent:@"already-playing.mp4"];
+}
 // Hold one production background worker before it renders, without replacing the renderer or
 // changing delivery order on main. Guard the gate and preparation counter across both threads.
 static NSString *heldPicture;
@@ -381,6 +389,15 @@ static void background(NSDictionary *values) {
 void artworkChecks(void) {
     red = image(UIColor.redColor);
     blue = image(UIColor.blueColor);
+    check(lookups == 1, @"lock-screen startup looks up the already-playing track");
+    report();
+    check(lookups == 1, @"the first ordinary report does not repeat the startup lookup");
+    supported = @[MPNowPlayingInfoProperty3x4AnimatedArtwork];
+    nativeInfo(nil);
+    check(await(^BOOL { return posterCallbacks.count > 0; }), @"startup clip reaches presentation when capabilities arrive");
+    finishPoster();
+    check([video(artwork()) isEqual:sourceFile], @"the already-playing track supplies the lock-screen video");
+    choose(SGLockArtworkOff);
     UIImage *safe = image([UIColor colorWithRed:24 / 255. green:24 / 255. blue:27 / 255. alpha:1]);
     background(@{@"darkness": @0});
     runFor(.2);
