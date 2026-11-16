@@ -1,5 +1,21 @@
 /* Vitrine's Korean. Follow existing terminology and tone. */
 
+"settings.sponsorblock.enabled" = "팟캐스트 구간 건너뛰기";
+"settings.sponsorblock.subtitle" = "SponsorBlock 커뮤니티가 표시한 구간을 건너뜁니다. 음악에는 영향을 주지 않습니다.";
+"settings.sponsorblock.title" = "SponsorBlock";
+"settings.sponsorblock.footer" = "기본적으로 꺼져 있습니다. 변경 사항은 Spotify를 다시 시작하면 적용됩니다. 에피소드 ID 해시의 짧은 앞부분과 선택한 카테고리를 sponsor.ajay.app에 전송하며, Spotify 계정 정보는 보내지 않습니다. 실행 취소를 누르면 이번 실행 동안 건너뛴 구간을 그대로 재생합니다.";
+"settings.sponsorblock.sponsor" = "스폰서 광고";
+"settings.sponsorblock.selfpromo" = "자체 홍보";
+"settings.sponsorblock.interaction" = "구독·좋아요 요청";
+"settings.sponsorblock.intro" = "인트로";
+"settings.sponsorblock.outro" = "아웃트로";
+"settings.sponsorblock.preview" = "미리보기 및 요약";
+"settings.sponsorblock.hook" = "관심 유도 구간";
+"settings.sponsorblock.filler" = "불필요한 구간";
+"settings.sponsorblock.exclusive_access" = "독점 콘텐츠 홍보";
+"settings.sponsorblock.skipped" = "팟캐스트 구간을 건너뛰었습니다";
+"settings.sponsorblock.undo" = "실행 취소";
+
 "settings.liveactivity.missing.extension.message" = "이 IPA에는 Vitrine의 실시간 현황 확장 프로그램이 없어 실시간 현황을 사용할 수 없습니다. 앱 확장 프로그램을 제외하고 빌드했다면 NO_PLUGINS=1 없이 다시 빌드하세요(CI에서는 'Remove every app extension'을 끄세요).";
 
 "settings.home.filter" = "홈 필터";

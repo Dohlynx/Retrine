@@ -40,6 +40,45 @@
 `tweak/Sources/Shared/Flags/SGFlagList.m` is generated from the IPA and gitignored, as are the
 recorded trees: both are read out of Spotify's own binary and belong to whoever built them.
 
+## SponsorBlock
+
+`Shared/SponsorBlock/` skips community-marked podcast segments under either look. Mod Settings ›
+Player › SponsorBlock has an off-by-default switch and nine category switches; Sponsors,
+Self-promotion and Interaction reminders are initially selected. Changes require a restart.
+The API's Spotify episode-ID mapping, hash-prefix request, category set and skip/Undo boundaries
+are adapted from EeveeSpotifyReincarnated (GPL-3, `0d9feaa`, also touched in `51cb2dc`).
+Reports, voting, local submissions, overlays and manual-skip prompts are not included.
+
+`SGPlayerStateObserver.playerStateDidReport:` supplies the clock on main; the existing
+`SGPlayer()` / `seekTo:` API performs the seek in seconds. There is no player-service hook,
+audio-thread work, polling timer or display link. Only `spotify:episode:` or an exact
+`https://open.spotify.com/episode/` URI qualifies, including video podcasts; music is untouched.
+Overlapping or adjacent selected segments form one continuous range. The first report within
+it seeks to its furthest end plus 0.05 seconds (bounded by the episode duration), marking all
+members handled and showing one notice. Until a report reaches that seek target, positions
+behind it cannot trigger another skip. Segments shorter than one second or outside the episode
+duration cannot join a range; the final 0.25 seconds of a range are left alone.
+Each UUID is skipped at most once per episode per session, including stale reports and revisits.
+Spotify's existing timed action snackbar
+(`SPTSnackbarInternalPresenterImplementation`) supplies Undo, seeking to 0.25 seconds before
+the whole range without re-skipping any member. Undo supersedes a pending forward seek;
+non-overlapping later ranges remain eligible. An Undo from another episode/playback visit does nothing.
+The snackbar signatures are checked before installing its capture hook; if unavailable,
+the feature logs once and stays disabled rather than skipping without Undo.
+
+Privacy: an ephemeral HTTPS GET to `sponsor.ajay.app/api/skipSegments/<prefix>` sends only
+the first **five hexadecimal characters of SHA-256 of the bare Spotify episode ID**,
+`service=Spotify`, selected category identifiers as JSON, and the `X-CLIENT-NAME:
+Vitrine-SponsorBlock/1` header, plus normal HTTP/TLS metadata (including the network IP).
+Neither the full episode ID nor account tokens, title, playback position, cookies or Spotify
+headers are sent. The response's full `videoID` is matched locally, so hash-prefix collisions
+cannot select another episode's segments. Requests and parsing run off main with a six-second
+request/resource limit and a 2 MiB response cap; redirects, credential storage and cookies are
+disabled. Successes, empty responses and failures are kept in memory per episode for this
+session only. Failures produce one generic log per episode, no UI and no retry.
+`harness/sponsorblock/build.sh` exercises fixture decoding, selection, skip/Undo, stale replies,
+music/off isolation, failure caching and request privacy without a network or Spotify account.
+
 ## Layers
 
 The mod has two looks, picked by Redesigned UI at the top of Mod Settings: Spotify's own screens with the mod's

@@ -186,6 +186,8 @@ HARNESSES = [
      "run": "sh harness/sleep-timer/build.sh && harness/sleep-timer/build/sleep-timer"},
     {"name": "Spicy lyrics", "dir": "spicy-lyrics",
      "run": "sh harness/spicy-lyrics/build.sh"},
+    {"name": "SponsorBlock", "dir": "sponsorblock",
+     "run": "sh harness/sponsorblock/build.sh"},
     {"name": "UI refinements album menu", "dir": "ui-refinements", "theos": True,
      "run": "sh harness/ui-refinements/menu-check.sh"},
     {"name": "Update offline", "dir": "update",

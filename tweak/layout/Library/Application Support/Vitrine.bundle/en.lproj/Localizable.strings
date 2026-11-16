@@ -2375,6 +2375,22 @@
 "settings.spatial.width.format" = "%.0f%%";
 "settings.spatial.width.title" = "Instruments width";
 
+"settings.sponsorblock.enabled" = "Skip podcast segments";
+"settings.sponsorblock.exclusive_access" = "Exclusive-access promotions";
+"settings.sponsorblock.filler" = "Filler";
+"settings.sponsorblock.footer" = "Off by default. Changes apply after restarting Spotify. Sends a short hash prefix of the episode ID and your selected categories to sponsor.ajay.app, not your Spotify account. Undo lets a skipped segment play this session.";
+"settings.sponsorblock.hook" = "Hooks";
+"settings.sponsorblock.interaction" = "Interaction reminders";
+"settings.sponsorblock.intro" = "Intros";
+"settings.sponsorblock.outro" = "Outros";
+"settings.sponsorblock.preview" = "Previews and recaps";
+"settings.sponsorblock.selfpromo" = "Self-promotion";
+"settings.sponsorblock.skipped" = "Skipped a podcast segment";
+"settings.sponsorblock.sponsor" = "Sponsors";
+"settings.sponsorblock.subtitle" = "Community-marked segments from SponsorBlock. Music is unchanged.";
+"settings.sponsorblock.title" = "SponsorBlock";
+"settings.sponsorblock.undo" = "Undo";
+
 "settings.stats.a11y.exported" = "History exported";
 "settings.stats.a11y.importing" = "Importing";
 "settings.stats.a11y.loaded" = "History loaded";

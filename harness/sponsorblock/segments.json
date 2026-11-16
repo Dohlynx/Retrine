@@ -1,0 +1,21 @@
+[
+  {"videoID":"abcdefghijklmnopqrstuv","segments":[
+    {"segment":[1,100],"category":"sponsor","actionType":"skip","UUID":"hash-collision"}
+  ]},
+  {"videoID":"0123456789ABCDEFGHIJKL","segments":[
+    {"segment":[30,40],"category":"intro","actionType":"skip","UUID":"intro"},
+    {"segment":[10,20],"category":"sponsor","actionType":"skip","UUID":"sponsor"},
+    {"segment":[60,70],"category":"selfpromo","actionType":"skip","UUID":"selfpromo"},
+    {"segment":[50,50.5],"category":"sponsor","actionType":"skip","UUID":"too-short"},
+    {"segment":[10,20],"category":"sponsor","actionType":"skip","UUID":"sponsor"},
+    {"segment":[5,8],"category":"interaction","actionType":"mute","UUID":"not-skip"},
+    {"segment":[-1,8],"category":"sponsor","actionType":"skip","UUID":"negative"},
+    {"segment":[8,7],"category":"sponsor","actionType":"skip","UUID":"reversed"},
+    {"segment":[true,8],"category":"sponsor","actionType":"skip","UUID":"boolean"},
+    {"segment":["1",8],"category":"sponsor","actionType":"skip","UUID":"text"},
+    {"segment":[1,8],"category":"unknown","actionType":"skip","UUID":"unknown"},
+    {"segment":[1],"category":"sponsor","actionType":"skip","UUID":"missing-end"},
+    {"segment":[1,8],"category":"sponsor","actionType":"skip","UUID":null},
+    null
+  ]}
+]

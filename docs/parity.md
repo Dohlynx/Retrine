@@ -65,6 +65,7 @@ fixed in the commits that follow `956e65c`.
 | 80, 83 | Presets, and AutoEq headphone corrections from AutoEq's public data |
 | 27, 28, 29, 20, 103, 87, 55, 130, 53, 56 | Sing: model download, vocals slider, mic button, heat switch, iOS 18 floor |
 | 81, 92 | Local files: Edit Info and lyrics |
+| — | SponsorBlock podcast skipping in both looks, off by default, category switches and Spotify's Undo snackbar; adapted from EeveeSpotifyReincarnated (GPL-3, `0d9feaa` / `51cb2dc`). Reporting and voting excluded; real-Spotify playback validation outstanding. |
 
 ### System
 
