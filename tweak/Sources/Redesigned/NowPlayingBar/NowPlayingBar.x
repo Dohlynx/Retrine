@@ -786,7 +786,13 @@ static BOOL widenCapsule(UIView *bar) {
         dispatch_once(&once, ^{ SGLog(@"now playing bar: the capsule's sides are not held by its superview's constraints, so it keeps Spotify's"); });
         return NO;
     }
-    CGFloat wanted = bar.bounds.size.width - row.bounds.size.width + rowButtonsWidth(row) + kCapsuleTextWidth;
+    // Fit both trees from their constraints: the bar's frame can already have our new width while
+    // the row still has the old one. Subtracting those frames feeds our own widening into the next pass.
+    CGSize fittedBar = [bar systemLayoutSizeFittingSize:CGSizeMake(0, bar.bounds.size.height)
+                        withHorizontalFittingPriority:UILayoutPriorityFittingSizeLevel
+                              verticalFittingPriority:UILayoutPriorityRequired];
+    CGSize fittedRow = [row systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
+    CGFloat wanted = fittedBar.width - fittedRow.width + rowButtonsWidth(row) + kCapsuleTextWidth;
     if (wanted <= right - left) return NO;
     CGRect glass = tabGlassBeside(bar);
     if (CGRectIsNull(glass)) {

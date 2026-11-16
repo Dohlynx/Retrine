@@ -462,6 +462,7 @@ static void run(void) {
     checkTextSize();
     checkNextButton();
     checkArtworkShape();
+    checkStaleCapsuleRow();
 
     printf("[harness] now-playing-bar: %lu checks passed\n", (unsigned long)sg_checks);
     fflush(stdout);

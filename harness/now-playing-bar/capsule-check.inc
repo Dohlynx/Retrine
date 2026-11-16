@@ -30,9 +30,15 @@ static void checkCapsule(void) {
     [container.view addSubview:bar.view];
     bar.view.frame = CGRectMake(8, 0, container.view.bounds.size.width - 16, height);
     UIView *card = [[UIView alloc] initWithFrame:bar.view.bounds];
-    card.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    card.translatesAutoresizingMaskIntoConstraints = NO;
     card.backgroundColor = UIColor.darkGrayColor;
     [bar.view addSubview:card];
+    [NSLayoutConstraint activateConstraints:@[
+        [card.leadingAnchor constraintEqualToAnchor:bar.view.leadingAnchor],
+        [card.trailingAnchor constraintEqualToAnchor:bar.view.trailingAnchor],
+        [card.topAnchor constraintEqualToAnchor:bar.view.topAnchor],
+        [card.bottomAnchor constraintEqualToAnchor:bar.view.bottomAnchor]
+    ]];
     CGFloat artSide = height - 16;
     UIImageView *cover = [[UIImageView alloc] initWithFrame:CGRectMake(rtl ? card.bounds.size.width - artSide - 8 : 8, 8, artSide, artSide)];
     if (rtl) cover.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
@@ -130,4 +136,86 @@ static void checkCapsule(void) {
     }
     NSLog(@"[harness] capsule checks: PASS");
     fflush(stdout);
+}
+
+// Spotify can deliver the bar's layout callback before its row has adopted the new width.
+// The capsule must keep the same edges through those callbacks, not widen then restore in a cycle.
+static void checkStaleCapsuleRow(void) {
+    dispatch_source_t watchdog = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                                       dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0));
+    dispatch_source_set_timer(watchdog, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, 0);
+    dispatch_source_set_event_handler(watchdog, ^{
+        HARNESS_FAIL(@"stale capsule row: layout did not complete within 30 seconds");
+    });
+    dispatch_resume(watchdog);
+    UIViewController *root = [(id)UIApplication.sharedApplication.delegate window].rootViewController;
+    for (NSNumber *mirrored in @[@NO, @YES]) {
+        BOOL rtl = mirrored.boolValue;
+        UIView *host = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1376, 1032)];
+        [root.view addSubview:host];
+        UIView *tabs = [[UIView alloc] initWithFrame:CGRectMake(rtl ? 1072 : 24, 900, 280, 76)];
+        tabs.accessibilityIdentifier = @"elements-tabs-view-identifier";
+        [tabs addSubview:[[HarnessPlatterView alloc] initWithFrame:tabs.bounds]];
+        [host addSubview:tabs];
+        UIViewController *container = [UIViewController new], *bar = [UIViewController new];
+        [root addChildViewController:container];
+        [host addSubview:container.view];
+        container.view.frame = CGRectMake(rtl ? 8 : 910, 900, 458, 76);
+        [container addChildViewController:bar];
+        [container.view addSubview:bar.view];
+        bar.view.translatesAutoresizingMaskIntoConstraints = NO;
+        NSLayoutConstraint *leading = [bar.view.leadingAnchor constraintEqualToAnchor:container.view.leadingAnchor constant:8];
+        NSLayoutConstraint *trailing = [bar.view.trailingAnchor constraintEqualToAnchor:container.view.trailingAnchor constant:-8];
+        [NSLayoutConstraint activateConstraints:@[
+            leading, trailing,
+            [bar.view.topAnchor constraintEqualToAnchor:container.view.topAnchor],
+            [bar.view.bottomAnchor constraintEqualToAnchor:container.view.bottomAnchor]
+        ]];
+        UIButton *play = [UIButton buttonWithType:UIButtonTypeSystem];
+        play.accessibilityIdentifier = kPlayId;
+        [play.widthAnchor constraintEqualToConstant:44].active = YES;
+        UIStackView *buttons = [[UIStackView alloc] initWithArrangedSubviews:@[play]];
+        UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[[UIView new], buttons]];
+        row.spacing = 4;
+        row.translatesAutoresizingMaskIntoConstraints = NO;
+        [bar.view addSubview:row];
+        [NSLayoutConstraint activateConstraints:@[
+            [row.leadingAnchor constraintEqualToAnchor:bar.view.leadingAnchor constant:68],
+            [row.trailingAnchor constraintEqualToAnchor:bar.view.trailingAnchor constant:-8],
+            [row.topAnchor constraintEqualToAnchor:bar.view.topAnchor constant:16],
+            [row.heightAnchor constraintEqualToConstant:44]
+        ]];
+        SGForEachView(host, ^(UIView *view) {
+            view.semanticContentAttribute = rtl ? UISemanticContentAttributeForceRightToLeft : UISemanticContentAttributeForceLeftToRight;
+        });
+        sg_capsule = YES;
+        placeCapsuleButtons(bar.view, YES);
+        CGRect previousRow = CGRectZero;
+        NSUInteger changes = 0;
+        for (NSUInteger pass = 0; pass < 12; pass++) {
+            [container.view layoutIfNeeded];
+            CGRect settledRow = row.frame;
+            if (pass) row.frame = previousRow;
+            CGFloat oldLeading = leading.constant, oldTrailing = trailing.constant;
+            placeInline(container);
+            if (leading.constant != oldLeading || trailing.constant != oldTrailing) changes++;
+            if (changes > 1) HARNESS_FAIL(@"stale capsule row %@: %lu edge changes by pass %lu",
+                                         rtl ? @"RTL" : @"LTR", (unsigned long)changes, (unsigned long)pass);
+            previousRow = settledRow;
+        }
+        [container.view layoutIfNeeded];
+        // 68pt artwork/inset + 8pt trailing inset + five 44pt buttons with 4pt gaps + 200pt title.
+        HARNESS_CHECK(fabs(bar.view.bounds.size.width - 516) < 0.01);
+        [tabs removeFromSuperview];
+        placeInline(container);
+        HARNESS_CHECK(leading.constant == 8 && trailing.constant == -8);
+        [container willMoveToParentViewController:nil];
+        [container.view removeFromSuperview];
+        [container removeFromParentViewController];
+        [host removeFromSuperview];
+    }
+    sg_capsule = NO;
+    dispatch_source_cancel(watchdog);
+    sg_checks++;
+    NSLog(@"[harness] stale capsule row: PASS");
 }
