@@ -4,7 +4,7 @@
 The harness list lives here (one place).  For each harness the tweak files it
 builds are derived from its build scripts and the quoted imports of its own
 sources, then closed over quoted imports.  ``plan`` prints a GitHub Actions
-matrix (at most five shards) and ``run`` executes one shard sequentially.
+matrix (at most three shards) and ``run`` executes one shard sequentially.
 Python 3 standard library only: the plan job runs on ubuntu with no Apple SDK.
 
     harness-plan.py explain <path>...
@@ -702,11 +702,11 @@ def is_global_change(path):
 
 
 def shard_matrix(selected):
-    """At most five greedy shards by weight; a shard with any Theos harness sets Theos up."""
+    """At most three greedy shards by weight; a shard with any Theos harness sets Theos up."""
     if not selected:
         return []
     units = [{"theos": bool(h.get("theos")), "harnesses": [h], "weight": h["weight"]} for h in selected]
-    count = min(5, len(units))
+    count = min(3, len(units))
     bins = [[] for _ in range(count)]
     loads = [0] * count
     for unit in sorted(units, key=lambda u: u["weight"], reverse=True):

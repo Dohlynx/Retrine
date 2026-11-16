@@ -20,10 +20,28 @@ shallow history), when a change touches `.github/`,
 in the checkout (a deletion, or a rename's old name: the diff is taken with
 `--no-renames`), since a harness may still use it. A harness with no tweak
 dependency is always selected, with a warning. The selected harnesses are
-packed into at most five shards (all Logos/Theos harnesses in one) and run as
-`Harnesses <shard>` jobs with a 45-minute timeout. Only that Theos shard uses
+packed into at most three shards by greedy weight and run as
+`Harnesses <shard>` jobs with a 45-minute timeout. Each shard containing a Theos harness uses
 the setup-Theos action; its caches contain build tools/output, never
 credentials or test data.
+
+The cap reduces macOS runner demand without changing the weighting. The successful
+full scheduled run [43850580004](https://github.com/oneulddu/vitrine/actions/runs/43850580004)
+(2026-11-16, `297145c6`) reported 78 harness durations totaling 3,601.7 seconds.
+Repacking those measurements with the current three-shard plan gives 820.7,
+1,209.4 and 1,571.6 seconds. Per-job setup/cleanup overhead was 42–71 seconds,
+including 35–61 seconds for Theos. The largest projection plus the worst overhead
+is 27m23s, leaving 17m37s within the unchanged 45-minute timeout for variability
+and newer checks (SponsorBlock was not present in that measured run).
+These are projections, not a measured three-shard run.
+
+`.github/workflows/runner-starvation-retry.yml` inspects completed Mac harnesses,
+Release and WireGuard checks runs. It retries failed jobs once, only on attempt 1
+of a failed/cancelled run when **every** non-successful job has no steps and a
+check-run annotation containing `was not acquired by Runner`. Real failures,
+mixed failures, missing annotations and later attempts are logged without retry.
+The privileged workflow runs only its own inline code, with no checkout or
+execution of code/artifacts from the triggering run.
 
 Locally, the same script explains and runs selections from the repo root:
 
