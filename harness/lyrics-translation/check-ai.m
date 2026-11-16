@@ -1658,5 +1658,6 @@ static void checkNewAI(void) {
         else [NSUserDefaults.standardUserDefaults setObject:before[key] forKey:key];
     }
     SGLyricsDeleteSavedTranslations();
-    [NSFileManager.defaultManager removeItemAtURL:SGLyricsTestCacheRoot() error:nil];
+    SGLyricsSavedAI(@"notes", @"barrier", @"ko");
+    CHECK([NSFileManager.defaultManager removeItemAtURL:SGLyricsTestCacheRoot() error:nil]);
 }

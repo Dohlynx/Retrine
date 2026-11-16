@@ -51,6 +51,8 @@ static void checkBingCompletion(void) {
     testLanguage = savedLanguage; bingEnabled = savedBing; autoRetryEnabled = savedAuto;
     bingReplies = nil;
     SGRAutoTranslationSettingsChanged();
+    // The delete callback can reach main before its queued summary finishes.
+    SGLyricsSavedAI(@"notes", @"barrier", @"ko");
     CHECK([NSFileManager.defaultManager removeItemAtURL:SGLyricsTestCacheRoot() error:nil]);
     puts("Bing completion: full reply finishes, missing rows map and persist, skip retires the old job");
 }

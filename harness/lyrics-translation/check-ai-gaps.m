@@ -147,6 +147,8 @@ static void checkAIGaps(void) {
     SGRAutoTranslationSettingsChanged();
     aiReplies = nil; geminiTitleReplies = nil;
     SGLyricsDeleteSavedTranslations();
+    // Delete-all queues a summary refresh that also accesses the store.
+    SGLyricsSavedAI(@"notes", @"barrier", @"ko");
     CHECK([NSFileManager.defaultManager removeItemAtURL:SGLyricsTestCacheRoot() error:nil]);
     puts("AI gaps: three providers/formats repair blanks once, preserve indices, reject ambiguity, report exhaustion, and never memoize partial results");
 }
