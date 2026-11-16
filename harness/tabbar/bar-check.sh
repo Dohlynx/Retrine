@@ -29,6 +29,8 @@ run() {
 run "PASS all glyphs" glyphs
 run "PASS all glyphs" glyphs swift
 run "PASS all symbols" symbols
+run "PASS hold on Home only" symbols hold
+run "PASS hold on Home only" symbols hold rtl
 run "PASS single-tab minimization" audit
 run "PASS all edges" none edges
 run "PASS all edges" split edges
