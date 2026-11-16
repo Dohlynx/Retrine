@@ -21,6 +21,7 @@
 // save=<name> (the settings saved as a preset of the user's, behind the page's back), rows (each visible row's
 // title, whether it is ticked and what VoiceOver reads as its value, to the log), remember (Headphones' Use for
 // <output> switched on), search=<text> (the search field on the page typed into; * only taps it; empty puts the keyboard away).
+// sheet=flow|exhaust instead runs the page as the player's ⋯ opens it, as a sheet (sheet.m), and exits.
 // Without keep, the user's presets are cleared too.
 #import <UIKit/UIKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -32,6 +33,7 @@
 #import "../harness-fail.h"
 
 void SGHarnessSeedLibrary(SGDSPFileKind kind);
+void SGHarnessRunSheet(UIWindow *window, NSString *scenario);
 
 @interface SGDSPCurveView (Harness)
 - (void)setBand:(NSInteger)band to:(double)value;
@@ -78,6 +80,12 @@ static void findViews(UIView *root, Class kind, NSMutableArray *found) {
     for (SGDSPFileKind kind = SGDSPFileImpulseResponse; kind <= SGDSPFileLiveprog; ++kind) SGHarnessSeedLibrary(kind);
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    // sheet=<scenario>: the page as the player's ⋯ opens it, a run of its own (sheet.m).
+    for (NSString *arg in args) {
+        if (![arg hasPrefix:@"sheet="]) continue;
+        SGHarnessRunSheet(self.window, [arg substringFromIndex:@"sheet=".length]);
+        return YES;
+    }
     self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     self.nav = [[UINavigationController alloc] initWithRootViewController:SGDSPSettingsPage()];
     self.window.rootViewController = self.nav;

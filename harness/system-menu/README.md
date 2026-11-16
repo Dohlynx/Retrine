@@ -56,6 +56,9 @@ selection or dismissal, then deliver or withhold Spotify's sheet.
   the card it came from goes unseen.
 - `sort`: a row of the mod's own in the sheet's header (as the playlist's Sort) is in More and fires.
 - `animated`: Show Animated Artwork switches it on and the sheet goes.
+- `effects`: Audio effects is in the menu with the effects' summary under it (a stub), its pick asks for the
+  Audio effects sheet once from the player's ⋯ (a stub that counts; `harness/audio-effects-page` has the page),
+  and Spotify's sheet goes.
 - `wrapped`: Spotify presents a controller of its own that puts the sheet in only as it appears
   (NavigationUI_SheetImpl.ContainerViewController on the phone); More and a pick work the same.
 - `delayed-pick`, `delayed-close`: hold Spotify's presentation until after a selection or dismissal has

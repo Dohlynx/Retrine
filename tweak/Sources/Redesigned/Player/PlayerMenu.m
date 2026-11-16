@@ -4,6 +4,8 @@
 //
 //     Speed, Pitch & Reverb   opens the sliders in a popover from the ⋯ (SGPlayerShowSpeedPitchPanel): speed,
 //                             pitch, reverb and Pitch follows speed, as on Spotify's sheet (issue #14)
+//     Audio effects           Mod Settings' Audio effects page as a sheet over the player (AudioEffectsPage.h),
+//                             what the effects are doing under its name, as Mod Settings' row reads it
 //     Share Song Card         a song's cover, title and artist as a picture, through the share sheet (ShareCards.h)
 //     Search Lyrics           LRCLIB searched by hand for the song, its pick pinned to it (Redesigned/Lyrics/LyricsTools.h)
 //     Show Fluid Artwork, Show Animated Artwork, Show Visualizer
@@ -28,6 +30,7 @@
 #import "PlayerQueue.h"
 #import "ShareCards.h"
 #import "Shared/ArtistBlock/ArtistBlock.h"
+#import "Shared/AudioEffects/AudioEffectsPage.h"
 
 static __weak UIView *sg_moreButton;   // the ⋯ the panels come from
 
@@ -62,6 +65,13 @@ static UIAction *soundMenu(void) {
     UIAction *open = [UIAction actionWithTitle:SGL(@"settings.player.sound_menu", @"Speed, Pitch & Reverb") image:symbol(@"slider.horizontal.3") identifier:nil
                                        handler:^(UIAction *action) { SGPlayerShowSpeedPitchPanel(sg_moreButton); }];
     open.subtitle = changed.count ? [changed componentsJoinedByString:@", "] : @"Normal";
+    return open;
+}
+
+static UIAction *audioEffectsItem(void) {
+    UIAction *open = [UIAction actionWithTitle:SGL(@"settings.main.audio_effects.title", @"Audio effects") image:symbol(@"slider.vertical.3") identifier:nil
+                                       handler:^(UIAction *action) { SGDSPShowSettingsSheet(sg_moreButton); }];
+    open.subtitle = SGDSPSummary();
     return open;
 }
 
@@ -212,7 +222,7 @@ static UIAction *lyricsSourceItem(void) {
 }
 
 static NSArray<UIMenuElement *> *playerItems(void) {
-    NSMutableArray<UIMenuElement *> *items = [NSMutableArray arrayWithObject:soundMenu()];
+    NSMutableArray<UIMenuElement *> *items = [NSMutableArray arrayWithObjects:soundMenu(), audioEffectsItem(), nil];
     SPTPlayerTrack *track = SGPlayerState().track;
     NSString *uri = SGURIString(track.URI);
     if ([uri hasPrefix:@"spotify:track:"]) {

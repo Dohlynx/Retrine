@@ -113,6 +113,12 @@ UIView *SGRPinnedMoreRecentButton(void) { return nil; }
 void SGRAnimate(NSInteger motion, void (^animations)(void), void (^completion)(BOOL finished)) {
     [UIView animateWithDuration:0.2 animations:animations completion:completion];
 }
+// AudioEffectsPage.m is not built (harness/audio-effects-page has the page): the summary reads 2 effects, and
+// Audio effects counts the sheet it is asked for, with the player's ⋯ as its source.
+static NSUInteger sg_effectsSheets;
+static __weak UIView *sg_effectsFrom;
+NSString *SGDSPSummary(void) { return @"2 effects"; }
+void SGDSPShowSettingsSheet(UIView *from) { sg_effectsSheets++; sg_effectsFrom = from; NSLog(@"[harness] audio effects sheet requested"); }
 // LyricsTools.m is not built; no lyrics action is offered.
 UIAction *SGRLyricsSearchAction(NSString *trackID) { return nil; }
 // ShareCards.m is not built; with no track playing, the menu offers no song card.
@@ -903,7 +909,14 @@ static NSArray<NSString *> *quickTitles(void) {
         [self gone:@"picked Show Animated Artwork" selected:nil from:CACurrentMediaTime() finish:finish];
         return;
     }
-    check(NO, [NSString stringWithFormat:@"no scenario %@", run]);
+    if ([run isEqualToString:@"effects"]) {
+        check(menuShowsAll(@[@"Audio effects", @"2 effects"]), @"Audio effects is in the menu with the effects' summary under it");
+        pick(@"Audio effects");
+        check(sg_effectsSheets == 1 && sg_effectsFrom == self.more, @"Audio effects asks for the page's sheet once, from the player's ⋯");
+        [self gone:@"picked Audio effects" selected:nil from:CACurrentMediaTime() finish:finish];
+        return;
+    }
+    check(NO,[NSString stringWithFormat:@"no scenario %@", run]);
     finish();
 }
 

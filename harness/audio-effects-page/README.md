@@ -26,6 +26,19 @@ equalizer's curve the cascade's own response through its handles, the width show
 the stored 60), long choice names moving under the title at 375pt, an error row in the engine's wording, the
 credits under the reset; the values stored under the right keys, snapped to their steps.
 
+`sheet=flow` and `sheet=exhaust` run the page as the redesigned player's ⋯ opens it instead (`sheet.m`): the real
+`SGDSPShowSettingsSheet` from the ⋯ of a stand-in player, in a window held light, with a finger's taps
+(`../tabbar/touch.m`). Each prints `PASS` lines and `done`, or exits 1 at the first failure:
+
+    xcrun simctl launch --console-pty <udid> com.vojta.audioeffectspageharness sheet=flow
+
+- `flow`: two requests before the sheet is up present one sheet, dark and titled Audio effects; a request while
+  it is up presents nothing; Effects switched on with a finger stores through `AudioEffects.h` and the summary reads
+  On; Presets pushes inside the sheet; Close takes it away with the player back on top and the change kept; the ⋯
+  then opens it again.
+- `exhaust`: another presentation runs 3 s, past the helper's wait for the menu (about 1 s): no sheet is presented
+  from the moving controller, none once it has finished, and a later request presents the sheet.
+
 `output=<uid>:<name>` hands the page a route change to that output, the way AudioEffects.x does, and
 `push=headphones` opens the Headphones page, with Use for <output> and the remembered outputs over AutoEq's list. `remember`
 switches Use for <output> on, and `search=<text>` types into the page's search field (`search=` puts the keyboard

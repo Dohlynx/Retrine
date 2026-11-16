@@ -715,3 +715,51 @@ static NSString *numberText(SGDSPRow *row, double value) {
 UIViewController *SGDSPSettingsPage(void) {
     return [SGDSPPage new];
 }
+
+// Waits out the system menu the pick came from, which is still going away, as SGPresentPopover does: up to
+// kSheetTries looks, kSheetRetrySeconds apart. A transition still running after that is not the menu's, so
+// the sheet is dropped rather than presented from a controller that is moving.
+static const int kSheetTries = 20;
+static const NSTimeInterval kSheetRetrySeconds = 0.05;
+
+// The sheet asked for and not yet presented or dropped, or presented and not yet gone: one at a time, so Close
+// always lands on the player.
+static __weak UINavigationController *sg_settingsSheet;
+
+void SGDSPShowSettingsSheet(UIView *from) {
+    if (sg_settingsSheet) return;
+    UIViewController *page = SGDSPSettingsPage();
+    UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:page];
+    __weak UINavigationController *weakNavigation = navigation;
+    page.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
+                                                                                   primaryAction:[UIAction actionWithHandler:^(UIAction *action) {
+        [weakNavigation dismissViewControllerAnimated:YES completion:nil];
+    }]];
+    // Outside Spotify's own stacks the sheet would take the system's appearance, light in light mode.
+    SGPresentDark(navigation);
+    sg_settingsSheet = navigation;
+    __weak UIView *weakFrom = from;
+    __block int tries = 0;
+    __block void (^present)(void);
+    present = ^{
+        UIViewController *top = weakFrom.window.rootViewController;
+        while (top.presentedViewController && !top.presentedViewController.isBeingDismissed) top = top.presentedViewController;
+        if (!top) {
+            present = nil;
+            SGLog(@"Audio effects sheet not shown: its source view left the window");
+            return;
+        }
+        if (top.isBeingDismissed || top.isBeingPresented || top.transitionCoordinator) {
+            if (++tries < kSheetTries) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kSheetRetrySeconds * NSEC_PER_SEC)), dispatch_get_main_queue(), present);
+                return;
+            }
+            present = nil;
+            SGLog(@"Audio effects sheet not shown: %@ was still moving after %d tries", NSStringFromClass(top.class), kSheetTries);
+            return;
+        }
+        present = nil;
+        [top presentViewController:navigation animated:YES completion:nil];
+    };
+    dispatch_async(dispatch_get_main_queue(), present);
+}

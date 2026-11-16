@@ -12,6 +12,10 @@
 #import "AudioEffects.h"
 
 UIViewController *SGDSPSettingsPage(void);
+// The same page as a dark sheet with a Close button over whatever is on top in `from`'s window, for a shortcut
+// to it outside Mod Settings (the redesigned player's ⋯). Picked from a system menu, it waits for the menu to go,
+// and is dropped if a transition is still running after that. A call while one is asked for or shown does nothing.
+void SGDSPShowSettingsSheet(UIView *from);
 // What the Mod Settings row reads out: Off, On, or how many effects are on.
 NSString *SGDSPSummary(void);
 // The shared red "Not applied" row; each page keeps its own separator geometry.
