@@ -52,6 +52,8 @@ static BOOL sg_minimized, sg_keepApart;
 
 static void syncBar(UIView *stockBar);
 static void noteGlassRow(void);
+static BOOL isTabButton(UIView *view);
+static BOOL isLitCopy(UIView *view, UIView *host);
 
 #pragma mark - reading Spotify's items
 
@@ -226,11 +228,28 @@ static UIImage *glyphOf(UIView *item, BOOL active) {
     return glyphOfIcon(iconIn(item), active);
 }
 
-// A tab's icon as a tab of the mod's own is given it (SGTabIconView, an Encore glyph or an SF Symbol), drawn white
-// at the glyphs' size.
+// An SF Symbol on a tab, its filled variant on the selected tab where the symbol has one: UIKit's own symbol image
+// with no size of its own, so the bar sizes and weighs it the way UIKit does every app's tab symbols, the Music app's
+// included. One object per name, so setGlyphs sees the same image again and leaves the item alone.
+static UIImage *symbolGlyph(NSString *symbol, BOOL active) {
+    static NSCache<NSString *, UIImage *> *cache;
+    if (!cache) cache = [NSCache new];
+    NSString *filled = [symbol stringByAppendingString:@".fill"];
+    NSString *name = active && [UIImage systemImageNamed:filled] ? filled : symbol;
+    UIImage *image = [cache objectForKey:name];
+    if (image) return image;
+    image = [[UIImage systemImageNamed:name] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    if (image) [cache setObject:image forKey:name];
+    return image;
+}
+
+// A tab's icon as a tab of the mod's own is given it (SGTabIconView): an SF Symbol as the symbol itself, an Encore
+// glyph drawn white at the glyphs' size.
 static UIImage *iconGlyph(NSString *icon, BOOL symbol, BOOL active) {
-    UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 24, 24)];
     UIView *view = SGTabIconView(icon, symbol, UIColor.whiteColor);
+    NSString *symbolName = SGTabIconSymbolName(view);
+    if (symbolName) return symbolGlyph(symbolName, active);
+    UIView *holder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 24, 24)];
     view.translatesAutoresizingMaskIntoConstraints = YES;
     view.frame = holder.bounds;
     if ([view isKindOfClass:UIImageView.class]) view.contentMode = UIViewContentModeScaleAspectFit;
@@ -268,12 +287,6 @@ static NSString *stockSymbol(NSString *title) {
     if (pageSymbols()[uri]) return pageSymbols()[uri];
     if ([uri hasPrefix:@"spotify:upsell:"] || [uri hasPrefix:@"spotify:premium"]) return kPremiumSymbol;
     return kOtherTabSymbol;
-}
-
-// The symbol on the tab, its filled variant on the selected tab where the symbol has one.
-static UIImage *symbolGlyph(NSString *symbol, BOOL active) {
-    NSString *filled = [symbol stringByAppendingString:@".fill"];
-    return iconGlyph(active && [UIImage systemImageNamed:filled] ? filled : symbol, YES, active);
 }
 
 // For the Tab bar page's list and preview: a tab of Spotify's drawn from its item on the bar, hidden or not,
@@ -383,25 +396,29 @@ void SGRShrinkTabTitles(UIView *bar) {
     });
 }
 
-// UIKit's item views are private, so the item under a touch is the one whose title label or glyph is
-// nearest. With the labels hidden only the glyph is left; UIKit shows the item's own image instance.
+// The item under a touch: that of the tab button nearest it, outside the copy UIKit draws lit under the selection's
+// bubble. UIKit's buttons are private, but its platter holds them in the items' order in either layout direction, so
+// a button's place among them names its item where a glyph or a name two tabs share would not.
 - (UITabBarItem *)itemAt:(CGPoint)point {
-    __block UITabBarItem *nearest = nil;
+    __block UIView *nearest = nil;
     __block CGFloat best = CGFLOAT_MAX;
     SGForEachView(self, ^(UIView *v) {
-        BOOL label = [v isKindOfClass:UILabel.class], glyph = [v isKindOfClass:UIImageView.class];
-        if ((!label && !glyph) || v.bounds.size.width < 1) return;
+        if (!isTabButton(v) || isLitCopy(v, self)) return;
         CGFloat distance = fabs([v convertPoint:CGPointMake(CGRectGetMidX(v.bounds), 0) toView:self].x - point.x);
         if (distance >= best) return;
-        for (UITabBarItem *item in self.items) {
-            UIImage *image = glyph ? ((UIImageView *)v).image : nil;
-            if (label ? ![((UILabel *)v).text isEqualToString:item.title] : !image || (image != item.image && image != item.selectedImage)) continue;
-            best = distance;
-            nearest = item;
-            break;
-        }
+        best = distance;
+        nearest = v;
     });
-    return nearest;
+    if (!nearest) return nil;
+    NSMutableArray<UIView *> *buttons = [NSMutableArray array];
+    for (UIView *sibling in nearest.superview.subviews) if (isTabButton(sibling)) [buttons addObject:sibling];
+    if (buttons.count != self.items.count) {
+        static NSMutableSet<NSString *> *logged;
+        NSString *counts = [NSString stringWithFormat:@"%lu buttons for %lu items", (unsigned long)buttons.count, (unsigned long)self.items.count];
+        SGLogOnce(&logged, counts, @"tab bar: %@, so a touch names no tab");
+        return nil;
+    }
+    return self.items[[buttons indexOfObject:nearest]];
 }
 
 // UIView asks itself this for its own recognizers too, so only the hold is answered here.
@@ -631,10 +648,12 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         // from (glyphKeysOf) and is drawn again when the view holds an icon outside them, so a filled SPTEncoreIcon
         // whose outline drew the item changes nothing. Another icon view (a tab of the mod's own given another icon,
         // which has no Encore name when it is an image) draws the item anew too, and so does Apple symbols coming,
-        // going or naming another symbol: one of Spotify's tabs is then drawn with its symbol, not off its view.
+        // going or naming another symbol: one of Spotify's tabs is then drawn with its symbol, not off its view. A tab
+        // of the mod's own wearing an SF Symbol is drawn with that symbol (SGTabIconSymbolName), as Apple symbols draws
+        // Spotify's.
         UIView *live = iconIn(sources[i]);
         BOOL own = [NSStringFromClass(sources[i].class) isEqualToString:@"SGRTabItemView"];
-        NSString *symbol = own ? nil : stockSymbol(labelIn(sources[i]).text);
+        NSString *symbol = own ? SGTabIconSymbolName(live) : stockSymbol(labelIn(sources[i]).text);
         NSString *drawnSymbol = objc_getAssociatedObject(item, &kItemSymbolKey);
         if (objc_getAssociatedObject(item, &kItemIconKey) != live || ((symbol || drawnSymbol) && ![symbol isEqualToString:drawnSymbol])) {
             item.image = nil;

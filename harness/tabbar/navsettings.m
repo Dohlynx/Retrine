@@ -97,7 +97,8 @@ void SGHarnessRunNavbarPage(SGHarnessChrome *chrome, void (^barChecked)(BOOL on)
 #pragma mark - Apple symbols (`symbols`)
 
 // main.m: the tab of the mod's own on the bar after Spotify's, and the SF Symbol picked for it.
-extern NSString *const SGHarnessOwnTabTitle, *const SGHarnessOwnTabSymbol;
+extern NSString *const SGHarnessOwnTabTitle;
+NSString *SGHarnessOwnTabSymbol(void);
 
 static NSArray<NSString *> *spotifyTabs(void) {
     return @[@"Home", @"Search", @"Your Library", @"Create"];
@@ -188,6 +189,102 @@ static void readListOffMain(NSDictionary<NSString *, NSString *> *uris, NSString
     });
 }
 
+// The glyph UIKit shows for the tab named `title` on `bar`: the image view in the tab's button, outside the copy UIKit
+// draws lit under the selection's bubble.
+static UIImageView *shownGlyph(UITabBar *bar, NSString *title) {
+    __block UIImageView *found = nil;
+    SGForEachView(bar, ^(UIView *view) {
+        if (found || ![view isKindOfClass:UIControl.class]) return;
+        for (UIView *up = view.superview; up && up != bar; up = up.superview) {
+            if ([NSStringFromClass(up.class) containsString:@"SelectedContent"]) return;
+        }
+        __block BOOL named = NO;
+        __block UIImageView *glyph = nil;
+        SGForEachView(view, ^(UIView *sub) {
+            if ([sub isKindOfClass:UILabel.class] && [((UILabel *)sub).text isEqualToString:title]) named = YES;
+            if (!glyph && [sub isKindOfClass:UIImageView.class] && !sub.hidden && ((UIImageView *)sub).image) glyph = (UIImageView *)sub;
+        });
+        if (named) found = glyph;
+    });
+    return found;
+}
+
+// The tab of the mod's own wears an SF Symbol: on the bar and the preview UIKit is handed the symbol itself, heart and
+// heart.fill selected, and shows it at the size a plain UITabBar shows a tab given that symbol.
+static void expectOwnSymbol(NSString *moment, UITabBar *bar, UITabBar *preview) {
+    NSData *plain = png([UIImage systemImageNamed:@"heart"]), *filled = png([UIImage systemImageNamed:@"heart.fill"]);
+    for (UITabBar *each in @[bar, preview]) {
+        NSString *where = each == bar ? @"bar" : @"preview";
+        UITabBarItem *own = nil;
+        for (UITabBarItem *item in each.items) if ([item.title isEqualToString:SGHarnessOwnTabTitle]) own = item;
+        if (!own.image.isSymbolImage || !own.selectedImage.isSymbolImage) HARNESS_FAIL(@"%@: the %@ gives the tab of the mod's own a drawing, not its symbol: %@ / %@", moment, where, own.image, own.selectedImage);
+        if (![png(own.image) isEqual:plain]) HARNESS_FAIL(@"%@: the %@'s tab of the mod's own is not heart", moment, where);
+        if (![png(own.selectedImage) isEqual:filled]) HARNESS_FAIL(@"%@: the %@'s tab of the mod's own is not heart.fill when selected", moment, where);
+    }
+    UITabBar *stock = [[UITabBar alloc] initWithFrame:bar.frame];
+    stock.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    NSMutableArray<UITabBarItem *> *items = [NSMutableArray array];
+    for (UITabBarItem *item in bar.items) {
+        BOOL own = [item.title isEqualToString:SGHarnessOwnTabTitle];
+        [items addObject:[[UITabBarItem alloc] initWithTitle:item.title image:own ? [UIImage systemImageNamed:@"heart"] : item.image tag:items.count]];
+    }
+    stock.items = items;
+    stock.alpha = 0;
+    [bar.superview addSubview:stock];
+    [stock layoutIfNeeded];
+    UIImageView *shown = shownGlyph(bar, SGHarnessOwnTabTitle), *expected = shownGlyph(stock, SGHarnessOwnTabTitle);
+    [stock removeFromSuperview];
+    if (!shown || !expected) HARNESS_FAIL(@"%@: no glyph shown for the tab of the mod's own (%@) or on the plain bar (%@)", moment, shown, expected);
+    if (!CGSizeEqualToSize(shown.bounds.size, expected.bounds.size)) HARNESS_FAIL(@"%@: the tab of the mod's own shows its symbol at %@, a plain UITabBar at %@", moment, NSStringFromCGSize(shown.bounds.size), NSStringFromCGSize(expected.bounds.size));
+    printf("PASS %s: the tab of the mod's own is heart, heart.fill selected, at %s as on a plain UITabBar\n", moment.UTF8String, NSStringFromCGSize(shown.bounds.size).UTF8String);
+    fflush(stdout);
+}
+
+// stubs.m's SGOpenModSettings: how often a hold opened Mod Settings.
+extern NSUInteger sgHarnessModSettingsOpens;
+extern void SGHarnessHold(UIWindow *window, CGPoint point, NSTimeInterval seconds);
+
+// `symbols hold`: Apple symbols on, the names hidden (main.m) and the tab of the mod's own wearing house, as Home does,
+// so the two show one glyph. A finger held on the tab of the mod's own, the bar's last, opens nothing; held on Home,
+// its first, Mod Settings once.
+static void expectHoldOpensHomeOnly(UIViewController *owner) {
+    SGSetEnabled(SGRKeyNavbarSymbols, YES);
+    layOutBar(owner.view);
+    UITabBar *bar = barIn(owner.view);
+    HARNESS_CHECK(bar && bar.items.count == spotifyTabs().count + 1);
+    for (UITabBarItem *item in bar.items) if (item.title) HARNESS_FAIL(@"symbols hold: the bar names %@", item.title);
+    if (![png(bar.items.firstObject.image) isEqual:png(bar.items.lastObject.image)]) HARNESS_FAIL(@"symbols hold: Home and the tab of the mod's own do not wear one glyph");
+    // The tabs' buttons left to right, outside the copy UIKit draws lit under the selection's bubble.
+    NSMutableArray<UIView *> *buttons = [NSMutableArray array];
+    SGForEachView(bar, ^(UIView *view) {
+        if (![view isKindOfClass:UIControl.class] || view == bar) return;
+        for (UIView *up = view.superview; up && up != bar; up = up.superview) {
+            if ([NSStringFromClass(up.class) containsString:@"SelectedContent"]) return;
+        }
+        [buttons addObject:view];
+    });
+    [buttons sortUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
+        return [@([a convertPoint:CGPointZero toView:nil].x) compare:@([b convertPoint:CGPointZero toView:nil].x)];
+    }];
+    if (buttons.count != bar.items.count) HARNESS_FAIL(@"symbols hold: %lu buttons for %lu tabs", (unsigned long)buttons.count, (unsigned long)bar.items.count);
+    UIWindow *window = bar.window;
+    CGPoint (^middle)(UIView *) = ^CGPoint(UIView *button) {
+        return [button convertPoint:CGPointMake(CGRectGetMidX(button.bounds), CGRectGetMidY(button.bounds)) toView:nil];
+    };
+    sgHarnessModSettingsOpens = 0;
+    SGHarnessHold(window, middle(buttons.lastObject), 0.8);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (sgHarnessModSettingsOpens != 0) HARNESS_FAIL(@"symbols hold: a hold on the tab of the mod's own opened Mod Settings");
+        SGHarnessHold(window, middle(buttons.firstObject), 0.8);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (sgHarnessModSettingsOpens != 1) HARNESS_FAIL(@"symbols hold: a hold on Home opened Mod Settings %lu times, not once", (unsigned long)sgHarnessModSettingsOpens);
+            printf("PASS hold on Home only\n");
+            fflush(stdout);
+            exit(0);
+        });
+    });
+}
+
 static void holdForScreenshot(void) {
     printf("READY\n");
     fflush(stdout);
@@ -213,9 +310,13 @@ void SGHarnessRunSymbols(SGHarnessChrome *chrome) {
     NSMutableArray<NSDictionary *> *layout = [NSMutableArray array];
     for (NSString *title in spotifyTabs()) [layout addObject:@{SGRNavbarID: title, SGRNavbarTitle: title}];
     [layout addObject:@{SGRNavbarID: @"own", SGRNavbarTitle: SGHarnessOwnTabTitle, SGRNavbarURI: @"spotify:collection:tracks",
-                        SGRNavbarIcon: SGHarnessOwnTabSymbol, SGRNavbarIconSet: SGTabIconSetSymbols}];
+                        SGRNavbarIcon: SGHarnessOwnTabSymbol(), SGRNavbarIconSet: SGTabIconSetSymbols}];
     SGRSetNavbarLayout(layout);
     SGSetEnabled(SGRKeyNavbar, YES);
+    if ([args containsObject:@"hold"]) {
+        expectHoldOpensHomeOnly(owner);
+        return;
+    }
     BOOL on = [args containsObject:@"on"];
     if ([args containsObject:@"show"]) {
         SGSetEnabled(SGRKeyNavbarSymbols, on);
@@ -270,6 +371,7 @@ void SGHarnessRunSymbols(SGHarnessChrome *chrome) {
     expectGlyphs(@"switch off", @"bar", barOff, NO, nil);
     expectGlyphs(@"switch off", @"preview", previewOff, NO, nil);
     expectGlyphs(@"switch off", @"list", listOff, NO, nil);
+    expectOwnSymbol(@"switch off", bar, preview);
 
     flip(YES);
     expectGlyphs(@"switch on", @"bar", barGlyphs(bar, NO), YES, barOff);
@@ -279,6 +381,7 @@ void SGHarnessRunSymbols(SGHarnessChrome *chrome) {
     if ([barLit[@"Home"] isEqual:barPlain[@"Home"]]) HARNESS_FAIL(@"switch on: Home's selected glyph is not house.fill");
     if (![barLit[@"Search"] isEqual:barPlain[@"Search"]]) HARNESS_FAIL(@"switch on: Search's selected glyph is not magnifyingglass");
     printf("PASS switch on: Home fills when selected, Search keeps its one symbol\n");
+    expectOwnSymbol(@"switch on", bar, preview);
 
     // The list read off the main thread naming Home's page for Search: once on it, the bar draws Search as Home.
     NSMutableDictionary<NSString *, NSString *> *moved = [stockURIs mutableCopy];

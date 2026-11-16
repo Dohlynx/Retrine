@@ -54,7 +54,11 @@
 @implementation SGRTabItemView
 @end
 NSString *const SGHarnessOwnTabTitle = @"Liked Songs";
-NSString *const SGHarnessOwnTabSymbol = @"heart.fill";
+// An outline symbol, so its selected variant (heart.fill) can be told from it; with `hold`, house, the symbol Apple
+// symbols gives Home, so two tabs wear one symbol.
+NSString *SGHarnessOwnTabSymbol(void) {
+    return [NSProcessInfo.processInfo.arguments containsObject:@"hold"] ? @"house" : @"heart";
+}
 
 static BOOL sgJam, sgColorful, sgGlyphs, sgSwiftIcons;
 static __weak UIView *sgJamStrip;
@@ -369,7 +373,7 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
     // `symbols`: a tab of the mod's own after Spotify's, under the class name Navbar.x gives one, with the SF Symbol
     // picked for it drawn as Navbar.x draws it (SGTabIconView).
     if (args.count > 1 && [args[1] isEqualToString:@"symbols"]) {
-        [tabs addObject:tab(SGRTabItemView.class, SGHarnessOwnTabTitle, SGTabIconView(SGHarnessOwnTabSymbol, YES, [UIColor colorWithWhite:0xB3 / 255.0 alpha:1]), NO)];
+        [tabs addObject:tab(SGRTabItemView.class, SGHarnessOwnTabTitle, SGTabIconView(SGHarnessOwnTabSymbol(), YES, [UIColor colorWithWhite:0xB3 / 255.0 alpha:1]), NO)];
     }
     UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:tabs];
     row.distribution = UIStackViewDistributionFillEqually;
@@ -993,7 +997,8 @@ static NSString *const kWatched[4] = {@"platter", @"glyph", @"split platter", @"
 
 // Before every %ctor, so the redesign's gate reads on; the fade under the bars on unless the launch line says `off`;
 // Apple symbols off, as a run before may have left it (`symbols` sets it itself), and the tabs' names as the product's
-// default has them, hidden, but shown from the bar's first pass with `symbols`, whose setting outlives its run.
+// default has them, hidden, but shown from the bar's first pass with `symbols` (not `symbols hold`), whose setting
+// outlives its run.
 __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
@@ -1001,7 +1006,7 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     if ([args containsObject:@"off"]) [store setBool:NO forKey:SGRKeyNavbarFade];
     else [store removeObjectForKey:SGRKeyNavbarFade];
     [store removeObjectForKey:SGRKeyNavbarSymbols];
-    if (args.count > 1 && [args[1] isEqualToString:@"symbols"]) [store setBool:NO forKey:SGRKeyNavbarHideLabels];
+    if (args.count > 1 && [args[1] isEqualToString:@"symbols"] && ![args containsObject:@"hold"]) [store setBool:NO forKey:SGRKeyNavbarHideLabels];
     else [store removeObjectForKey:SGRKeyNavbarHideLabels];
 }
 

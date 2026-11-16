@@ -32,7 +32,9 @@ void SGRNavbarForgetTab(void) {
     if (sgHarnessLitTab) NSLog(@"[harness] the lit tab forgotten");
     sgHarnessLitTab = nil;
 }
-void SGOpenModSettings(UIView *source) {}
+// How often a hold opened Mod Settings, for `symbols hold`.
+NSUInteger sgHarnessModSettingsOpens = 0;
+void SGOpenModSettings(UIView *source) { sgHarnessModSettingsOpens++; }
 
 // Navbar.x's lays out the bar SGRComposeTabBar last composed, and the stub above composes none, so it lays out
 // nothing here: what the Tab bar page changes reaches the bar only through TabBar.x's own path (`navsettings`). It
@@ -51,5 +53,25 @@ void SGRRefreshTabBar(void) {
 SPTPlayerState *SGPlayerState(void) { return nil; }
 // The player the card's next button skips on (NowPlayingBar.x): none here, so a tap on it does nothing.
 id SGPlayer(void) { return nil; }
+// Shared/Player/PlayerState.x's observers and repeat, which NowPlayingBar.x reaches for: no player here, so nothing
+// reports and the card's repeat does nothing.
+void SGAddPlayerStateObserver(id observer) {}
+id SGPlayerAdvanceRepeat(id player, id options) { return nil; }
+// Redesigned/Kit's accent (SGRAccent.x), Spotify's green with no change of it, and the player's lyrics and queue
+// (Redesigned/Player), which the card's buttons open: nothing opened.
+NSNotificationName const SGRAccentDidChangeNotification = @"spotifyglass.redesign.accentDidChange";
+NSInteger SGRAccentRGB(void) { return 0x1ED760; }
+// SGRRestyle.m's lookup, which NowPlayingBar.x finds the glass tab bar with: the first view with the identifier, depth
+// first, uncached (the harness's ids are exact).
+UIView *SGRFindByIdentifier(UIView *root, NSString *identifier, const void *cacheKey) {
+    if ([root.accessibilityIdentifier isEqualToString:identifier]) return root;
+    for (UIView *sub in root.subviews) {
+        UIView *found = SGRFindByIdentifier(sub, identifier, cacheKey);
+        if (found) return found;
+    }
+    return nil;
+}
+void SGRPlayerShowLyricsOnOpen(void) {}
+void SGRPlayerShowQueue(UIView *from) {}
 // Shared/Player/PlayerEvents.x, which TabBarMinimize.x listens to.
 NSString *const SGPlayerTransitionNotification = @"spotifyglass.playerTransition";

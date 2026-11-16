@@ -30,10 +30,24 @@ static UIView *symbolView(UIImage *image, UIColor *color) {
     return view;
 }
 
+// On a symbol's view: the name it was drawn from, which its UIImage does not give back.
+static char kSymbolNameKey;
+
+static UIView *namedSymbolView(NSString *name, UIImage *image, UIColor *color) {
+    UIView *view = symbolView(image, color);
+    objc_setAssociatedObject(view, &kSymbolNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    return view;
+}
+
+NSString *SGTabIconSymbolName(UIView *icon) {
+    return icon ? objc_getAssociatedObject(icon, &kSymbolNameKey) : nil;
+}
+
 UIView *SGTabIconView(NSString *name, BOOL symbol, UIColor *color) {
     UIImage *image = symbol ? symbolImage(name) : nil;
-    if (image) return symbolView(image, color);
-    return encoreView(name, color) ?: symbolView(symbolImage(@"star.fill"), color);
+    if (image) return namedSymbolView(name, image, color);
+    NSString *fallback = @"star.fill";
+    return encoreView(name, color) ?: namedSymbolView(fallback, symbolImage(fallback), color);
 }
 
 #pragma mark - the catalogs
