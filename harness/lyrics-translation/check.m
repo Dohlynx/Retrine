@@ -248,6 +248,10 @@ static void (^beforeGeminiReply)(void);
         lastGeminiRequest = captured;
         id reply = geminiTitleReplies.firstObject;
         [geminiTitleReplies removeObjectAtIndex:0];
+        if ([reply isKindOfClass:NSError.class]) {
+            [self.client URLProtocol:self didFailWithError:reply];
+            return;
+        }
         id root = [reply isKindOfClass:NSString.class] ? @{@"candidates": @[@{@"content": @{@"parts": @[@{@"text": reply}]}, @"finishReason": @"STOP"}]} : reply;
         NSData *data = [NSJSONSerialization dataWithJSONObject:root options:0 error:nil];
         if (beforeGeminiReply) beforeGeminiReply();
@@ -595,6 +599,7 @@ static void checkProviders(void) {
 #include "check-bing-completion.m"
 #include "check-ai-gaps.m"
 #include "check-prompt.m"
+#include "check-gemini-guidance.m"
 
 int main(int argc, const char **argv) {
     @autoreleasepool {
@@ -616,6 +621,8 @@ int main(int argc, const char **argv) {
         if (argc > 1 && strcmp(argv[1], "--storage-only") == 0) { checkDurableStorage(); return 0; }
         if (argc > 1 && strcmp(argv[1], "--connection-only") == 0) { checkConnection(); return 0; }
         if (argc > 1 && strcmp(argv[1], "--gemini-memo-only") == 0) { checkGeminiMemoBound(); return 0; }
+        if (argc > 1 && strcmp(argv[1], "--gemini-guidance-only") == 0) { checkGeminiGuidance(); return 0; }
+        checkGeminiGuidance();
         // Musixmatch's translations go on copies of the lines they match, by the folded text.
         NSArray<SGKaraokeLine *> *lines = SGKaraokeEstimatedLines(@[@0, @2000, @4000, @6000],
                                                                   @[@"Où est l'amour ?", @"Yeah", @"Rien", @""]);

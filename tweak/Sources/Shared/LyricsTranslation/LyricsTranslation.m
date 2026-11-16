@@ -11,7 +11,7 @@
 #import "CredentialSettings.h"
 
 // Pin the default; a saved model remains the user's choice.
-static NSString *const kModel = @"gemini-3.8-flash";
+static NSString *const kModel = @"gemini-4-hydrogen";
 static NSString *const kService = @"Vitrine.Gemini", *const kAccount = @"api-key";
 
 NSString *SGGeminiModel(void) {
@@ -36,7 +36,7 @@ static NSTimeInterval aiTimeout(void) {
 }
 
 static NSString *geminiThinkingLevel(void) {
-    // Only the menu's levels: a stored "minimal" from an early build of this row would make 3.8 Flash answer 400 every ask.
+    // Only the menu's levels: Gemini rejects unsupported thinking levels.
     NSString *level = [NSUserDefaults.standardUserDefaults stringForKey:SGKeyAIThinking];
     return [@[@"medium", @"high"] containsObject:level] ? level : @"low";
 }
@@ -187,14 +187,16 @@ NSArray<NSString *> *SGGeminiReplyIn(id root, NSInteger status, NSError *error, 
     id failed = [reply[@"error"] isKindOfClass:NSDictionary.class] ? reply[@"error"][@"message"] : nil;
     NSString *googleSays = [failed isKindOfClass:NSString.class] ? failed : nil;
     if (error) {
-        *problem = error.code == NSURLErrorTimedOut
-            ? SGL(@"settings.translation.error.timeout", @"Gemini timed out. Try a longer timeout in Gemini settings.")
+        *problem = [error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorTimedOut
+            ? SGL(@"settings.translation.error.timeout", @"Gemini timed out. Try a longer timeout or choose another model in Mod Settings > Lyrics > Translation & AI > Gemini.")
             : SGL(@"settings.translation.error.unreachable", @"Gemini could not be reached.");
     } else if (status == 401 || status == 403 || (status == 400 && [googleSays localizedCaseInsensitiveContainsString:@"API key"])) {
         *problem = SGL(@"settings.translation.error.keyinvalid", @"Gemini turned the key down. Check it on the Lyrics page.");
     } else if (status == 400) {
         *problem = googleSays.length ? [NSString stringWithFormat:SGL(@"settings.translation.error.badrequestformat", @"Gemini did not take the request: %@"), googleSays]
                                      : SGL(@"settings.translation.error.badrequest", @"Gemini did not take the request (400).");
+    } else if (status == 404) {
+        *problem = SGL(@"settings.translation.error.modelunavailable", @"This Gemini model is unavailable. Choose another model in Mod Settings > Lyrics > Translation & AI > Gemini.");
     } else if (status == 429) {
         *problem = SGL(@"settings.translation.error.ratelimit", @"Gemini's limit for this key is reached for now.");
     } else if (status == 503 || status == 500) {
