@@ -178,9 +178,9 @@ static void thresholds(double rate) {
 // Rendered as the audio unit renders: on a time-constraint thread that waits between blocks. An ordinary thread
 // rendering back to back can be held off the CPU past a block's length on a busy machine, which the real-clock
 // guard rightly counts against the script; the audio thread is not held that way. The wait is an eighth of a
-// block, so 64 seconds of audio take 8.
-static void *normalScriptRender(void *unused) {
-    uint64_t pace = (uint64_t)llround(1024.0 / 48000 * 1e9 / 8 / nanosPerTick);
+// block, so 64 seconds of audio take 8, and a two-second load spans about 750 blocks.
+static uint64_t audioRenderPace(void) {
+    uint64_t pace = (uint64_t)llround((double)kSGDSPEngineBlock / 48000 * 1e9 / 8 / nanosPerTick);
     thread_time_constraint_policy_data_t policy = {
         .period = (uint32_t)pace, .computation = (uint32_t)(pace / 2), .constraint = (uint32_t)pace, .preemptible = 1};
     mach_port_t thread = mach_thread_self();
@@ -188,6 +188,16 @@ static void *normalScriptRender(void *unused) {
                                           THREAD_TIME_CONSTRAINT_POLICY_COUNT);
     mach_port_deallocate(mach_task_self(), thread);
     require(set == KERN_SUCCESS, "the render thread takes the audio thread's time-constraint policy");
+    return pace;
+}
+
+static void waitForAudioBlock(uint64_t *next, uint64_t pace) {
+    *next += pace;
+    mach_wait_until(*next);
+}
+
+static void *normalScriptRender(void *unused) {
+    uint64_t pace = audioRenderPace();
     SGDSPEngine *engine = SGDSPEngineCreate(48000);
     load(engine, gain);
     uint64_t next = mach_absolute_time();
@@ -195,8 +205,7 @@ static void *normalScriptRender(void *unused) {
         block(engine);
         require(!SGDSPEngineLiveprogError(engine), "normal script never trips in 64 seconds of audio");
         if (i > 1) level(0.125f, -0.0625f);
-        next += pace;
-        mach_wait_until(next);
+        waitForAudioBlock(&next, pace);
     }
     SGDSPEngineFree(engine);
     return NULL;
@@ -223,10 +232,13 @@ static void heavy(void) {
 }
 
 static void *renderDuringLoad(void *engine) {
+    uint64_t pace = audioRenderPace();
+    uint64_t next = mach_absolute_time();
     while (atomic_load_explicit(&renderRunning, memory_order_relaxed)) {
         block(engine);
         level(0.125f, -0.0625f);
         atomic_fetch_add_explicit(&rendered, 1, memory_order_relaxed);
+        waitForAudioBlock(&next, pace);
     }
     return NULL;
 }
