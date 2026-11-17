@@ -76,11 +76,14 @@ static void keepPlatform(id platform) {
     SGLog(@"head gestures: collection platform %@", name);
 }
 
+%group LegacyPlatform
 %hook SPTCollectionPlatformImplementation
 - (id)stateProvider {
     keepPlatform(self);
     return %orig;
 }
+%end
+
 %end
 
 %hook _TtC23Collection_PlatformImpl22CollectionPlatformImpl
@@ -90,11 +93,14 @@ static void keepPlatform(id platform) {
 }
 %end
 
+%group MigrationPlatform
 %hook _TtC23Collection_PlatformImpl27CollectionPlatformMigration
 - (id)stateProvider {
     keepPlatform(self);
     return %orig;
 }
+%end
+
 %end
 
 %hook _TtC26AlignedCuration_CommonImpl21ACUCollectionPlatform
@@ -525,8 +531,14 @@ SGHeadTeachingResults SGHeadGesturesFinishTeaching(NSArray<NSData *> *nods, NSAr
 @end
 
 %ctor {
+    if (class_getInstanceMethod(objc_getClass("SPTCollectionPlatformImplementation"), @selector(stateProvider))) {
+        %init(LegacyPlatform);
+    }
+    if (class_getInstanceMethod(objc_getClass("_TtC23Collection_PlatformImpl27CollectionPlatformMigration"), @selector(stateProvider))) {
+        %init(MigrationPlatform);
+    }
     %init;
-    SGRequireClasses(@[@"SPTCollectionPlatformImplementation", @"_TtC23Collection_PlatformImpl22CollectionPlatformImpl"]);
+    SGRequireClasses(@[@"_TtC23Collection_PlatformImpl22CollectionPlatformImpl"]);
     static SGHeadGesturesObserver *observer;
     observer = [SGHeadGesturesObserver new];
     SGAddPlayerStateObserver(observer);

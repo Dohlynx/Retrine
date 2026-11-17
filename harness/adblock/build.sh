@@ -19,8 +19,10 @@ xcrun clang -fobjc-arc -fblocks -O0 -Wall -Werror -I "$OUT" -I shim -I "$SRC/Sha
 for ads in 0 1; do
     for upsells in 0 1; do
         HIDE_ADS=$ads HIDE_UPSELLS=$upsells "$OUT/services-check"
+        SPOTIFY_920=1 HIDE_ADS=$ads HIDE_UPSELLS=$upsells "$OUT/services-check"
     done
 done
 python3 dj-check.py
 sh network-build.sh
 python3 -B audit-check.py ../../scripts/audit-ad-services.py
+sh settings-check.sh
