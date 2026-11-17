@@ -33,7 +33,12 @@
 // is of; the header's model shows it where it says isRecentsAvailable, a clock between the spacer and Search
 // (issue #21), and it goes to the trailing edge with the others. A folder (trees/continuous/1.txt:325-344)
 // is the same header under YourLibrary_FolderImpl, with id=YourLibraryFolderHeader.back at the leading edge,
-// its title, then contextMenu, plus and play or pause, and the chips at {0, 118}.
+// its title, then contextMenu, plus and play or pause, and the chips at {0, 118}. Spotify 9.2.0 puts the root
+// header, the same inside, in a plain UIStackView {0, 0} 402x157 that stands where the header stood
+// (design/spotify-920/920-library-tree.txt:488-489). There Auto Layout gives the header its height: the row hangs
+// off the safe area, the chips under it, and the chips' bottom is the header's (filters.bottom == header.bottom),
+// with the stack pinned only at its top and sides so that it follows the header. A frame set on that header is
+// undone on the next pass, so Compact library sizes it through that chain instead (holdHeight).
 //
 // The header neither moves nor shrinks as the list scrolls -- 03.txt, 05.txt and 06.txt hold it at
 // {0, 0} 402x159.33 at three scroll positions -- so there is nothing here to follow: the row is laid out once a
@@ -63,9 +68,20 @@
 // 24pt glyph 20pt from the screen, and the 32pt avatar inside its own 48pt box 16pt from it, which is the
 // margin Home gives the avatar.
 static const CGFloat kRowInset = 8;
-static char kTitleKey, kRowWatchedKey, kListKey, kInsetKey, kHeightKey, kFoldedKey;
+static char kTitleKey, kRowWatchedKey, kListKey, kInsetKey, kHeightKey, kFoldedKey, kHoldKey, kChainKey;
 static char kRecentsKey, kSearchKey, kPlusKey, kHeaderTitleKey;
 static char kBackKey, kMenuKey, kFolderPlusKey, kPlayKey, kPauseKey, kFolderTitleKey;
+
+UIView *SGRLibraryRootHeaderIn(UIView *page) {
+    UIView *header = SGRChildNamed(page, @"YourLibraryHeaderView");
+    if (header) return header;
+    for (UIView *sub in page.subviews) {
+        if (![sub isMemberOfClass:UIStackView.class]) continue;
+        header = SGRChildNamed(sub, @"YourLibraryHeaderView");
+        if (header) return header;
+    }
+    return nil;
+}
 
 void SGRLibraryClearScrim(UIView *header) {
     SGRVanish(SGRChildNamed(header, @"GradientView"));
@@ -196,7 +212,7 @@ static NSArray<UIView *> *placeRoot(UIView *header) {
     CGRect row = SGFrameIn(trailing.firstObject, header);
     // Compact library's menu, as tall and as wide as the row's controls, before the first of them.
     if (SGRLibraryCompact() && header.superview) {
-        UIButton *menu = SGRLibraryMenuButton(header, header.superview);
+        UIButton *menu = SGRLibraryMenuButton(header);
         CGFloat side = row.size.height;
         CGRect frame = CGRectMake(xAt(header, leading - side, side), CGRectGetMidY(row) - side / 2, side, side);
         if (!CGRectEqualToRect(menu.frame, frame)) menu.frame = frame;
@@ -231,10 +247,51 @@ static NSArray<UIView *> *placeFolder(UIView *header) {
 
 #pragma mark - Compact library
 
+// Whether Auto Layout sizes the header: 9.2.0's, arranged in a stack (see the top of the file).
+static BOOL stacked(UIView *header) {
+    return [header.superview isMemberOfClass:UIStackView.class];
+}
+
+// Spotify's link from the chips' bottom to the stacked header's, while it is active.
+static NSLayoutConstraint *chipsToBottom(UIView *header, UIView *filters) {
+    for (NSLayoutConstraint *link in header.constraints) {
+        if (!link.active || link.relation != NSLayoutRelationEqual) continue;
+        if (link.firstAttribute != NSLayoutAttributeBottom || link.secondAttribute != NSLayoutAttributeBottom) continue;
+        if ((link.firstItem == filters && link.secondItem == header) || (link.firstItem == header && link.secondItem == filters)) {
+            return link;
+        }
+    }
+    return nil;
+}
+
+// The stacked header ended at `height` in place of the chips' bottom, which Spotify's link is kept for
+// unfoldChips. Spotify making the link again on a pass of its own has it taken out again here. foldChips calls it
+// only while the header has one or the other.
+static void holdHeight(UIView *header, UIView *filters, CGFloat height) {
+    NSLayoutConstraint *hold = objc_getAssociatedObject(header, &kHoldKey);
+    NSLayoutConstraint *chain = chipsToBottom(header, filters);
+    if (chain) {
+        chain.active = NO;
+        objc_setAssociatedObject(header, &kChainKey, chain, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (!hold) {
+        hold = [header.heightAnchor constraintEqualToConstant:height];
+        objc_setAssociatedObject(header, &kHoldKey, hold, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (fabs(hold.constant - height) > 0.5) hold.constant = height;
+    hold.active = YES;
+}
+
 // The chips gone and the page closed up by the band they leave (see the top of the file). `control` is any of the
 // header's controls: they fill its row, so the bottom of one is the bottom of the row. What Spotify had -- the
 // chips' alpha, the header's height and the band, the list's inset -- is kept for unfoldChips.
 static void foldChips(UIView *header, UIView *control, UIView *filters, UIScrollView *list) {
+    if (stacked(header) && !objc_getAssociatedObject(header, &kHoldKey) && !chipsToBottom(header, filters)) {
+        static BOOL logged;
+        if (!logged) SGLog(@"redesign library: compact, the stacked header has no link from its chips to its bottom, chips kept");
+        logged = YES;
+        return;
+    }
     if (!objc_getAssociatedObject(filters, &kFoldedKey)) {
         objc_setAssociatedObject(filters, &kFoldedKey, @(filters.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -250,10 +307,14 @@ static void foldChips(UIView *header, UIView *control, UIView *filters, UIScroll
         spotify = @[@(height), @(band)];
         objc_setAssociatedObject(header, &kHeightKey, spotify, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    CGRect frame = header.frame;
-    if (fabs(frame.size.height - wanted) > 0.5) {
-        frame.size.height = wanted;
-        header.frame = frame;
+    if (stacked(header)) {
+        holdHeight(header, filters, wanted);
+    } else {
+        CGRect frame = header.frame;
+        if (fabs(frame.size.height - wanted) > 0.5) {
+            frame.size.height = wanted;
+            header.frame = frame;
+        }
     }
 
     // The list rests under the header by an inset of its own, which counts the whole header Spotify made. It is
@@ -282,7 +343,14 @@ static void unfoldChips(UIView *header, UIView *filters, UIScrollView *list) {
         filters.accessibilityElementsHidden = NO;
     }
     NSArray<NSNumber *> *spotify = objc_getAssociatedObject(header, &kHeightKey);
-    if (spotify) {
+    NSLayoutConstraint *hold = objc_getAssociatedObject(header, &kHoldKey);
+    if (hold) {
+        objc_setAssociatedObject(header, &kHoldKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        hold.active = NO;
+        ((NSLayoutConstraint *)objc_getAssociatedObject(header, &kChainKey)).active = YES;
+        objc_setAssociatedObject(header, &kChainKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(header, &kHeightKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (spotify) {
         objc_setAssociatedObject(header, &kHeightKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         CGRect frame = header.frame;
         frame.size.height = spotify[0].doubleValue;
@@ -300,9 +368,11 @@ static void unfoldChips(UIView *header, UIView *filters, UIScrollView *list) {
 }
 
 static void layoutRoot(UIView *page) {
-    UIView *header = SGRChildNamed(page, @"YourLibraryHeaderView");
+    UIView *header = SGRLibraryRootHeaderIn(page);
     if (!header) return;
-    [header layoutIfNeeded];
+    // 9.2.0's stack sizes the header on a pass of its own, after the page's, so it is laid out first here: the
+    // controls are placed against the header's width.
+    [(header.superview == page ? header : header.superview) layoutIfNeeded];
     SGRLibraryClearScrim(header);
 
     NSArray<UIView *> *trailing = placeRoot(header);

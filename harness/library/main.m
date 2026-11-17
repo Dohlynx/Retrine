@@ -5,13 +5,17 @@
 // gives the page the pass it gets on the way back from a playlist, `steady` builds the header with the model
 // already in it. `nocreate` leaves Create out of the model, `norecents` Recents (the account the tree is of).
 //
-// `check` runs assertions instead and exits nonzero on the first failure (harness-fail.h): with `compact`
+// `wrapped` puts the header in a plain UIStackView the way 9.2.0 does, the header's height Auto Layout's.
+//
+// `check` runs assertions instead and exits nonzero on the first failure (harness-fail.h): without `compact` the
+// header is restyled (large title, avatar at the trailing edge), in either shape of the tree; with `compact`
 // (spotifyglass.redesign.library.hideChips on) the chips fold away and come back, and the header's menu sorts,
 // switches the view and clears a filter through the mock's own controls; `late`, `nosort` and `noclear` play a list
 // loading after the page, a list without its sort row and a filter with no clear chip the menu knows. `look compact`
 // opens the menu with a finger for a screenshot. `settings` checks the Library page of Mod Settings and its preview.
 #import <UIKit/UIKit.h>
 #import <os/log.h>
+#import <objc/runtime.h>
 #import "../harness-fail.h"
 #import "Core/SGCore.h"
 #import "Library.h"
@@ -116,17 +120,38 @@ static const CGFloat kHeaderHeight = 159.33;
 @end
 
 // The header lays its own children out by frame: the scrim over all of it, the control row off the safe area,
-// the chips under the row.
+// the chips under the row. `chained` (9.2.0's, in its stack) has Auto Layout place the row and the chips and give
+// the header its height instead: row.top on the safe area, chips.top on the row's bottom, chips.bottom == the
+// header's (the constraints read off 9.2.0's header in the simulator).
 @interface _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView : UIView
 @property (nonatomic, strong) UIView *gradient, *row, *filters;
+@property (nonatomic) BOOL chained;
 @end
 
 @implementation _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView
+- (void)chain {
+    self.chained = YES;
+    self.row.translatesAutoresizingMaskIntoConstraints = NO;
+    self.filters.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [self.row.topAnchor constraintEqualToAnchor:self.safeAreaLayoutGuide.topAnchor],
+        [self.row.heightAnchor constraintEqualToConstant:48],
+        [self.row.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+        [self.row.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        [self.filters.topAnchor constraintEqualToAnchor:self.row.bottomAnchor],
+        [self.filters.heightAnchor constraintEqualToConstant:49.33],
+        [self.filters.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+        [self.filters.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        [self.filters.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
+    ]];
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width;
     CGFloat top = self.window ? self.window.safeAreaInsets.top : 62;
     self.gradient.frame = CGRectMake(0, 0, width, kHeaderHeight);
+    if (self.chained) return;
     self.row.frame = CGRectMake(0, top, width, 48);
     self.filters.frame = CGRectMake(0, top + 48, width, 49.33);
 }
@@ -135,7 +160,9 @@ static const CGFloat kHeaderHeight = 159.33;
 // The page: its content the size of it, the header over it at its full height and the list inset by that height,
 // all three stated again on every pass the way Spotify's does.
 @interface _TtC28YourLibrary_YourLibraryXImpl15YourLibraryView : UIView
-@property (nonatomic, strong) UIView *content, *header;
+// `wrapper`: 9.2.0's plain UIStackView holding the header in its place (design/spotify-920/920-library-tree.txt:488),
+// pinned at its top and sides only, so as tall as the header it arranges.
+@property (nonatomic, strong) UIView *content, *header, *wrapper;
 @property (nonatomic, strong) UICollectionView *list;
 @end
 
@@ -146,7 +173,7 @@ static const CGFloat kHeaderHeight = 159.33;
     [super layoutSubviews];
     self.content.frame = self.bounds;
     self.list.frame = self.content.bounds;
-    self.header.frame = CGRectMake(0, 0, self.bounds.size.width, kHeaderHeight);
+    if (!self.wrapper) self.header.frame = CGRectMake(0, 0, self.bounds.size.width, kHeaderHeight);
     UIEdgeInsets inset = self.list.contentInset;
     inset.top = kHeaderHeight;
     self.list.contentInset = inset;
@@ -535,15 +562,54 @@ static NSString *describeMenu(NSArray<UIMenuElement *> *elements) {
     return [sections componentsJoinedByString:@" | "];
 }
 
+static UIButton *menuButtonIn(UIView *header) {
+    for (UIView *sub in header.subviews) if ([sub isKindOfClass:UIButton.class]) return (UIButton *)sub;
+    return nil;
+}
+
+// The one block ivar of `object`'s class, every ivar listed in the failure when there is not exactly one.
+static id blockIn(id object) {
+    id block = nil;
+    NSMutableString *all = [NSMutableString string];
+    unsigned count = 0;
+    Ivar *ivars = class_copyIvarList([object class], &count);
+    for (unsigned i = 0; i < count; i++) {
+        [all appendFormat:@" %s:%s", ivar_getName(ivars[i]), ivar_getTypeEncoding(ivars[i])];
+        if (strcmp(ivar_getTypeEncoding(ivars[i]), "@?") != 0) continue;
+        if (block) HARNESS_FAIL(@"%@ has more than one block:%@", [object class], all);
+        block = object_getIvar(object, ivars[i]);
+    }
+    free(ivars);
+    if (!block) HARNESS_FAIL(@"%@ has no block:%@", [object class], all);
+    return block;
+}
+
+// What the header's menu button shows as it opens: its one deferred element's provider run, as UIKit runs it.
+// UIDeferredMenuElement keeps the provider private, as the block of the object in its _elementProvider.
+static NSArray<UIMenuElement *> *menuElements(UIView *page) {
+    UIButton *button = menuButtonIn([page valueForKey:@"header"]);
+    UIMenuElement *deferred = button.menu.children.firstObject;
+    if (button.menu.children.count != 1 || ![deferred isKindOfClass:UIDeferredMenuElement.class]) {
+        HARNESS_FAIL(@"the header's menu button %@ has no deferred menu: %@", button, button.menu.children);
+    }
+    Ivar holder = class_getInstanceVariable(UIDeferredMenuElement.class, "_elementProvider");
+    if (!holder) HARNESS_FAIL(@"UIDeferredMenuElement has no _elementProvider");
+    id provider = blockIn(object_getIvar(deferred, holder));
+    __block NSArray<UIMenuElement *> *elements = nil;
+    ((void (^)(void (^)(NSArray<UIMenuElement *> *)))provider)(^(NSArray<UIMenuElement *> *children) { elements = children; });
+    if (!elements) HARNESS_FAIL(@"the menu's provider did not complete");
+    return elements;
+}
+
 static void expectMenu(UIView *page, NSString *expected, NSString *moment) {
-    NSString *menu = describeMenu(SGRLibraryMenuElements(page));
+    NSString *menu = describeMenu(menuElements(page));
     if (![menu isEqualToString:expected]) HARNESS_FAIL(@"%@: the menu reads \"%@\", expected \"%@\"", moment, menu, expected);
     printf("PASS %s: the menu reads \"%s\"\n", moment.UTF8String, expected.UTF8String);
 }
 
 // What a pick in the menu runs: UIKit calls the action's handler.
 static void pick(UIView *page, NSString *title) {
-    for (UIMenuElement *element in SGRLibraryMenuElements(page)) {
+    for (UIMenuElement *element in menuElements(page)) {
         NSArray<UIMenuElement *> *children = [element isKindOfClass:UIMenu.class] ? ((UIMenu *)element).children : @[element];
         for (UIAction *action in children) {
             if (![action.title isEqualToString:title]) continue;
@@ -554,11 +620,6 @@ static void pick(UIView *page, NSString *title) {
         }
     }
     HARNESS_FAIL(@"no %@ in the menu", title);
-}
-
-static UIButton *menuButtonIn(UIView *header) {
-    for (UIView *sub in header.subviews) if ([sub isKindOfClass:UIButton.class]) return (UIButton *)sub;
-    return nil;
 }
 
 static UILabel *titleIn(UIView *header) {
@@ -671,8 +732,24 @@ void SGRRunSettingsChecks(UIWindow *window);
     [page.content addSubview:list];
     page.list = list;
 
-    _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView *header = (id)box(page, _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView.class, CGRectMake(0, 0, page.bounds.size.width, kHeaderHeight), nil);
+    _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView *header = (id)box(nil, _TtC28YourLibrary_YourLibraryXImpl21YourLibraryHeaderView.class, CGRectMake(0, 0, page.bounds.size.width, kHeaderHeight), nil);
     page.header = header;
+    BOOL wrapped = [args containsObject:@"wrapped"];
+    if (wrapped) {
+        UIStackView *wrapper = [[UIStackView alloc] initWithFrame:header.frame];
+        wrapper.axis = UILayoutConstraintAxisVertical;
+        wrapper.translatesAutoresizingMaskIntoConstraints = NO;
+        [page addSubview:wrapper];
+        [wrapper addArrangedSubview:header];
+        [NSLayoutConstraint activateConstraints:@[
+            [wrapper.topAnchor constraintEqualToAnchor:page.topAnchor],
+            [wrapper.leadingAnchor constraintEqualToAnchor:page.leadingAnchor],
+            [wrapper.trailingAnchor constraintEqualToAnchor:page.trailingAnchor],
+        ]];
+        page.wrapper = wrapper;
+    } else {
+        [page addSubview:header];
+    }
     header.gradient = box(header, _TtCO22Reprise_LiquidGlassKit11LiquidGlass12GradientView.class, header.bounds, @"LiquidGlass.GradientView");
     header.gradient.backgroundColor = [UIColor colorWithWhite:0 alpha:0.85];
     header.row = box(header, UIView.class, CGRectMake(0, 62, header.bounds.size.width, 48), nil);
@@ -684,6 +761,7 @@ void SGRRunSettingsChecks(UIWindow *window);
     self.chips = [SGRHarnessChips new];
     self.chips.unknownClear = [args containsObject:@"noclear"];
     self.chipsView = chips(header.filters, self.chips);
+    if (wrapped) [header chain];
 
     UIView *avatarBox = face();
     UIView *title = spotifyTitle();
@@ -694,7 +772,7 @@ void SGRRunSettingsChecks(UIWindow *window);
     UIView *recents = button(@"YourLibraryHeader.recents", @"clock.arrow.circlepath");
     UIView *search = button(@"YourLibraryHeader.search", @"magnifyingglass");
     UIView *plus = button(@"YourLibraryHeader.plus", @"plus");
-    self.controls = @{@"recents": recents, @"search": search, @"plus": plus, @"face": avatarBox};
+    self.controls = @{@"recents": recents, @"search": search, @"plus": plus, @"face": avatarBox, @"title": title};
 
     // Built with what the header knows before its model arrives -- Search alone -- unless `steady`.
     NSArray<NSString *> *initial = steady ? model : @[@"search"];
@@ -801,12 +879,38 @@ void SGRRunSettingsChecks(UIWindow *window);
            NSStringFromCGRect(menu.frame).UTF8String, menu.accessibilityLabel.UTF8String);
 }
 
+// The header restyled: the scrim and Spotify's own small title gone, the large title with Spotify's text at the
+// leading edge, and the controls after it with the avatar last, 8pt from the trailing edge.
+- (void)expectRedesignedHeader:(NSString *)moment {
+    UIView *header = self.page.header;
+    UIView *scrim = [header valueForKey:@"gradient"], *spotify = self.controls[@"title"];
+    if (scrim.alpha > 0.01 || spotify.alpha > 0.01) HARNESS_FAIL(@"%@: scrim alpha %.2f, Spotify's title alpha %.2f", moment, scrim.alpha, spotify.alpha);
+    UILabel *title = titleIn(header);
+    if (![title.text isEqualToString:@"Your Library"] || title.font.pointSize <= 21) {
+        HARNESS_FAIL(@"%@: the large title \"%@\" at %.1fpt", moment, title.text, title.font.pointSize);
+    }
+    CGRect face = SGFrameIn(self.controls[@"face"], header);
+    CGFloat inset = header.bounds.size.width - CGRectGetMaxX(face);
+    if (!near(inset, 8)) HARNESS_FAIL(@"%@: the avatar %.1fpt from the trailing edge", moment, inset);
+    for (NSString *name in @[@"recents", @"search", @"plus"]) {
+        UIView *control = self.controls[name];
+        if (control.hidden) continue;
+        CGRect frame = SGFrameIn(control, header);
+        if (CGRectGetMaxX(frame) > CGRectGetMinX(face) + 0.5 || CGRectGetMinX(frame) < CGRectGetMaxX(title.frame) - 0.5) {
+            HARNESS_FAIL(@"%@: %@ %@ not between the title %@ and the avatar %@", moment, name, NSStringFromCGRect(frame),
+                         NSStringFromCGRect(title.frame), NSStringFromCGRect(face));
+        }
+    }
+    printf("PASS %s: the large title at %.0f, the avatar 8pt from the trailing edge\n", moment.UTF8String, CGRectGetMinX(title.frame));
+}
+
 - (void)runChecks {
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
     spin(0.3);
     _TtC28YourLibrary_YourLibraryXImpl15YourLibraryView *page = self.page;
     if (![args containsObject:@"compact"]) {
         if (menuButtonIn(page.header)) HARNESS_FAIL(@"Compact library off, the header has a menu button");
+        [self expectRedesignedHeader:page.wrapper ? @"off, the header in 9.2.0's stack" : @"off"];
         [self expectChipsShown:@"off"];
         printf("PASS all off\n");
         exit(0);
@@ -933,7 +1037,7 @@ void SGRRunSettingsChecks(UIWindow *window);
 
     self.chips.filter = @"Albums";
     [self.chipsView reloadData];
-    NSString *menu = describeMenu(SGRLibraryMenuElements(page));
+    NSString *menu = describeMenu(menuElements(page));
     [self expectChipsShown:@"the menu opened over a filter with no clear chip"];
     if (![menu isEqualToString:@"Sort (Recents) | List, Grid*"]) HARNESS_FAIL(@"the menu over a filter with no clear chip reads \"%@\"", menu);
     printf("PASS all noclear\n");
