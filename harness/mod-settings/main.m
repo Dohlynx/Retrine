@@ -163,6 +163,59 @@ static NSUInteger searchPlacesChecks(void) {
 
 BOOL SGHarnessWarning;
 
+@interface SGSearchDestinationCheck : NSObject <UISearchControllerDelegate, UINavigationControllerDelegate>
+@property (nonatomic, strong) UINavigationController *nav;
+@property (nonatomic, strong) SGModPage *root;
+@property (nonatomic) NSUInteger destination;
+@property (nonatomic, weak) id<UISearchControllerDelegate> resultsDelegate;
+@end
+
+@implementation SGSearchDestinationCheck
+- (void)start {
+    self.root = (SGModPage *)self.nav.topViewController;
+    self.nav.delegate = self;
+    SGSearchForgetRecents();
+    [self search];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        HARNESS_FAIL(@"search did not finish opening destination %lu", (unsigned long)self.destination);
+    });
+}
+- (void)search {
+    UISearchController *search = SGSettingsSearchField(self.root);
+    if (search.delegate != self) self.resultsDelegate = search.delegate;
+    search.delegate = self;
+    search.searchBar.text = self.destination == 0
+        ? SGL(@"settings.main.audio_effects.title", @"Audio effects")
+        : SGL(@"settings.main.all_flags.title", @"All flags");
+    search.active = YES;
+}
+- (void)didPresentSearchController:(UISearchController *)search {
+    [search.searchResultsUpdater updateSearchResultsForSearchController:search];
+    UITableView *table = ((UITableViewController *)search.searchResultsController).tableView;
+    HARNESS_CHECK([table.dataSource tableView:table numberOfRowsInSection:1] > 0);
+    [table.delegate tableView:table didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:1]];
+}
+- (void)didDismissSearchController:(UISearchController *)search {
+    if ([self.resultsDelegate respondsToSelector:_cmd]) [self.resultsDelegate didDismissSearchController:search];
+}
+- (void)navigationController:(UINavigationController *)nav didShowViewController:(UIViewController *)page animated:(BOOL)animated {
+    if (page == self.root) {
+        [self search];
+        return;
+    }
+    NSString *expected = self.destination == 0 ? @"Audio effects" : @"All flags";
+    if (![page.title isEqualToString:expected]) HARNESS_FAIL(@"expected %@, opened %@", expected, page.title);
+    HARNESS_CHECK(![page isKindOfClass:SGModPage.class]);
+    HARNESS_CHECK(!SGSettingsSearchField(self.root).active);
+    if (++self.destination == 2) {
+        SGSearchForgetRecents();
+        NSLog(@"[harness] search destinations PASS");
+        exit(0);
+    }
+    [nav popToViewController:self.root animated:YES];
+}
+@end
+
 static void refactorChecks(void) {
     // The Mod page keeps its action's symbol when row decoration is shared with Settings.
     SGModPage *about = (SGModPage *)SGAboutPage();
@@ -374,6 +427,12 @@ static void pageStyleChecks(void) {
 }
 
 - (void)run:(NSString *)action {
+    if ([action isEqualToString:@"search-destinations"]) {
+        SGSearchDestinationCheck *check = [SGSearchDestinationCheck new];
+        check.nav = self.nav;
+        [check start];
+        return;
+    }
     if ([action isEqualToString:@"prompt-check"]) {
         extern void SGCheckTranslationPromptUI(UINavigationController *);
         SGCheckTranslationPromptUI(self.nav);

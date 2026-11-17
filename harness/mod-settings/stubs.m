@@ -29,7 +29,17 @@ static UIViewController *blank(NSString *title) {
 }
 
 #define PAGE(name) UIViewController *name(void) { return blank(@#name); }
-PAGE(SGAdsSettingsPage) PAGE(SGAllFlagsPage) PAGE(SGDSPSettingsPage) PAGE(SGAutoMixSettingsPage)
+PAGE(SGAdsSettingsPage) PAGE(SGAutoMixSettingsPage)
+UIViewController *SGDSPSettingsPage(void) {
+    SGPage *page = [SGPage new];
+    page.title = @"Audio effects";
+    return page;
+}
+UIViewController *SGAllFlagsPage(void) {
+    SGPage *page = [SGPage new];
+    page.title = @"All flags";
+    return page;
+}
 PAGE(SGGesturesSettingsPage) PAGE(SGHeadGesturesSettingsPage) PAGE(SGHomeSettingsPage) PAGE(SGLabsPage)
 PAGE(SGListeningStatsPage) PAGE(SGLiveActivitySettingsPage) PAGE(SGLockScreenWidgetPage) PAGE(SGNavbarSettingsPage)
 PAGE(SGNowPlayingBarSettingsPage) PAGE(SGQueueSettingsPage) PAGE(SGRAlbumSettingsPage) PAGE(SGRArtistSettingsPage)

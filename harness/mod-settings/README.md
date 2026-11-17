@@ -40,6 +40,12 @@ the recents back — the field is off UIKit's automatic rule, which would take t
 closed field shows no results, and up again the recents are there. It logs `search controller passed` and exits 0,
 or logs the failures and exits 1.
 
+`search-destinations` runs after the scene connects (use `redesign search-destinations`), presents the real
+search controller, and selects Audio effects and All flags through its results table. Their stubs are `SGPage`,
+not `SGModPage`, matching the production destinations. It waits for navigation's completed transition and checks
+the destination and closed search field; a missing push fails after a bounded deadline. Run in English
+(`-AppleLanguages '(en)' -spotifyglass.language 1`) and Korean (`(ko)` and `2`).
+
 `needs` pushes the Lock screen page's artwork section as iOS 18 to 25 get it (the real
 `AnimatedArtworkSettings.m`'s `SGLockScreenArtworkNeedsRow`), and `tap=<section>.<row>` selects a row and logs the
 alert it brings up: "Full-screen artwork", "Needs iOS 26", and an alert naming the iOS version.
