@@ -492,7 +492,7 @@ static UIStackView *buttonRow(UIView *bar, UIStackView **buttons, UIView **playI
 // capsule's buttons come after it. In the minimized row tuckExtras hides it with the device and add buttons.
 static void placeNextButton(UIView *bar) {
     SGRBarNextButton *next = objc_getAssociatedObject(bar, &kNextKey);
-    if (!SGHidden(SGRKeyBarNextButton)) {
+    if (!SGEnabled(SGRKeyBarNextButton)) {
         [next removeFromSuperview];
         return;
     }
@@ -531,6 +531,11 @@ typedef NS_ENUM(NSInteger, SGRBarTuck) { SGRBarTuckNone, SGRBarTuckRow, SGRBarTu
 static NSHashTable<UIView *> *sg_tucked;
 static SGRBarTuck sg_tuck;
 
+BOOL SGRBarRowKeepsConnect(void) {
+    return sg_tuck == SGRBarTuckRow && SGHidden(SGRKeyBarInlineConnect);
+}
+
+// The device button the full card hides (BarConnect.x) is placed again for the new state in the same pass.
 static void tuckExtras(UIView *bar, SGRBarTuck tuck) {
     if (!sg_tucked) sg_tucked = [NSHashTable weakObjectsHashTable];
     // A stack hides an item only once the animation it was hidden in ends, so the buttons also fade on
@@ -542,8 +547,9 @@ static void tuckExtras(UIView *bar, SGRBarTuck tuck) {
         SGRAnimate(SGRMotionRespond, ^{ for (UIView *item in items) item.alpha = 1; }, nil);
         sg_tuck = tuck;
     }
+    SGRBarPlaceConnect(bar);
     if (tuck == SGRBarTuckNone) return;
-    BOOL keepConnect = tuck == SGRBarTuckRow && SGHidden(SGRKeyBarInlineConnect), keepNext = tuck == SGRBarTuckCapsule;
+    BOOL keepConnect = SGRBarRowKeepsConnect(), keepNext = tuck == SGRBarTuckCapsule;
     SGForEachView(bar, ^(UIView *v) {
         NSString *name = v.accessibilityIdentifier;
         BOOL connect = [name isEqualToString:@"Components.ConnectButtonOutputSwitcher"];

@@ -566,4 +566,6 @@ int main(int argc, char *argv[]) {
 // Before every %ctor, so the redesign's gate reads on.
 __attribute__((constructor(101))) static void harnessDefaults(void) {
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"spotifyglass.redesign"];
+    // The picture-aware cover is the Full screen layout's, which an album no longer has unset.
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"spotifyglass.redesign.album.fullCover"];
 }

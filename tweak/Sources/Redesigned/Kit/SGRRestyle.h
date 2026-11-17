@@ -34,6 +34,11 @@ void SGRConcealView(UIView *view);
 // on the next call, and a log line says so once.
 void SGRSuppress(UIView *view);
 
+// Alpha 1 whatever Spotify sets, for one of Spotify's own classes, through the same override on its class that
+// SGRSuppress uses (only the instances asked for are held); elsewhere it is only set on each call and a log line says so.
+// For a header the redesign keeps solid where Spotify fades it as the page scrolls (Album/AlbumHeader.x).
+void SGRKeepOpaque(UIView *view);
+
 // Alpha 0, no touches, hidden from accessibility, set again on every call: for Spotify's Swift views,
 // which SGRSuppress cannot keep.
 void SGRVanish(UIView *view);
@@ -51,6 +56,12 @@ void SGRMonospacedDigits(UILabel *label);
 // This is how a picture that lands after a screen has been laid out reaches it: setting an image lays no
 // ancestor out, so nothing else tells the screen it is there.
 BOOL SGRObserveImage(UIImageView *view, void (^changed)(UIImageView *view));
+
+// `changed` after every setText: and setAttributedText: on a plain UILabel, Spotify's included, for as long as the
+// label lives, by a runtime subclass of the instance like SGRSuppress. A second call replaces the block. NO when the
+// label cannot be subclassed. For a label of the redesign's drawn over one of Spotify's: a cell reused for another
+// item is given its new text without any layout pass that would tell.
+BOOL SGRObserveText(UILabel *label, void (^changed)(UILabel *label));
 
 // `laidOut` after every layoutSubviews of the view, Spotify's included, for as long as the view lives, by
 // a runtime subclass of the instance like SGRSuppress. A second call replaces the block, and a pass started

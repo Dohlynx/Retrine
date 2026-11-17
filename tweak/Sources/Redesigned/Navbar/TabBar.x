@@ -281,7 +281,7 @@ static NSString *const kOtherTabSymbol = @"square.grid.2x2";
 // Apple symbols' SF Symbol for the tab of Spotify's named `title`; nil with the switch off, and for a tab whose page
 // Spotify's list has not named, which keeps Spotify's own glyph.
 static NSString *stockSymbol(NSString *title) {
-    if (!SGFlag(SGRKeyNavbarSymbols, NO) || !title) return nil;
+    if (!SGEnabled(SGRKeyNavbarSymbols) || !title) return nil;
     NSString *uri = SGRNavbarStockURIs()[title];
     if (!uri) return nil;
     if (pageSymbols()[uri]) return pageSymbols()[uri];
@@ -726,7 +726,7 @@ static void syncBar(UIView *stockBar) {
     }
     if (!sources.count) return;
     // An item with no title is drawn by UIKit as its glyph alone, centered, on a bar of the same height.
-    BOOL hideLabels = SGEnabled(SGRKeyNavbarHideLabels);
+    BOOL hideLabels = SGHidden(SGRKeyNavbarHideLabels);
     SGRSystemTabBar *apartBar = objc_getAssociatedObject(stockBar, &kApartBarKey);
     UIView *active = SGRNavbarLitTab();
     if (![sources containsObject:active]) active = nil;

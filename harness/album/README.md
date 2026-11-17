@@ -18,6 +18,10 @@ clone (iOS 26.5, default text size, motion off) with the same fixtures at
 a scratch source tree selected by `HARNESS_SRC`, never by reverting the working
 tree. Both setting states must match these independent captures, including the
 info/hero frames and visible title, details, description and action frames.
+The creator and details literals (and what they move: the info's height, the playlist title, the album's
+row) were captured again the same way after the header took the Music app's sizes (creator Title 3 regular,
+24 pt high and 111 pt wide for the fixture's name, against Body's 21 and 96; details Caption 1 semibold, 15 pt
+against Footnote's 16); every other literal is unchanged.
 The iPad playlist also checks Card cover restoration after switching beside off,
 compact width and replacing the source cover, with both nil and existing masks.
 

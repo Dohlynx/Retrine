@@ -293,7 +293,7 @@ static SGRBarNextButton *nextIn(UIStackView *stack) {
     return found;
 }
 
-// Off unless set; on, one button after Spotify's buttons, last in the row and as large as play's item, Spotify's
+// On until switched off: one button after Spotify's buttons, last in the row and as large as play's item, Spotify's
 // buttons left as they were, that asks the player for the next track, hidden in the minimized row with the add button
 // and back with the full card; off again, gone from the row.
 static void checkNextButton(void) {
@@ -309,7 +309,7 @@ static void checkNextButton(void) {
 
     unset(SGRKeyBarNextButton);
     placeNextButton(bar);
-    if (nextIn(row)) HARNESS_FAIL(@"next button: shown with the switch unset");
+    if (!nextIn(row)) HARNESS_FAIL(@"next button: missing with the switch unset (on until switched off)");
     sg_checks++;
 
     SGSetEnabled(SGRKeyBarNextButton, YES);
@@ -368,6 +368,53 @@ static void checkNextButton(void) {
     sg_checks++;
     [bar removeFromSuperview];
     unset(SGRKeyBarNextButton);
+}
+
+// Spotify's device button view (Connect_EntryPointsImpl.ConnectButtonView in 9.1.90), found by its class name.
+@interface SGHarnessConnectButtonView : UIView
+@end
+@implementation SGHarnessConnectButtonView
+@end
+
+// The device button hidden on the full card while that switch is unset, shown in the minimized row while the row's
+// Device button is on, through a layout pass of Spotify's bar there, and hidden again back on the full card; with the
+// row's Device button off the row hides it too.
+static void checkConnectButton(void) {
+    UIView *bar = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 360, 56)];
+    UIStackView *stack = [[UIStackView alloc] initWithFrame:CGRectMake(172, 8, 132, 40)];
+    [bar addSubview:stack];
+    UIView *item = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 44, 40)];
+    UIView *connect = [[SGHarnessConnectButtonView alloc] initWithFrame:item.bounds];
+    UIButton *button = [[UIButton alloc] initWithFrame:item.bounds];
+    button.accessibilityIdentifier = @"Components.ConnectButtonOutputSwitcher";
+    [connect addSubview:button];
+    [item addSubview:connect];
+    [stack addArrangedSubview:item];
+
+    unset(SGRHideBarConnect);
+    SGSetEnabled(SGRKeyBarInlineConnect, YES);
+    SGRBarPlaceConnect(bar);
+    tuckExtras(bar, SGRBarTuckNone);
+    if (!item.hidden) HARNESS_FAIL(@"device button: shown on the full card with its switch unset");
+    sg_checks++;
+
+    tuckExtras(bar, SGRBarTuckRow);
+    SGRBarPlaceConnect(bar);
+    tuckExtras(bar, SGRBarTuckRow);
+    if (item.hidden || item.alpha < 1) HARNESS_FAIL(@"device button: in the row with its Device button on, hidden %d alpha %.2f", item.hidden, item.alpha);
+    sg_checks++;
+
+    tuckExtras(bar, SGRBarTuckNone);
+    SGRBarPlaceConnect(bar);
+    if (!item.hidden) HARNESS_FAIL(@"device button: shown back on the full card");
+    sg_checks++;
+
+    unset(SGRKeyBarInlineConnect);
+    tuckExtras(bar, SGRBarTuckRow);
+    SGRBarPlaceConnect(bar);
+    if (!item.hidden) HARNESS_FAIL(@"device button: shown in the row with its Device button off");
+    tuckExtras(bar, SGRBarTuckNone);
+    sg_checks++;
 }
 
 // The cover's two views of Spotify's, the outer one plain and the image's own with Spotify's 4pt corners, as rounded
@@ -461,6 +508,7 @@ static void run(void) {
     checkInlineArtist();
     checkTextSize();
     checkNextButton();
+    checkConnectButton();
     checkArtworkShape();
     checkStaleCapsuleRow();
 

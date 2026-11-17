@@ -64,7 +64,7 @@ static void coverChecks(void) {
     NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
     for (NSString *key in @[albumKey, playlistKey, legacyKey, migratedKey, SGKeyStock]) [prefs removeObjectForKey:key];
     SGPrefsChanged();
-    check(SGRPageFullCover(albumKey) && SGRPageFullCover(playlistKey), @"fresh install keeps both full-screen covers");
+    check(!SGRPageFullCover(albumKey) && SGRPageFullCover(playlistKey), @"fresh install: album card, playlist full screen");
     for (NSNumber *old in @[@NO, @YES]) {
         [prefs removeObjectForKey:migratedKey];
         [prefs removeObjectForKey:albumKey]; [prefs removeObjectForKey:playlistKey];

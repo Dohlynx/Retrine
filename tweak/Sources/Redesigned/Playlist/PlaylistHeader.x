@@ -729,9 +729,10 @@ static void applyHeader(UIView *layout) {
     layout.accessibilityElements = info.sgr_coverBeside ? @[hero, info] : nil;
     SGRHeroVeil *veil = hero.veil;
     if (veil) {
-        veil.info = info;
         UIView *list = SGRFindByIdentifier(SGRPlaylistPageOf(layout), SGRPlaylistListIdentifier, &kListKey);
-        [veil followScroll:[list isKindOfClass:UIScrollView.class] ? (UIScrollView *)list : nil];
+        UIScrollView *scroll = [list isKindOfClass:UIScrollView.class] ? (UIScrollView *)list : nil;
+        [info clipUnderTopBarFollowing:scroll];
+        [veil followScroll:scroll];
         [veil update];
     }
 }

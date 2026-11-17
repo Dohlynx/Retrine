@@ -6,7 +6,7 @@
 #import "SGRRefinements.h"
 #import "SGRTokens.h"
 
-static char kPlateKey, kImageObserverKey, kLayoutObserverKey, kSuppressedKey;
+static char kPlateKey, kImageObserverKey, kLayoutObserverKey, kHeldAlphaKey, kTextObserverKey;
 
 #pragma mark - instance subclasses
 
@@ -96,6 +96,26 @@ static void logWatch(UIView *view, SEL selector, BOOL kept, BOOL onClass) {
     if (!SGLogFirst(&logged, mark)) return;
     if (!kept) SGLog(@"redesign kit: %@ cannot be watched for %s", name, sel_getName(selector));
     else if (onClass) SGLog(@"redesign kit: %@ watched for %s through its class", name, sel_getName(selector));
+}
+
+// `alpha` held on an instance of one of Spotify's own classes through one setAlpha: override on its class, shared by
+// SGRSuppress (0) and SGRKeepOpaque (1); every instance not marked keeps what it is given. The class `class` answers,
+// so an instance KVO observes (the player's repeat button) is held too: KVO's class passes setAlpha: on to it. Only a
+// class inside the app: a plain UILabel KVO observes answers UILabel, which must never be touched. An instance marked
+// on an earlier call is held already: callers ask on every layout pass.
+static BOOL holdAlphaOnClass(UIView *view, CGFloat alpha) {
+    NSNumber *held = objc_getAssociatedObject(view, &kHeldAlphaKey);
+    if (held && held.doubleValue == alpha) return YES;
+    BOOL spotifys = [[NSBundle bundleForClass:view.class].bundlePath hasPrefix:NSBundle.mainBundle.bundlePath];
+    BOOL onClass = spotifys && overrideOnClass(view.class, @selector(setAlpha:), ^id(IMP replaced) {
+        return ^(UIView *self, CGFloat given) {
+            NSNumber *hold = objc_getAssociatedObject(self, &kHeldAlphaKey);
+            ((void (*)(id, SEL, CGFloat))replaced)(self, @selector(setAlpha:), hold ? hold.doubleValue : given);
+        };
+    });
+    if (onClass) objc_setAssociatedObject(view, &kHeldAlphaKey, @(alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    logWatch(view, @selector(setAlpha:), onClass, onClass);
+    return onClass;
 }
 
 #pragma mark - views
@@ -203,24 +223,17 @@ void SGRSuppress(UIView *view) {
         });
     });
     // One of Spotify's Swift classes (an Encore button, whose state render sets its alpha back to 1) keeps it
-    // through an override on the class, which only holds the instances marked here. The class `class` answers,
-    // so an instance KVO observes (the player's repeat button) is held too: KVO's class passes setAlpha: on to it.
-    // Only a class inside the app: a plain UILabel KVO observes answers UILabel, which must never be touched.
-    // An instance marked on an earlier call is held already: callers ask on every layout pass.
-    BOOL onClass = objc_getAssociatedObject(view, &kSuppressedKey) != nil;
-    if (!kept && !onClass) {
-        BOOL spotifys = [[NSBundle bundleForClass:view.class].bundlePath hasPrefix:NSBundle.mainBundle.bundlePath];
-        onClass = spotifys && overrideOnClass(view.class, @selector(setAlpha:), ^id(IMP replaced) {
-            return ^(UIView *self, CGFloat alpha) {
-                ((void (*)(id, SEL, CGFloat))replaced)(self, @selector(setAlpha:), objc_getAssociatedObject(self, &kSuppressedKey) ? 0 : alpha);
-            };
-        });
-        if (onClass) objc_setAssociatedObject(view, &kSuppressedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        logWatch(view, @selector(setAlpha:), onClass, onClass);
-    }
+    // through an override on the class, which only holds the instances marked here (holdAlphaOnClass).
+    if (!kept) holdAlphaOnClass(view, 0);
     view.alpha = 0;
     view.userInteractionEnabled = NO;
     view.accessibilityElementsHidden = YES;
+}
+
+void SGRKeepOpaque(UIView *view) {
+    if (!view) return;
+    holdAlphaOnClass(view, 1);
+    if (view.alpha != 1) view.alpha = 1;
 }
 
 static BOOL hasMonospacedDigits(UIFont *font) {
@@ -314,6 +327,24 @@ BOOL SGRObserveImage(UIImageView *view, void (^changed)(UIImageView *view)) {
     });
     if (first) logWatch(view, @selector(setImage:), kept || onClass, onClass);
     return kept || onClass;
+}
+
+BOOL SGRObserveText(UILabel *label, void (^changed)(UILabel *label)) {
+    if (![label isKindOfClass:UILabel.class]) return NO;
+    objc_setAssociatedObject(label, &kTextObserverKey, changed, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    BOOL kept = adopt(label, "SGRTextObserved_", ^(Class subclass, Class original) {
+        for (NSString *name in @[@"setText:", @"setAttributedText:"]) {
+            SEL selector = NSSelectorFromString(name);
+            addOverride(subclass, original, selector, ^(UILabel *self, id value) {
+                struct objc_super parent = {self, original};
+                ((void (*)(struct objc_super *, SEL, id))objc_msgSendSuper)(&parent, selector, value);
+                void (^block)(UILabel *) = objc_getAssociatedObject(self, &kTextObserverKey);
+                if (block) block(self);
+            });
+        }
+    });
+    if (!kept) logWatch(label, @selector(setText:), NO, NO);
+    return kept;
 }
 
 // A pass the block itself sets off (a frame it moves) reaches layoutSubviews again before the block has

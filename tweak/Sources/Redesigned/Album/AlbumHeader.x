@@ -18,8 +18,8 @@
 // Spotify's stacks meant answering every pass of theirs, and the element framework measured the title for
 // its own font. So Spotify's whole column is concealed and the Kit's view is drawn over the header in its
 // place, reading its text off Spotify's concealed labels -- so it is in the app's language and follows
-// whatever Spotify shows -- and drawing and firing Spotify's own controls. The header keeps its height, its
-// fade as the page scrolls and its place in the stack.
+// whatever Spotify shows -- and drawing and firing Spotify's own controls. The header keeps its height and its
+// place in the stack; Spotify's fade of it as the page scrolls is held off, the info clipped under the bar instead.
 //
 // Play and shuffle are not in the header. The album page floats them over the page, pinned to the top
 // trailing corner outside the scroll (01.txt:1431, :1436): they are concealed where they are, and the row
@@ -1288,11 +1288,15 @@ static void applyHeader(UIView *header, UIView *page) {
     SGRAlbumHero *hero = objc_getAssociatedObject(header, &kHeroKey);
     hero.besideFrame = beside;
     header.accessibilityElements = info.sgr_coverBeside ? @[hero, info] : nil;
-    // The header scrolls with the page's scroll view, the hero and the info with it.
+    // The header scrolls with the page's scroll view, the hero and the info with it. Spotify fades its header
+    // element as the page scrolls; over the Music app's layout that left the title, the artist and the row faint
+    // under the bar, so the element stays solid and the info is clipped under the bar instead.
+    UIScrollView *scroll = SGRStretchHeroScrollAbove(header);
+    SGRKeepOpaque(header.superview);
+    [info clipUnderTopBarFollowing:scroll];
     SGRHeroVeil *veil = hero.veil;
     if (veil) {
-        veil.info = info;
-        [veil followScroll:SGRStretchHeroScrollAbove(header)];
+        [veil followScroll:scroll];
         [veil update];
     }
     [hero playMotionForArtist:artist album:album];

@@ -996,18 +996,18 @@ static NSString *const kWatched[4] = {@"platter", @"glyph", @"split platter", @"
 #pragma mark - the app
 
 // Before every %ctor, so the redesign's gate reads on; the fade under the bars on unless the launch line says `off`;
-// Apple symbols off, as a run before may have left it (`symbols` sets it itself), and the tabs' names as the product's
-// default has them, hidden, but shown from the bar's first pass with `symbols` (not `symbols hold`), whose setting
-// outlives its run.
+// Apple symbols stored off (the product's default is on; `symbols` switches it itself), and the tabs' names stored
+// hidden (the product's default shows them), but shown from the bar's first pass with `symbols` (not `symbols hold`):
+// the glyph checks below compare Spotify's own glyphs on a bar of icons alone.
 __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
     [store setBool:YES forKey:@"spotifyglass.redesign"];
     if ([args containsObject:@"off"]) [store setBool:NO forKey:SGRKeyNavbarFade];
     else [store removeObjectForKey:SGRKeyNavbarFade];
-    [store removeObjectForKey:SGRKeyNavbarSymbols];
-    if (args.count > 1 && [args[1] isEqualToString:@"symbols"] && ![args containsObject:@"hold"]) [store setBool:NO forKey:SGRKeyNavbarHideLabels];
-    else [store removeObjectForKey:SGRKeyNavbarHideLabels];
+    [store setBool:NO forKey:SGRKeyNavbarSymbols];
+    BOOL names = args.count > 1 && [args[1] isEqualToString:@"symbols"] && ![args containsObject:@"hold"];
+    [store setBool:!names forKey:SGRKeyNavbarHideLabels];
 }
 
 void SGHarnessRunNavbarPage(SGHarnessChrome *chrome, void (^barChecked)(BOOL on));

@@ -383,6 +383,8 @@ static void applyHeader(UIView *header, BOOL full) {
         info.trailingOffSymbol = @"person.badge.plus";
         info.trailingOnSymbol = @"person.fill.checkmark";
         info.roundPlay = roundPlay();
+        // The Music app's artist name: large and at the leading edge, on the bottom of the photo.
+        info.largeTitle = YES;
         objc_setAssociatedObject(container, &kInfoKey, info, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (info.superview != container) [container addSubview:info];
@@ -424,7 +426,7 @@ static void applyHeader(UIView *header, BOOL full) {
     // The container scrolls with the page's scroll view, the hero and the info with it.
     SGRHeroVeil *veil = hero.veil;
     if (veil) {
-        veil.info = info;
+        [info clipUnderTopBarFollowing:list];
         [veil followScroll:list];
         [veil update];
     }

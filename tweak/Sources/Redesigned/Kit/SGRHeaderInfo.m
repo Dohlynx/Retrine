@@ -23,7 +23,9 @@ BOOL SGRPageFullCover(NSString *key) {
         [prefs setBool:YES forKey:SGRKeyFullCoverMigrated];
         SGPrefsChanged();
     }
-    return SGEnabled(key);
+    // Unset, an album's static cover is the Music app's centred card (its animated cover fills the hero either way);
+    // a playlist's picture is full screen.
+    return SGFlag(key, ![key isEqualToString:SGRKeyAlbumFullCover]);
 }
 
 static BOOL playInPageColour(void) {
@@ -54,6 +56,20 @@ static const CGFloat kRoundRow = 64, kRoundSpacing = 20;
 // The pinned top bar under the top safe area, how far past its line the content goes before it is clipped, and how
 // far under the line the clip fades in, clear at the line and opaque from there.
 static const CGFloat kTopBar = 44, kUnderBar = 0.5, kBarFade = 14;
+static void *kClipScrollContext = &kClipScrollContext;
+
+// The title, the creator, the length and the description, in the Music app's sizes (iOS 26.4): the title Title2 bold,
+// the creator about the title's size (Title3) regular, the metadata Caption1 semibold, the description Footnote.
+typedef NS_ENUM(NSUInteger, SGRInfoLine) { SGRInfoTitle, SGRInfoCreator, SGRInfoLength, SGRInfoAbout };
+static UIFontTextStyle infoStyle(SGRInfoLine line) {
+    return @[UIFontTextStyleTitle2, UIFontTextStyleTitle3, UIFontTextStyleCaption1, UIFontTextStyleFootnote][line];
+}
+static UIFontWeight infoWeight(SGRInfoLine line) {
+    return line == SGRInfoTitle ? UIFontWeightBold : line == SGRInfoLength ? UIFontWeightSemibold : UIFontWeightRegular;
+}
+static UIFont *infoFont(SGRInfoLine line) {
+    return SGCategoryCappedFont(infoStyle(line), infoWeight(line), UIContentSizeCategoryExtraLarge);
+}
 
 static UILabel *infoLabel(UIView *parent, UIFont *font, UIColor *color, NSInteger lines, NSTextAlignment alignment) {
     UILabel *label = [UILabel new];
@@ -205,6 +221,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     CGFloat _contentTop;
     CAGradientLayer *_barClip;
     BOOL _clipsUnderBar;
+    __weak UIScrollView *_clipScroll;
     BOOL _beside, _besideFonts;
     __weak UIView *_besideMore, *_besideDownload;
     __weak UIView *_morePage, *_downloadPage;
@@ -215,15 +232,11 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
     _measuredWidth = -1;
-    _title = infoLabel(self, SGCategoryCappedFont(UIFontTextStyleTitle2, UIFontWeightBold, UIContentSizeCategoryExtraLarge),
-                       SGRPrimary(), 2, NSTextAlignmentCenter);
+    _title = infoLabel(self, infoFont(SGRInfoTitle), SGRPrimary(), 2, NSTextAlignmentCenter);
     _title.accessibilityTraits = UIAccessibilityTraitHeader;
-    _creator = infoLabel(self, SGCategoryCappedFont(UIFontTextStyleBody, UIFontWeightRegular, UIContentSizeCategoryExtraLarge),
-                         SGRSecondary(), 1, NSTextAlignmentCenter);
-    _length = infoLabel(self, SGCategoryCappedFont(UIFontTextStyleFootnote, UIFontWeightRegular, UIContentSizeCategoryExtraLarge),
-                        SGRTertiary(), 1, NSTextAlignmentCenter);
-    _about = infoLabel(self, SGCategoryCappedFont(UIFontTextStyleFootnote, UIFontWeightRegular, UIContentSizeCategoryExtraLarge),
-                       SGRSecondary(), 2, NSTextAlignmentNatural);
+    _creator = infoLabel(self, infoFont(SGRInfoCreator), SGRSecondary(), 1, NSTextAlignmentCenter);
+    _length = infoLabel(self, infoFont(SGRInfoLength), SGRSecondary(), 1, NSTextAlignmentCenter);
+    _about = infoLabel(self, infoFont(SGRInfoAbout), SGRSecondary(), 2, NSTextAlignmentNatural);
     _picture = [UIImageView new];
     _picture.contentMode = UIViewContentModeScaleAspectFill;
     _picture.clipsToBounds = YES;
@@ -249,6 +262,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 - (BOOL)sgr_coverBeside { return _beside; }
 
 - (void)dealloc {
+    [_clipScroll removeObserver:self forKeyPath:@"contentOffset" context:kClipScrollContext];
     if (_besideDefaultsObserver) [NSNotificationCenter.defaultCenter removeObserver:_besideDefaultsObserver];
     if (_besideTextObserver) [NSNotificationCenter.defaultCenter removeObserver:_besideTextObserver];
 }
@@ -262,18 +276,16 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 }
 
 - (void)sgr_besideTypography:(BOOL)beside traits:(UITraitCollection *)traits {
-    NSArray *styles = @[UIFontTextStyleTitle2, UIFontTextStyleBody, UIFontTextStyleFootnote, UIFontTextStyleFootnote];
     NSArray<UILabel *> *labels = @[_title, _creator, _length, _about];
-    for (NSUInteger i = 0; i < labels.count; i++) {
+    for (SGRInfoLine i = SGRInfoTitle; i < labels.count; i++) {
         UILabel *label = labels[i];
-        UIFontWeight weight = i == 0 ? UIFontWeightBold : UIFontWeightRegular;
         if (beside) {
-            UIFont *preferred = [UIFont preferredFontForTextStyle:styles[i] compatibleWithTraitCollection:traits];
-            label.font = [UIFont systemFontOfSize:preferred.pointSize weight:weight];
+            UIFont *preferred = [UIFont preferredFontForTextStyle:infoStyle(i) compatibleWithTraitCollection:traits];
+            label.font = [UIFont systemFontOfSize:preferred.pointSize weight:infoWeight(i)];
             label.numberOfLines = 0;
         } else {
-            label.font = SGCategoryCappedFont(styles[i], weight, UIContentSizeCategoryExtraLarge);
-            label.numberOfLines = i == 0 || i == 3 ? 2 : 1;
+            label.font = infoFont(i);
+            label.numberOfLines = i == SGRInfoTitle || i == SGRInfoAbout ? 2 : 1;
         }
     }
     _besideFonts = beside;
@@ -671,6 +683,15 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     if (_trailing.source) [_trailing feedFrom:_trailing.source];
 }
 
+- (void)setLargeTitle:(BOOL)largeTitle {
+    if (_largeTitle == largeTitle) return;
+    _largeTitle = largeTitle;
+    _title.font = largeTitle ? SGCategoryCappedFont(UIFontTextStyleLargeTitle, UIFontWeightBold, UIContentSizeCategoryExtraLarge)
+                             : infoFont(SGRInfoTitle);
+    _measuredWidth = -1;
+    [self setNeedsLayout];
+}
+
 - (void)setRoundPlay:(BOOL)roundPlay {
     if (_roundPlay == roundPlay) return;
     _roundPlay = roundPlay;
@@ -690,8 +711,26 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     return _roundPlay ? kRoundRow : SGRActionHeight;
 }
 
+- (void)clipUnderTopBarFollowing:(UIScrollView *)scroll {
+    if (scroll != _clipScroll) {
+        [_clipScroll removeObserver:self forKeyPath:@"contentOffset" context:kClipScrollContext];
+        _clipScroll = scroll;
+        [scroll addObserver:self forKeyPath:@"contentOffset" options:0 context:kClipScrollContext];
+    }
+    _clipsUnderBar = scroll != nil;
+    if (_clipsUnderBar) [self clipUnderTopBar];
+    else if (_barClip && self.layer.mask == _barClip) self.layer.mask = nil;
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context != kClipScrollContext) {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+        return;
+    }
+    [self clipUnderTopBar];
+}
+
 - (void)clipUnderTopBar {
-    _clipsUnderBar = YES;
     CALayer *mask = self.layer.mask;
     if (mask && mask != _barClip) return;
     UIWindow *window = self.window;
@@ -748,6 +787,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     CGFloat width = self.bounds.size.width, inset = _beside ? 0 : kSide, text = MAX(0, width - 2 * inset);
     BOOL rtl = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
     NSTextAlignment leading = rtl ? NSTextAlignmentRight : NSTextAlignmentLeft;
+    BOOL atLeading = _beside || _largeTitle;
     CGFloat content = [self contentHeightForWidth:width];
     CGFloat y = round(self.bounds.size.height - SGRHeaderInfoBottom - content);
     if (self.pinnedTop > 0 && self.pinnedTop + content <= self.bounds.size.height) y = round(self.pinnedTop);
@@ -764,7 +804,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
         if (previous) y += [self sgr_gapAfter:previous];
         CGSize size = [self sgr_sizeOf:label width:text];
         CGFloat height = ceil(size.height);
-        label.textAlignment = _beside ? leading : NSTextAlignmentCenter;
+        label.textAlignment = atLeading ? leading : NSTextAlignmentCenter;
         label.frame = CGRectMake(inset, y, text, height);
         // The name at its own width, so a tap beside it is the page's (-sgr_creatorHit:), and before it the
         // picture, a line high so the line keeps its height, the two centered together. The picture leads, so it
@@ -775,7 +815,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
             CGFloat picture = faces || !_picture.hidden ? lead + kPictureGap : 0;
             CGFloat named = MIN(ceil(size.width), MAX(0, text - picture));
             CGFloat x = round((width - picture - named) / 2);
-            if (_beside) x = rtl ? width - picture - named : 0;
+            if (atLeading) x = rtl ? inset + text - picture - named : inset;
             CGFloat leadX = rtl ? x + named + kPictureGap : x;
             if (faces) {
                 CGFloat side = [self sgr_faceSide], scale = self.traitCollection.displayScale ?: UIScreen.mainScreen.scale;
@@ -787,7 +827,8 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
             label.frame = CGRectMake(rtl ? x : x + picture, y, named, height);
         }
         if (label == _title && _titleImage) {
-            _logo.frame = CGRectMake(round((width - size.width) / 2), y, size.width, height);
+            CGFloat x = atLeading ? (rtl ? inset + text - size.width : inset) : round((width - size.width) / 2);
+            _logo.frame = CGRectMake(x, y, size.width, height);
             _logo.accessibilityLabel = _title.text;
         }
         y += height;
