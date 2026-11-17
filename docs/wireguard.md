@@ -86,7 +86,7 @@ design addresses caller-fd ownership and asynchronous semantics.
 
 ## Exact admission
 
-Ordinary Vitrine supports 9.1.78, 9.1.88 and 9.1.90. Only
+Ordinary Vitrine supports 9.1.78, 9.1.88, 9.1.90 and 9.2.0. Only
 `tweak/Sources/Shared/WireGuard/SGWGTargets.inc` admits WireGuard targets:
 
 | Version / build | Evidence |
@@ -94,6 +94,39 @@ Ordinary Vitrine supports 9.1.78, 9.1.88 and 9.1.90. Only
 | 9.1.78 / 9.1.88 | No WireGuard transport acceptance; rejected by this feature. |
 | 9.1.90 / 919002269 | Local static IPA scan: main `fbce22c17e1b3e0d9be866ff9291943e`, shared `2e074234cfc63f0e9255c9881824167a`. |
 | 9.1.94 / 919401928 | Fork static evidence only: main `1dfddfa139c03735b9a5fdfa475f4700`, shared `2c12ca8c48ad33f8af6569c084a6324f`. Not Vitrine playback certification. |
+| 9.2.0 / 920002054 | Local static IPA/ABI scan: main `b49e75781d8635d38bb57daf68fed8a8`, shared `30bac55f8361373aad607f0535395641`. |
+
+The 9.2.0 qualification repeats the 9.1.90 source inventory and binary scan.
+`SGWGTransport.m` is the only Spotify-class consumer: its three delegates each
+retain both selectors in the hook inventory, with full encoding
+`v40@0:8@16@24@32` in both supplied IPAs. `dyld_info -objc` class/selector/IMP
+records joined to `otool -ov` encodings establish receiver-specific ABI, not
+global string presence. The 9.2.0 completion/data IMPs are respectively
+`0x1026fdb80`/`0x106e143c4` (SPTCoreURLSessionDataDelegate),
+`0x106dd04fc`/`0x1067ff610` (HttpClientURLSession), and
+`0x2c12e4`/`0x2c1008` (SPTDataLoaderService in SpotifyShared).
+`SGWGNative.m` uses the five named system imports above, all present in the main
+image in both versions; neither shared image imports these five symbols.
+The installer permits zero slots in SpotifyShared, but not the main image.
+No Spotify ivar, fixed code offset, vtable or instruction patch is used by
+WireGuard. Core hooks target Apple Foundation/Network APIs and retain their
+runtime ABI/capability checks; static Spotify qualification cannot certify those
+OS implementations or live import-slot readiness.
+
+On an iOS 26.5 clone of the logged-in Vitrine simulator, the no-Pixie 9.2.0
+WireGuard build reached a real Proton US exit with a recent handshake,
+`guards: installed; ready: yes`, six delegate hooks and five of five native
+slots guarded (none deferred). Playback advanced on “Coullion (Fool)” and,
+after Next, “Johnnie Can't Dance” (7.8 → 15.4 seconds); observed Spotify media
+bytes rose from 460,649 to 12,623,297. Native mode also relaunched, handshook
+and resumed playback; neither look showed the target-version warning.
+This is simulator evidence, not device certification or proof of all routes.
+The simulator conversion required removing its duplicate tweak load command
+from the disposable app. Clipboard import blocked in UIKit's pasteboard read,
+before the importer; acceptance instead called the production Keychain importer
+and enable API through the debugger, removed the temporary profile copy, then
+restarted. Device file/clipboard import, lock-screen playback and broken-profile
+recovery remain to be checked.
 
 Both runtime and preflight validate version, **CFBundleVersion and both UUIDs**.
 Unlisted/future versions are rejected. Preflight also requires original bundle
@@ -149,7 +182,9 @@ SHA-256 verified when Go is not installed; remove its caches afterwards.
 ```sh
 (cd WireGuard && go mod verify && go test ./...)
 python3 -B harness/wireguard/test_transport_scan.py
+bash harness/wireguard/check-admission.sh
 python3 -B scripts/spotify-transport-scan.py ipa/Spotify-9.1.90.ipa --wireguard-compatible
+python3 -B scripts/spotify-transport-scan.py ipa/Spotify-9.2.0.ipa --wireguard-compatible
 python3 -B harness/wireguard/run_macos.py --live-profile /path/to/private.conf --expect-country US
 bash WireGuard/build-ios.sh
 (cd tweak && /usr/bin/lockf -k /tmp/vitrine-build.lock env -u MAKELEVEL THEOS=$HOME/theos gmake)

@@ -31,7 +31,7 @@ decrypted IPA and signed with your own certificate.
 Vitrine is a fork of [spoti.pw](https://github.com/skopevoj/spoti.pw) by Vojtěch Škopek, taken from
 0.21.1 (commit `c790445`, 2026-09-23), the last version released under GPL-3.0, and modified since.
 
-Built and tested on **Spotify 9.1.78**, **Spotify 9.1.88** and **Spotify 9.1.90**.
+Supports **Spotify 9.1.78**, **Spotify 9.1.88**, **Spotify 9.1.90** and **Spotify 9.2.0**.
 The mod hooks Spotify's own classes, which change between releases, so any other version may build and then break.
 
 | | |
@@ -46,7 +46,7 @@ to Spotify's own screens with everything else the mod adds on top. Both live in 
 
 ## Build it
 
-No IPA is distributed. Bring a decrypted **Spotify 9.1.78**, **9.1.88** or **9.1.90** IPA; you get an unsigned
+No IPA is distributed. Bring a decrypted **Spotify 9.1.78**, **9.1.88**, **9.1.90** or **9.2.0** IPA; you get an unsigned
 `vitrine-<mod version>.ipa` to sign with SideStore, Feather or any certificate signer. Releases have no `.deb`:
 injected by hand, the tweak alone misses the app changes the redesign needs (its glass tab bar), the Live
 Activity, Music Haptics in the background and Connect's local discovery, so build the IPA instead.
@@ -55,7 +55,7 @@ App-local **WireGuard / proxy is included by default**, but stays off until you 
 or save a proxy, enable it and restart. It is **not a leak-proof or device-wide VPN**:
 background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions
 are outside coverage. See [coverage and limitations](docs/wireguard.md).
-The inspected WireGuard targets currently include 9.1.90, not 9.1.78 or 9.1.88;
+The inspected WireGuard targets currently include 9.1.90 and 9.2.0, not 9.1.78 or 9.1.88;
 those versions require `WIREGUARD=0` (uncheck **Include app-local WireGuard / proxy** in Actions).
 A build without WireGuard drops enforcement even if it was previously enabled.
 
@@ -98,12 +98,18 @@ The first build spends a minute reading Spotify's flags out of your IPA. `make f
 
 This produces `out/vitrine-<version>-pixie.ipa`, separately from the input and ordinary
 Vitrine output. `make build PIXIE=1` and `make install PIXIE=1` use the same overlay
-(the latter also signs and installs). Direct pipeline usage accepts `--pixie`.
-Without `PIXIE=1`, builds are unchanged; `make quick` does not build the overlay.
+(the latter also signs and installs). Direct pipeline usage accepts `--pixie`
+(`--require-pixie` is an alias). Default builds never include Pixie on any version;
+`make quick` does not build the overlay.
 
-Pixie supports **only** decrypted Spotify **9.1.90**, thin ARM64 UUID
-`fbce22c17e1b3e0d9be866ff9291943e`. Version, UUID, instruction windows, import bindings
-and unused executable padding are checked before the base build; mismatches fail closed.
+Pixie supports **only** the exact decrypted Spotify **9.1.90** profile: bundle build
+`919002269`, thin ARM64 main UUID `fbce22c17e1b3e0d9be866ff9291943e`, and the
+SpotifyShared UUID recorded in `NativeDownloads/targets/spotify-9.1.90.json`.
+Version, build, both UUIDs, instruction windows, import bindings and unused executable
+padding are checked before the base build; requested Pixie mismatches fail closed.
+9.2.0 is static-only: requesting Pixie fails with "Pixie not yet enabled for Spotify
+9.2.0". Default builds still work without it. All builds reject existing Pixie
+payloads, partial overlays, malformed inputs and encrypted executables.
 The finished Vitrine IPA is checked again and overlaid after App Intents merging, before
 any installation. The companion build needs Xcode's iPhoneOS SDK and `ldid`; application
 entitlements are preserved and the complete ZIP is verified before atomic publication.
