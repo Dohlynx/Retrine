@@ -1264,7 +1264,11 @@ Redesigned:
                   cover's main color (checked on the Mac by harness/palette/), and come in whole: a black veil over the
                   page until the cover has been read, at most SGRFieldHoldLimit (1 s), then faded away (SGRField.h). The album and playlist covers are laid out per page
                   (Cover layout on the Albums and Playlists pages, Card or Full screen; spotifyglass.redesign.album.fullCover
-                  and spotifyglass.redesign.playlist.fullCover, Full screen unless set; SGRPageFullCover in SGRHeaderInfo.m).
+                  and spotifyglass.redesign.playlist.fullCover; unset, an album is Card, the Music app's centred cover, its
+                  animated cover still filling the hero, and a playlist Full screen; a stored choice wins; SGRPageFullCover in
+                  SGRHeaderInfo.m). Under the cover the title is Title 2 bold, the creator Title 3 regular and the kind and
+                  date or length Caption 1 semibold in the secondary color (the Music app's sizes, capped at Extra Large;
+                  SGRHeaderInfo.m infoFont); the artist page's name is Large Title bold at the leading edge (largeTitle).
                   The first read of either carries the global switch of before (spotifyglass.redesign.fullBleedCovers) into both
                   where they have no value of their own and sets spotifyglass.redesign.fullBleedCovers.migrated; the old key is
                   left alone for a downgrade and never read again. In Card an album's animated cover still fills the hero.
@@ -1313,8 +1317,8 @@ Redesigned:
                   bars the pages fade to half black (SGRBarFade, the stock bar's own subview; Fade under the bar on the Tab bar
                   page, spotifyglass.redesign.navbar.fade, on until switched off, applies as the bar lays out again and
                   lets the fade go altogether, and the page's preview draws the same ramp, 88 pt above the bar, over rows
-                  of its own). Apple symbols on the Tab bar page (spotifyglass.redesign.navbar.symbols, off unless
-                  switched on, applies as the bar lays out again) draws each of Spotify's tabs with an SF Symbol for the
+                  of its own). Apple symbols on the Tab bar page (spotifyglass.redesign.navbar.symbols, on until
+                  switched off, applies as the bar lays out again) draws each of Spotify's tabs with an SF Symbol for the
                   page it opens, filled on the selected tab where the symbol has a filled variant: Home house, Search
                   magnifyingglass, Your Library books.vertical, Create plus, Premium crown, any other square.grid.2x2. The
                   page comes from the list of tabs Spotify reads (Navbar.x keeps each label's URI, SGRNavbarStockURIs), so it
@@ -1342,9 +1346,9 @@ Redesigned:
                   Device and add step aside; optional Next remains. Compact-width iPad and iPhone keep the card.
                   Capsule commands mirror with the window's direction. Play and inactive commands are white;
                   shuffle and repeat use the accent only while Spotify reports them active.
-                  Spotify's device button on it is hidden on request
-                  (BarConnect.x, its own key and its own row on the Player page, apart from the native look's). On
-                  request a Next button of the mod's stands after Spotify's button stack, last in the row that holds
+                  Spotify's device button on it is hidden unless switched back on, as the Music app's mini player has none
+                  (BarConnect.x, its own key and its own row on the Player page, apart from the native look's). Unless
+                  switched off a Next button of the mod's stands after Spotify's button stack, last in the row that holds
                   the track's information and that stack, as large as play's item (its touch target at least 44x44 pt,
                   the part outside Spotify's 40 pt row handed to it by the page's hit test), and asks the player for the next
                   track (among Spotify's buttons it made Spotify, which moves them by index, put add after play); it stands aside in the minimized row with
@@ -1407,14 +1411,30 @@ Redesigned:
                   cover plays at the Gestures page's hold speed (2× unless changed) until the finger lifts
                   (PlayerArtwork.x), higher in pitch while Pitch follows speed is on (an octave at 2×). Hide on the player's Shuffle and Repeat (spotifyglass.redesign.player.hideShuffle,
                   .hideRepeat, read at launch; the Player page's Buttons chips, selected = shown) take those buttons off the controls by alpha in their slots, as the
-                  Music app keeps them off its own (PlayerControls.x). With both hidden in portrait, previous and next
-                  move outward so each is min(row width / 3, 140 pt) from play's center, less where that would take a
+                  Music app keeps them off its own (PlayerControls.x). With neither shown in portrait (both hidden, or a row
+                  Spotify builds without them, a Free account's), previous and next move outward so each is
+                  min(a third of the room between the 32 pt margins, 140 pt) from play's center, less where that would take a
                   button past the row's edge and not at all where it is already farther out; play stays centered and
                   every button keeps its size, and the move is a translation set in the unit's own layout pass, so
                   Spotify's layout stays underneath and comes back exactly when a button is shown again. They stay out
                   while Spotify takes the repeat button out and puts a new one in (9.1.90), and the emptied ends take no
-                  touches meanwhile, so a tap where next lies over repeat's end is next's. With one of
-                  the two hidden, on a podcast's row without them, or in landscape, the slots stay Spotify's. The
+                  touches meanwhile, so a tap where next lies over repeat's end is next's; a shuffle or repeat Spotify
+                  brings back ends the spread on its arrival. With either shown, on a podcast's row whose ends hold the
+                  15 s skips, or in landscape, the slots stay Spotify's. In portrait on an iPhone-shaped one column player
+                  the Music app's measures hold (Player.h, PlayerFooter.x keepRhythm): the cover, title row, progress bar and
+                  volume row stand 32 pt in from the sides (SGRPlayerSideMargin, set through the constants of Spotify's own
+                  side constraints so the content lays out for the width), and the gaps from the artist to the bar, the bar
+                  to play's middle and play's middle to the footer's middle are taken to 38, 91 and 91 pt (plus 48 pt for
+                  the volume row, which stands that far over the footer's middle); where the room is shorter Spotify's
+                  gaps stay and the earlier shared-move layout applies. A spacing change moves Spotify's views only on
+                  the player's next layout, so the player is laid out once more on the next turn of the run loop and the
+                  volume row placed against the controls there; in landscape and the two columns the volume row keeps
+                  the halfway place between play and the footer. The title is 20 pt semibold over the artist 20 pt
+                  regular in the secondary color (Title 3, capped at XXXL), 17 over 17 beside the lyrics' thumbnail
+                  (PlayerTitle.x), in the app's chosen font (Spotify's own family when Spotify Mix is chosen), Spotify's
+                  labels and marquees keeping their text, simplification and translation. Where
+                  the footer has no queue button of Spotify's (a Free account's row), the Music app's queue glyph stands
+                  in the trailing slot and opens Playing Next; Spotify's own is kept where it has one. The
                   timestamps under the slider are metered (SGRMonospacedDigits) and, with Rolling time digits on (the
                   Player page, on until switched off), their changed characters roll into place (SGRRefinements.h,
                   described under Redesigned/Kit/), checked on the Mac by harness/player-refinements/. Star add button (off until switched on, also the
@@ -1428,12 +1448,18 @@ Redesigned:
                   account). Header glass (spotifyglass.redesign.player.headerGlass, on until switched off) keeps the glass circles
                   behind the header's down arrow and ⋯, in the ordinary player and the AI DJ's (PlayerHeader.x); off, only
                   the circles go, and the buttons draw as Spotify's own with their actions, touches and accessibility, the
-                  grabber staying. Hide where it plays from (spotifyglass.redesign.player.hideContext, off by default)
+                  grabber staying. Hide where it plays from (spotifyglass.redesign.player.hideContext, on until switched off, as the Music app's header has only the grabber)
                   hides the header's artist, album or playlist context and its VoiceOver announcement without moving
                   the close or ⋯ buttons; switching it off restores the text live (PlayerHeader.x). Redesigned only:
                   Native keeps its own header hooks. Playing Next in the ⋯ menu (PlayerQueue.m) reads Spotify's whole queue:
                   up to ten recently played songs, oldest first, as read-only History above Now Playing,
-                  then fifty Up Next songs with the existing skip-ahead action. Empty History is omitted.
+                  then fifty Up Next songs with the existing skip-ahead action. Empty History is omitted. Each row
+                  shows the cover its track's metadata names, 44 pt with the thumbnail corner, fetched once per track
+                  (SGRPlayerTrackCover, shared with the player's mix), a faint square until it lands; a cover still
+                  coming is cancelled when its song leaves the list or Playing Next leaves the screen, and asked for
+                  again for the rows shown when Playing Next comes back (only while on screen, never twice); the Up Next
+                  heading and the blend under it are a header of the table's own kind, so they share the margins of
+                  History and Now Playing.
                   The list follows Spotify's queue reports, falling back to the state's shorter lists when
                   the whole-queue API is unavailable. No swipe deletion, Edit/reorder or History replay ships:
                   the forks use the same setQueue:/nextTracks mutation and direct skip-back APIs that did
@@ -1486,7 +1512,9 @@ Redesigned:
                   Spotify is in front, the player is not opening or closing and Low Power Mode is off, and stops once
                   a paused song's hills have settled. The spectrum is checked on the Mac against harness/visualiser/,
                   the view in the simulator against harness/player/ (`visualiser`). The line under the cover (Lyrics Line on the Player
-                  page, on until switched off; PlayerLyricLine.x, PlayerLyricFit.h) is the one line a place with room for
+                  page, off until switched on, as the Music app keeps nothing between its cover and title; PlayerLyricLine.x,
+                  PlayerLyricFit.h). Spotify's own lyric preview under the cover stays as Spotify's Lyrics setting in the
+                  track menu has it, and Spotify sizes the cover for it. Switched on, it is the one line a place with room for
                   one shows, centered across the cover's width in the room between the cover and Spotify's bottom stack
                   (a chip over the title ends that room where it starts), at the player's position less the Lyrics page's
                   Delay; a tap opens the lyrics. It stands down where Spotify shows its own lyric preview under the cover,
@@ -1589,7 +1617,9 @@ Redesigned:
                   (LyricCardPicker.m, ShareCards.m), and nothing is fetched. The items, what Copy and
                   Share say (SGRLyricsShareText), the anchor and the dismissals are checked in the simulator against
                   harness/lyrics-hold/, the press itself on the phone. The size, the room between lines, the blur, the glow and the wave are the Lyrics page's look
-                  (LyricsLook.h): five presets and a sheet of sliders, applied at once to every view, under a live
+                  (LyricsLook.h): five presets (Apple Music, the default, at the Music app's 34 pt bold; a stored look keeps
+                  its values) and a sheet of sliders, applied at once to every view, the lines 32 pt in from the sides as
+                  the player's title and bar are (SGRKaraokeView.m), under a live
                   preview of the view playing a song of its own (LyricsLookSettings.m); its Size in each place sets the
                   line under the cover, the player's lyrics and landscape/full-screen lyrics to 75–130% of their own size,
                   Default changing nothing, the line under the cover keeping the iPhone's text size and its fitting. Laid out on the Mac against
@@ -1641,7 +1671,9 @@ Redesigned:
                   song suggestions only when switched on), a large title where the filter pills were, the title rising and
                   fading with the feed as it scrolls, as the Music app's does (or, with Title stays on scroll, staying put
                   over the feed's hard top edge, shaped to the row, and no scroll observer), the shelves' headings at the
-                  Music app's size,
+                  Music app's size (Title 3 bold, capped at Large) with a chevron after the title where Spotify offers
+                  "Show all", which goes: a tap anywhere on the heading fires Spotify's concealed "Show all", so it
+                  opens the same page, and VoiceOver keeps it as the heading's action (HomeHeadings.x),
                   continuous corners on the covers, and, under the Home look switch (the Home page's first row; off, none of
                   its hooks install and Home is as before it): at the trailing edge a glass pill of the filter (a menu that
                   drives Spotify's own chips, with the device picker and the top shelf's Show all; with Podcasts and audiobooks
@@ -1661,7 +1693,9 @@ Redesigned:
     Search/       the Browse page decluttered to its category cards (an allow list of the list's cells: the watch feed
                   carousels and promos collapse (each on a switch of the Search page, on until switched off, and back when it is off), and the cards move up by the spacing they leave), the header the way Home
                   has it without the camera, and each card as Liquid Glass tinted by its own color, read off the Box's
-                  shape layer (Search.h lists its files)
+                  shape layer, its name the redesign's own label over Spotify's transparent one, Headline semibold (17 pt,
+                  capped at Large) 12 pt in from the top leading corner on up to two lines on every card, where Spotify
+                  draws 16 or 14 by the name's length (SearchCards.x placeTitle; Search.h lists its files)
     Library/      Your Library the way Home and Search have their headers: a large title at the leading edge, the avatar
                   at the trailing edge with the search and create buttons before it, the header's scrim gone, each row's
                   artwork at the Kit's radius with a circular one left round, a hairline between the rows, and the search
@@ -1825,7 +1859,11 @@ App:
                    supports (SGSpotifySupportedVersions in Onboarding.h: 9.1.78, which it is made for, 9.1.88 and 9.1.90) or likely works on (SGSpotifyLikelyWorksVersions, empty now), and when a redesign below iOS 26 did not start, and when the install lacks the app
                    changes the IPA build makes, as with a .deb injected by hand: Spotify's own glass opt-out set (9.1.88's
                    UIDesignRequiresCompatibility, under the redesign), or NSSupportsLiveActivities or MusicHapticsSupported
-                   missing, each named in the warning and the last two under Live Activity and Vibrations too; all but
+                   missing, each named in the warning and the last two under Live Activity and Vibrations too.
+                   A missing Live Activity extension alone does not trigger this warning: signing can strip extensions,
+                   and LiveContainer cannot register them. The Live Activity page's missing-install row explains
+                   keeping extensions when signing and installing the IPA directly, without implying that the rest
+                   of Vitrine is broken; all but
                    the third stay as red rows at the top of Mod Settings. What Chroma left in Spotify's storage when Vitrine
                    replaced it (its Karaoke model and saved lock screen videos, never its listening history or audio
                    effects) is offered for deleting once, and stays a row there until it goes. Laid out on the simulator by harness/onboarding/
@@ -1987,8 +2025,10 @@ Back and ⋯ once a playlist, album, artist or profile page is scrolled stays hi
 and restored only once a push or pop has settled; and Play in the page's color (`spotifyglass.redesign.playInPageColour`, on:
 off, the Play glyph and word take the accent). Checked in the simulator against harness/album/veil-check.sh. The redesign has no
 global Full bleed covers row: the Albums and Playlists pages each have a Cover layout. Last come the Font, under either look and on any
-iOS, below 26 too, a page of its own with each choice drawn in itself: Default (Spotify's), San Francisco, SF
-Rounded, New York and SF Mono; More fonts, the families iOS carries of a fixed few (Avenir Next to American
+iOS, below 26 too, a page of its own with each choice drawn in itself: Default (Spotify's; named Spotify Mix in the
+redesign), San Francisco, SF Rounded, New York and SF Mono. Nothing stored is Spotify's font in the native look and San
+Francisco in the redesign, whose own text is San Francisco (Fonts.x, SGAppFontChosen); a stored choice, Spotify's
+included, wins, and a font whose files go away removes the stored choice so that default applies again; More fonts, the families iOS carries of a fixed few (Avenir Next to American
 Typewriter), each weight taken as the family's nearest face; and Your fonts, the files of one family (.ttf, .otf, .ttc or .otc, picked
 together) added from Files, refused when their faces name more than one family, copied to Application Support/Vitrine/Font
 and registered again at each launch, each weight taken as the family's nearest face, Spotify's font coming back when
@@ -2135,14 +2175,16 @@ text keeps its contrast; the Light copies have no grain to scale); the
 card and the player follow each step at once through SGRFluidSettingsDidChangeNotification, the last three by
 blurring the cover again off the main thread, and Animated and Visualizer's Fluid with them,
 and Mini player: Apple Music style (the tab bar's minimize on scroll), Device button (the now playing bar keeps
-Spotify's device button in that minimized row, off by default), Artist under the title when minimized
+Spotify's device button in that minimized row, off by default, and wins there over the full bar's hiding of it), Artist under the title when minimized
 (`spotifyglass.redesign.inlinePlayer.artist`, off: in that row the artist as a second line, only when both lines fit
 the bar with 6 pt to spare, the full bar unchanged; harness/now-playing-bar/), Next button
-(`spotifyglass.redesign.nowPlayingBar.nextButton`, off: a forward button after play on the full bar that skips to the next
+(`spotifyglass.redesign.nowPlayingBar.nextButton`, on until switched off: a forward button after play on the full bar that skips to the next
 track, hidden in the minimized row; live), Artwork shape (`spotifyglass.redesign.nowPlayingBar.artworkShape`, Circle unless
 set, or Rounded square with 8 pt corners; live, and the player's open and close morph from the shape shown;
-harness/now-playing-bar/), the device button hidden on the full bar, and the
-like button hidden (Spotify's own flag ios-feature-nowplayingbar.add_button forced off),
+harness/now-playing-bar/), the device button hidden on the full bar (on until switched off), and the
+like button hidden (Spotify's own flag ios-feature-nowplayingbar.add_button answered off at launch unless the row or All
+flags stores an override, which wins, or settings are reset to stock; NowPlayingBarSettings.m), so the bar ends in play
+and Next as the Music app's mini player does,
 checked in the simulator against harness/player/ (`settings`). Vibrations, a page of its own under either
 look opened from the main page (the row reads out which of the two are on), leads with a preview (Shared/Haptics/SGVibrationsPreview.m): rings of dots that a tap sends a crest across, out
 from the middle in the accent color, higher and further the stronger the Strength, while the first of Controls and
@@ -2210,8 +2252,8 @@ up, and a second tap goes back to that page. In the redesign (Redesigned/Navbar/
 with a preview of the glass bar, drawn by the same system UITabBar as the bar itself from the list as it
 stands, the split tabs on a bar of their own, and changing with every change on the page; then Custom tab
 bar (off, the bar is Spotify's own tabs in Spotify's order, the list kept); two picture cards for the labels,
-Icons and names or Icons only (the default: the glass bar's names hidden, applying straight away); Apple symbols (off
-until switched on, applying straight away to the bar, the preview, the cards and the list: Spotify's tabs take SF
+Icons and names or Icons only (Icons and names the default, as the Music app's bar has; applying straight away); Apple symbols (on
+until switched off, applying straight away to the bar, the preview, the cards and the list: Spotify's tabs take SF
 Symbols, the tabs you added keep their icons); Fade under the bar (on until switched off, applying straight away, the preview showing the
 fade over a page's rows); the tabs, each with a
 check circle that shows or hides it, its glyph (TabBar.x draws Spotify's own off their items on the bar, or with Apple symbols' symbol) and
