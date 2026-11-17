@@ -24,5 +24,6 @@ for ads in 0 1; do
 done
 python3 dj-check.py
 sh network-build.sh
+sh offline-build.sh
 python3 -B audit-check.py ../../scripts/audit-ad-services.py
 sh settings-check.sh

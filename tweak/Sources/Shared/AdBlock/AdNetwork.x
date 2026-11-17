@@ -9,12 +9,34 @@
 // EeveeSpotify's, less its Ably hooks, which it does not turn on for 9.1 either.
 #import "Core/SGCore.h"
 #import "AdBlock.h"
+#import "OfflineCompanion.h"
+#import <mach-o/dyld.h>
+#import <mach-o/loader.h>
 
 static BOOL ads, premium;
 static NSDate *started;
 static NSObject *cacheLock;
 static NSData *cachedCustomize;   // the last rewritten customize body, for a 304 and the re-fetches
-static char kBufferKey, kServedKey, kPassKey, kKindKey, kAdResponseKey, kAdDispositionKey, kAdCompleteKey;
+static const NSUInteger offlineBodyLimitBytes = 4 * 1024 * 1024;
+@interface SGOfflineInput : NSObject
+@property NSURL *url;
+@property NSData *body;
+@end
+@implementation SGOfflineInput @end
+// Only standalone nebula bytes belong here; Pixie owns bootstrap/customize interception.
+static NSMutableDictionary<NSNumber *, SGOfflineInput *> *offlineInputs;
+static __weak NSURLSession *offlineSession;
+static NSString *offlineAuthorization;
+static uint64_t offlineGeneration;
+static dispatch_queue_t offlineInstallQueue;
+@interface SGOfflineResponse : NSObject
+@property BOOL enabled, bypass;
+@property uint64_t generation;
+@property NSURL *url;
+@property NSMutableData *buffer;
+@end
+@implementation SGOfflineResponse @end
+static char kBufferKey, kServedKey, kPassKey, kKindKey, kOfflineKey, kGenerationKey, kOfflineReplayKey, kAdResponseKey, kAdDispositionKey, kAdCompleteKey;
 
 typedef NS_ENUM(NSInteger, SGNet) { SGNetPass, SGNetBlock, SGNetPatch };
 
@@ -28,6 +50,18 @@ static BOOL has(NSString *text, NSString *needle) {
 
 static BOOL isBootstrap(NSString *path) { return has(path, @"v1/bootstrap"); }
 static BOOL isCustomize(NSString *path) { return has(path, @"v1/customize"); }
+static BOOL isAttributes(NSString *path) { return [path isEqualToString:@"/nebula/v1/configuration/attributes"]; }
+
+static NSUInteger offlineEndpoint(NSURL *url) {
+    NSString *host = url.host.lowercaseString;
+    if (![url.scheme.lowercaseString isEqual:@"https"]
+        || !([host isEqual:@"spotify.com"] || [host hasSuffix:@".spotify.com"])) return 0;
+    return isAttributes(url.path) ? 3 : 0;
+}
+
+static BOOL isOfflineConfig(NSURL *url) {
+    return offlineEndpoint(url) != 0;
+}
 
 // The feeds Home, Search and the page under the player are built from. casita/v1/feeds is the flat
 // list of tab chips, not sections.
@@ -115,6 +149,73 @@ static SGNet classify(NSURLSessionTask *task) {
 
 static NSData *cached(void) {
     @synchronized (cacheLock) { return cachedCustomize; }
+}
+
+static uint64_t offlineContext(NSURLSession *session, NSURLRequest *request) {
+    NSString *authorization = [request valueForHTTPHeaderField:@"Authorization"];
+    @synchronized (cacheLock) {
+        if (offlineSession != session || !((!authorization && !offlineAuthorization) || [authorization isEqual:offlineAuthorization])) {
+            [offlineInputs removeAllObjects];
+            offlineSession = session;
+            offlineAuthorization = [authorization copy];
+            offlineGeneration++;
+        }
+        return offlineGeneration;
+    }
+}
+
+static void clearOfflineSession(NSURLSession *session) {
+    @synchronized (cacheLock) {
+        if (!session || offlineSession == session) {
+            [offlineInputs removeAllObjects];
+            offlineSession = nil;
+            offlineAuthorization = nil;
+            offlineGeneration++;
+        }
+    }
+}
+
+static void observeAccountRequest(NSURLRequest *request) {
+    NSString *host = request.URL.host.lowercaseString;
+    if (([host isEqual:@"spotify.com"] || [host hasSuffix:@".spotify.com"])
+        && (isLogout(request.URL.path.lowercaseString) || [host isEqual:@"login5.spotify.com"]))
+        clearOfflineSession(nil);
+}
+
+static NSData *cachedOffline(NSURL *url, uint64_t generation) {
+    NSData *input;
+    @synchronized (cacheLock) {
+        SGOfflineInput *entry = offlineInputs[@(offlineEndpoint(url))];
+        if (generation == offlineGeneration && [entry.url isEqual:url]) input = entry.body;
+    }
+    if (!input) return nil;
+    BOOL recognized = NO;
+    // Replay is read-only, including when another delegate completes a newer response here.
+    NSData *result = SGPatchOfflineAccountAttributes(input, &recognized);
+    @synchronized (cacheLock) { return generation == offlineGeneration ? result : nil; }
+}
+
+static void storeOffline(NSURL *url, uint64_t generation, NSData *body) {
+    SGOfflineInput *entry = [SGOfflineInput new];
+    entry.url = url;
+    entry.body = [body copy];
+    @synchronized (cacheLock) {
+        if (generation == offlineGeneration) offlineInputs[@(offlineEndpoint(url))] = entry;
+    }
+}
+
+static NSHTTPURLResponse *rewrittenResponse(NSHTTPURLResponse *response, NSInteger status) {
+    NSMutableDictionary *headers = [response.allHeaderFields mutableCopy];
+    for (NSString *key in headers.allKeys) {
+        if ([@[@"content-length", @"etag", @"last-modified", @"content-md5", @"digest", @"content-encoding"] containsObject:key.lowercaseString])
+            [headers removeObjectForKey:key];
+    }
+    return [[NSHTTPURLResponse alloc] initWithURL:response.URL statusCode:status HTTPVersion:@"HTTP/2.0" headerFields:headers];
+}
+
+static BOOL fullResponse(NSHTTPURLResponse *response, NSURLRequest *request) {
+    return response.statusCode == 200 && ![response valueForHTTPHeaderField:@"Content-Range"]
+        && ![request valueForHTTPHeaderField:@"Range"];
 }
 
 static NSData *json(NSString *text) {
@@ -215,6 +316,82 @@ static BOOL completeAd(id<NSURLSessionDataDelegate> delegate, NSURLSession *sess
     else [delegate URLSession:session dataTask:(NSURLSessionDataTask *)task
            didReceiveResponse:emptyAdResponse(task) completionHandler:accepted];
     return YES;
+}
+
+// A conditional nebula reply uses server bytes captured under the task's original session.
+static NSURLResponse *responseFor(NSURLSessionTask *task, NSURLResponse *response) {
+    NSURL *url = task.currentRequest.URL;
+    SGOfflineResponse *state = [SGOfflineResponse new];
+    state.enabled = isOfflineConfig(url) && SGOfflineCompanionLoaded();
+    state.url = url;
+    objc_setAssociatedObject(task, &kOfflineKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (state.enabled) {
+        NSNumber *generation = objc_getAssociatedObject(task, &kGenerationKey);
+        // Tasks predating hook installation can be transformed, but cannot seed or replay a cache.
+        state.generation = generation ? generation.unsignedLongLongValue : UINT64_MAX;
+        state.bypass = ![response isKindOfClass:NSHTTPURLResponse.class]
+            || !fullResponse((NSHTTPURLResponse *)response, task.currentRequest)
+            || response.expectedContentLength > (int64_t)offlineBodyLimitBytes;
+        if ([response isKindOfClass:NSHTTPURLResponse.class] && ((NSHTTPURLResponse *)response).statusCode == 304
+            && ![task.currentRequest valueForHTTPHeaderField:@"Range"]
+            && ![(NSHTTPURLResponse *)response valueForHTTPHeaderField:@"Content-Range"]) {
+            NSData *body = cachedOffline(url, state.generation);
+            if (body) {
+                objc_setAssociatedObject(task, &kOfflineReplayKey, body, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                return rewrittenResponse((NSHTTPURLResponse *)response, 200);
+            }
+        }
+        // Length is unknown until transformation; omit it and validators before streaming starts.
+        return state.bypass ? response : rewrittenResponse((NSHTTPURLResponse *)response, 200);
+    }
+    return response;
+}
+
+static BOOL holdsOffline(id<NSURLSessionDataDelegate> delegate, NSURLSession *session, NSURLSessionTask *task, NSData *data) {
+    if (objc_getAssociatedObject(task, &kPassKey)) return NO;
+    if (objc_getAssociatedObject(task, &kOfflineReplayKey)) return YES;
+    SGOfflineResponse *state = objc_getAssociatedObject(task, &kOfflineKey);
+    if (state.enabled) {
+        if (state.bypass) return NO;
+        if (data.length > offlineBodyLimitBytes - state.buffer.length) {
+            state.bypass = YES;
+            NSData *prefix = state.buffer;
+            state.buffer = nil;
+            if (prefix.length) deliver(delegate, session, task, prefix);
+            return NO;
+        }
+        if (!state.buffer) state.buffer = [NSMutableData new];
+        [state.buffer appendData:data];
+        return YES;
+    }
+    return NO;
+}
+
+static void completeOffline(id<NSURLSessionDataDelegate> delegate, NSURLSession *session, NSURLSessionTask *task, NSError *error) {
+    SGOfflineResponse *state = objc_getAssociatedObject(task, &kOfflineKey);
+    NSData *raw = state.buffer;
+    state.buffer = nil;
+    if (state.enabled && !state.bypass && raw) {
+        BOOL recognized = NO;
+        NSData *result = error ? raw : SGPatchOfflineAccountAttributes(raw, &recognized);
+        if (recognized) storeOffline(state.url, state.generation, raw);
+        deliver(delegate, session, task, result);
+    }
+}
+
+static SGResponseHandler replayDecision(id<NSURLSessionDataDelegate> delegate, NSURLSession *session,
+                                       NSURLSessionTask *task, SGResponseHandler handler) {
+    NSData *body = objc_getAssociatedObject(task, &kOfflineReplayKey);
+    if (!body) return handler;
+    return ^(NSURLSessionResponseDisposition disposition) {
+        void (^accepted)(void) = ^{
+            if (disposition == NSURLSessionResponseAllow) deliver(delegate, session, task, body);
+            // Foundation may issue completion as soon as this is called.
+            handler(disposition);
+        };
+        if (NSOperationQueue.currentQueue == session.delegateQueue) accepted();
+        else [session.delegateQueue addOperationWithBlock:accepted];
+    };
 }
 
 // A customize the server says has not changed, answered with the rewritten one from last time.
@@ -334,6 +511,49 @@ static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *sessio
 }
 %end
 
+// This group owns only standalone nebula. Pixie's own hooks own both UCS envelopes.
+%group OfflineDelegates
+%hook SPTDataLoaderService
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
+    NSURLResponse *forward = responseFor(task, response);
+    %orig(session, task, forward, replayDecision((id)self, session, task, handler));
+}
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+    if (!holdsOffline((id)self, session, task, data)) %orig;
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    completeOffline((id)self, session, task, error);
+    %orig;
+}
+%end
+%hook _TtC26Connectivity_HttpClientKit20HttpClientURLSession
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
+    NSURLResponse *forward = responseFor(task, response);
+    %orig(session, task, forward, replayDecision((id)self, session, task, handler));
+}
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+    if (!holdsOffline((id)self, session, task, data)) %orig;
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    completeOffline((id)self, session, task, error);
+    %orig;
+}
+%end
+%hook SPTCoreURLSessionDataDelegate
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))handler {
+    NSURLResponse *forward = responseFor(task, response);
+    %orig(session, task, forward, replayDecision((id)self, session, task, handler));
+}
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+    if (!holdsOffline((id)self, session, task, data)) %orig;
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    completeOffline((id)self, session, task, error);
+    %orig;
+}
+%end
+%end
+
 #pragma mark - before a request leaves
 
 // Ad tasks are canceled immediately under Hide ads, including sessions the delegates do not see.
@@ -377,10 +597,74 @@ static NSURLRequest *unconditional(NSURLRequest *request) {
     return plain;
 }
 
+typedef void (^SGDataCompletion)(NSData *, NSURLResponse *, NSError *);
+static NSURLRequest *offlineRequest(NSURLRequest *request) {
+    if (!isOfflineConfig(request.URL)) return request;
+    NSMutableURLRequest *plain = [request mutableCopy];
+    [plain setValue:nil forHTTPHeaderField:@"If-None-Match"];
+    [plain setValue:nil forHTTPHeaderField:@"If-Modified-Since"];
+    plain.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+    return plain;
+}
+
+static NSNumber *taskGeneration(NSURLSession *session, NSURLRequest *request) {
+    return isOfflineConfig(request.URL) && SGOfflineCompanionLoaded() ? @(offlineContext(session, request)) : nil;
+}
+
+static SGDataCompletion offlineCompletion(NSURLSession *session, NSURLRequest *request, SGDataCompletion handler) {
+    if (!handler || !isOfflineConfig(request.URL) || !SGOfflineCompanionLoaded()) return handler;
+    uint64_t generation = offlineContext(session, request);
+    return ^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSURL *url = response.URL ?: request.URL;
+        if (!error && isOfflineConfig(url) && [response isKindOfClass:NSHTTPURLResponse.class] && data.length <= offlineBodyLimitBytes) {
+            if (((NSHTTPURLResponse *)response).statusCode == 304 && ![request valueForHTTPHeaderField:@"Range"]
+                && ![(NSHTTPURLResponse *)response valueForHTTPHeaderField:@"Content-Range"]) {
+                NSData *replay = cachedOffline(url, generation);
+                if (replay) {
+                    handler(replay, rewrittenResponse((NSHTTPURLResponse *)response, 200), nil);
+                    return;
+                }
+            } else if (data.length && fullResponse((NSHTTPURLResponse *)response, request)) {
+                BOOL recognized = NO;
+                NSData *result = SGPatchOfflineAccountAttributes(data, &recognized);
+                if (recognized) storeOffline(url, generation, data);
+                if (result && ![result isEqual:data]) response = rewrittenResponse((NSHTTPURLResponse *)response, 200);
+                data = result ?: data;
+            }
+        }
+        handler(data, response, error);
+    };
+}
+
 %group PremiumRequests
 %hook NSURLSession
 - (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
     return %orig(unconditional(request) ?: request);
+}
+%end
+%end
+
+%group OfflineCompletionRequests
+%hook NSURLSession
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
+    observeAccountRequest(request);
+    NSNumber *generation = taskGeneration(self, request);
+    NSURLSessionDataTask *task = %orig(offlineRequest(request));
+    if (generation)
+        objc_setAssociatedObject(task, &kGenerationKey, generation, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return task;
+}
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))handler {
+    observeAccountRequest(request);
+    return %orig(offlineRequest(request), offlineCompletion(self, request, handler));
+}
+- (void)invalidateAndCancel {
+    clearOfflineSession(self);
+    %orig;
+}
+- (void)finishTasksAndInvalidate {
+    clearOfflineSession(self);
+    %orig;
 }
 %end
 %end
@@ -395,21 +679,86 @@ static NSURLRequest *unconditional(NSURLRequest *request) {
 %end
 %end
 
-%ctor {
-    ads = SGHidden(SGKeyHideAds);
-    premium = SGHidden(SGKeyFakePremium);
-    if (!ads && !premium) return;
-    started = NSDate.date;
-    cacheLock = [NSObject new];
-    %init;
-    %init(TaskRequests);
-    if (premium) {
+%group OfflineLocalCompletionRequests
+%hook __NSURLSessionLocal
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request {
+    observeAccountRequest(request);
+    NSNumber *generation = taskGeneration((id)self, request);
+    NSURLSessionDataTask *task = %orig(offlineRequest(request));
+    if (generation)
+        objc_setAssociatedObject(task, &kGenerationKey, generation, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return task;
+}
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *, NSURLResponse *, NSError *))handler {
+    observeAccountRequest(request);
+    return %orig(offlineRequest(request), offlineCompletion((id)self, request, handler));
+}
+%end
+%end
+
+static void installDelegates(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        %init;
+        SGRequireClasses(@[@"SPTDataLoaderService", @"_TtC26Connectivity_HttpClientKit20HttpClientURLSession",
+                           @"SPTCoreURLSessionDataDelegate"]);
+    });
+}
+
+static void installRequestFactories(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
         %init(PremiumRequests);
         SEL selector = @selector(dataTaskWithRequest:);
         Class local = objc_getClass("__NSURLSessionLocal");
         Method own = local ? class_getInstanceMethod(local, selector) : NULL;
         if (own && own != class_getInstanceMethod(NSURLSession.class, selector)) %init(PremiumLocalRequests);
+    });
+}
+
+static void installOfflineHooks(void) {
+    if (!SGOfflineCompanionLoaded()) return;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        // The store is initialized under cacheLock before any delegate hook is published.
+        @synchronized (cacheLock) {
+            if (!offlineInputs) offlineInputs = [NSMutableDictionary new];
+        }
+        %init(OfflineCompletionRequests);
+        SEL selector = @selector(dataTaskWithRequest:completionHandler:);
+        Class local = objc_getClass("__NSURLSessionLocal");
+        Method own = local ? class_getInstanceMethod(local, selector) : NULL;
+        if (own && own != class_getInstanceMethod(NSURLSession.class, selector)) %init(OfflineLocalCompletionRequests);
+        %init(OfflineDelegates);
+    });
+}
+
+static void offlineImageAdded(const struct mach_header *image, intptr_t slide) {
+    if (image->magic != MH_MAGIC_64) return;
+    const struct load_command *command = (const void *)((const struct mach_header_64 *)image + 1);
+    for (uint32_t i = 0; i < image->ncmds; i++, command = (const void *)((const char *)command + command->cmdsize)) {
+        if (command->cmd != LC_ID_DYLIB) continue;
+        const struct dylib_command *dylib = (const void *)command;
+        const char *path = (const char *)command + dylib->dylib.name.offset;
+        const char *name = strrchr(path, '/');
+        if (!strcmp(name ? name + 1 : path, SGOfflineCompanionImageName)) {
+            // Loader APIs and Objective-C hook installation must run outside dyld's callback lock.
+            dispatch_async(offlineInstallQueue, ^{ installOfflineHooks(); });
+        }
     }
-    SGRequireClasses(@[@"SPTDataLoaderService", @"_TtC26Connectivity_HttpClientKit20HttpClientURLSession",
-                       @"SPTCoreURLSessionDataDelegate"]);
+}
+
+%ctor {
+    ads = SGHidden(SGKeyHideAds);
+    premium = SGHidden(SGKeyFakePremium);
+    started = NSDate.date;
+    cacheLock = [NSObject new];
+    if (ads || premium) {
+        installDelegates();
+        %init(TaskRequests);
+        if (premium) installRequestFactories();
+    }
+    offlineInstallQueue = dispatch_queue_create("com.vitrine.offline-loader", DISPATCH_QUEUE_SERIAL);
+    installOfflineHooks();
+    _dyld_register_func_for_add_image(offlineImageAdded);
 }

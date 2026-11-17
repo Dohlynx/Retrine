@@ -39,6 +39,9 @@ void SGResetAdBlock(void);
 // Premium account's. nil when the bytes do not parse.
 NSData *SGPatchCustomize(NSData *body);
 NSData *SGPatchBootstrap(NSData *body);
+// OfflineCompanion.m: Pixie's standalone nebula transformer; no envelope interception.
+BOOL SGOfflineCompanionLoaded(void);
+NSData *SGPatchOfflineAccountAttributes(NSData *body, BOOL *recognized);
 
 // Feeds.m: a browsita, casita or scrollsita feed with its ad sections taken out; nil when there
 // were none, or the bytes were not the shape expected.
