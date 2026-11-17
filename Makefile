@@ -1,5 +1,6 @@
-# Entry points; the real work is in scripts/. IPA defaults to the first file in ipa/.
-IPA ?= $(firstword $(wildcard ipa/*.ipa))
+# Entry points; the real work is in scripts/. IPA defaults to the release base, Spotify 9.2.0, when it is in
+# ipa/, and otherwise to the first file there.
+IPA ?= $(firstword $(wildcard ipa/Spotify-9.2.0.ipa) $(wildcard ipa/*.ipa))
 
 # What goes on the phone is the mod alone. FLEX is the inspector `make trees` reads the screens
 # through, so it rides along only when it is asked for: make install FLEX=1. (A make target cannot
