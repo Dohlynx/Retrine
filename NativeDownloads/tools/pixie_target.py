@@ -55,7 +55,7 @@ class Profile:
     export_points: tuple
     export_windows: tuple
     export_cave_capacity: int
-    # These layouts have no independent 9.2.0 runtime ownership evidence.
+    # Target provenance owns the evidence required to admit these layouts.
     @property
     def unverified_fields(self):
         return () if self.runtime_layout_verified else (

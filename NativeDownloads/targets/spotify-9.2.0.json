@@ -12,13 +12,28 @@
     "repository": "EeveeSpotifyReincarnated",
     "commit": "0d9feaa9008e53b06382c61fffcb5cfcfceb2981",
     "license": "GPL-3.0",
-    "scope": "NativeDownloads target and export patching only; companion source manifest deferred to migration."
+    "scope": "NativeDownloads target, export patching and 1.4 companion runtime layout.",
+    "runtime_layout": {
+      "basis": "Adopt the shipped Eevee 9.2.0 layout at 0d9feaa9008e53b06382c61fffcb5cfcfceb2981; no new local device capture.",
+      "device_fix_commit": "5f7b82e4de89121d1cd1dd6e224b67ad2c9cce52",
+      "device_fix": "Commit records downloads refused with old quota fields and fixes 0x2b8..0x2d8 to 0x2c0..0x2e0 using manager_field_shift=8.",
+      "upstream_fields": {
+        "wrapper_and_vtable": "NativeDownloads/src/Spotify/NativeOfflineAdapter.m:204-215; wrapper+8, manager+0, first vtable method+0.",
+        "quota_and_reservations": "NativeDownloads/src/Spotify/NativeOfflineAdapter.m:237-241; block 0x2b0+8, current_tracks 0x2b8, current_episodes 0x2bc, music_limit 0x2c0, music_duration_seconds 0x2c8, episode_limit 0x2d0, episode_duration_seconds 0x2d8, abp_duration_seconds 0x2e0.",
+        "queue": "NativeDownloads/src/Spotify/NativeOfflineAdapter.m:252-260; unshifted base 0x220: online 0x221, connection_allows_offlining 0x222, track_license_expired 0x224, episode_license_expired 0x225, disk_full 0x229, sync_level 0x238, allow_spotify_tracks 0x23c, token_flag 0x248.",
+        "provider": "NativeDownloads/src/Spotify/NativeOfflineAdapter.m:546-547; unshifted manager+0x290, provider vtable+0, request slot+0x10 (test-only lookup).",
+        "shift": "NativeDownloads/src/Generated/TargetProfile.h:12; SAP_TARGET_MANAGER_FIELD_SHIFT=8.",
+        "trace": "NativeDownloads/src/Diagnostics/NativeKeyTrace.m:98-106; wrapper+8 and descriptor+4; NativeDownloads/src/Generated/ExportSites.h:4 gives owner descriptor+0x120."
+      },
+      "local_static_proof": "NativeDownloads/tests/profiles.py:test_complete_caves_branches_and_abi pins clean IPA setter bytes: LDR at 0x1022d7cb8 -> +0x2c8, 0x1022d7cbc -> +0x2c0, 0x1022d7ccc -> +0x2d8, 0x1022d7cdc -> +0x2d0, 0x1022d7cec -> +0x2e0. NativeDownloads/tests/target_foundation.py:test_concurrent_headers_and_compiled_manager_shift exercises generated block offset 696 (0x2b8). Reservation/queue/ownership evidence is the pinned upstream layout, not setter disassembly.",
+      "comparison": "Generated 9.2.0 quota, wrapper, queue and provider offsets and every nativeState subfield equal the pinned upstream source; no offset changes required."
+    }
   },
   "runtime": "runtime-1.2.json",
   "admission": {
     "enabled": true,
-    "reservation_counters_verified": false,
-    "runtime_layout_verified": false,
+    "reservation_counters_verified": true,
+    "runtime_layout_verified": true,
     "jailbreak": false
   },
   "native": {

@@ -10,7 +10,7 @@ the exact short version, bundle build, main UUID and SpotifyShared UUID.
 | Spotify | Build | Packaging | Runtime layout |
 | --- | --- | --- | --- |
 | 9.1.90 | 919002269 | Enabled | Verified old target |
-| 9.2.0 | 920002054 | Primary IPA enabled | Reservation counters, wrapper, queue, provider and trace-owner fields unverified; runtime remains inactive |
+| 9.2.0 | 920002054 | Primary IPA enabled | Runtime admitted using pinned Eevee layout and static setter proofs below |
 
 IPA packaging may patch a 9.2.0 executable. Jailbreak remains 9.1.90-only.
 Changing the profile's enabled flag is not runtime-layout verification.
@@ -21,8 +21,7 @@ to require an enabled exact profile. The primary 9.2.0 artifact is
 `out/vitrine-<version>-pixie.ipa`; the compatibility artifact is
 `out/vitrine-<version>-pixie-spotify-9.1.90.ipa`. Make's Pixie default input follows
 the JSON primary target unless `IPA` was explicitly supplied.
-An unsupported version, build or UUID is fatal when Pixie is requested;
-9.2.0 packaging warns that its native runtime gates are still closed.
+An unsupported version, build or UUID is fatal when Pixie is requested.
 `PIXIE=0` / `--no-pixie` explicitly excludes it. WireGuard admission is independent
 and unchanged. Every lane, including default and explicit exclusion, rejects
 existing companion payloads, native dependencies and partial overlays.
@@ -71,9 +70,49 @@ signing. They do not promise identical signatures or a byte-identical companion
 dylib after runtime fixes. Never regenerate the expected hashes from a changed
 patcher.
 
-9.2.0 static proofs are not evidence of account authorization, callback/manager
-ownership or offline playback. Real-device capture and separate review are
-required before enabling its runtime; no device/library mutation is part of these tests.
+### 9.2.0 runtime-layout provenance
+
+The target JSON owns admission; its generated headers feed the existing
+`SAPRuntimeProfileAdmitted` and `nativeState` gates. Both layout and reservation
+gates are open for the exact 9.2.0 identity. No runtime checks or offsets were
+removed or bypassed; 9.1.90 and jailbreak policy are unchanged.
+
+The adopted layout is EeveeSpotifyReincarnated
+`0d9feaa9008e53b06382c61fffcb5cfcfceb2981`.
+Its commit `5f7b82e4de89121d1cd1dd6e224b67ad2c9cce52` records downloads refused
+with the old quota fields, then fixes `0x2b8..0x2d8` to `0x2c0..0x2e0`.
+Before opening the gates, generated 9.2.0 offsets and every manager subfield
+read by our adapter were compared with that pinned source; all match:
+
+| Fields | Matching offsets | Eevee source at the pinned commit |
+| --- | --- | --- |
+| Wrapper manager; manager vtable; first method | wrapper `+8`; manager `+0`; vtable `+0` | `NativeDownloads/src/Spotify/NativeOfflineAdapter.m:204-215` |
+| Current tracks; current episodes | `0x2b8`, `0x2bc` | `NativeDownloads/src/Spotify/NativeOfflineAdapter.m:237-241` |
+| Music limit; music duration; episode limit; episode duration; ABP duration | `0x2c0`, `0x2c8`, `0x2d0`, `0x2d8`, `0x2e0` | `NativeDownloads/src/Spotify/NativeOfflineAdapter.m:237-241` |
+| Online; connection allows offlining; track license expired; episode license expired; disk full | `0x221`, `0x222`, `0x224`, `0x225`, `0x229` | `NativeDownloads/src/Spotify/NativeOfflineAdapter.m:252-260` |
+| Sync level; allow Spotify tracks; token flag | `0x238`, `0x23c`, `0x248` | `NativeDownloads/src/Spotify/NativeOfflineAdapter.m:252-260` |
+| Provider; provider vtable; request slot (test-only lookup) | manager `0x290`; provider `+0`; vtable `+0x10` | `NativeDownloads/src/Spotify/NativeOfflineAdapter.m:546-547` |
+
+Only the quota/reservation block moves: `0x2b0 + 8 = 0x2b8`.
+Queue base `0x220` and provider `0x290` do not move. Eevee's
+`NativeDownloads/src/Generated/TargetProfile.h:12` supplies the shift.
+Trace reads also match: wrapper `+8`, descriptor file ID `+4`
+(`NativeDownloads/src/Diagnostics/NativeKeyTrace.m:98-106`), and owner descriptor
+`+0x120` (`NativeDownloads/src/Generated/ExportSites.h:4`), which our
+`generate_target.layout_headers` derives from the target's instruction window.
+
+Local static evidence comes from the clean supplied 9.2.0 IPA:
+`tests/profiles.py:test_complete_caves_branches_and_abi` pins setter LDR bytes at
+`0x1022d7cb8`, `0x1022d7cbc`, `0x1022d7ccc`, `0x1022d7cdc`, `0x1022d7cec`;
+their decoded fields are respectively `0x2c8`, `0x2c0`, `0x2d8`, `0x2d0`, `0x2e0`.
+`tests/target_foundation.py:test_concurrent_headers_and_compiled_manager_shift`
+executes a read through generated block offset 696 (`0x2b8`).
+Reservations, queue and ownership use the cited upstream layout evidence, not
+an inference that the setter proves them.
+
+This enables the upstream layout without a new local device capture.
+Static proofs and host admission are not evidence of account authorization or
+offline playback; no device/library mutation is part of these tests.
 The separate host-side nebula account-attributes wiring is also necessary:
 Eevee commit `5f7b82e4de89121d1cd1dd6e224b67ad2c9cce52` records download
 `NOT_ALLOWED (23)` before that integration. Do not infer offline usability from
@@ -119,4 +158,4 @@ alongside the focused admission checks above. It checks both supplied images,
 export replay and branch/resolver targets, complete write boundaries, dyld import
 binding, malformed export inputs and simultaneous independent header generation.
 Its compiled manager fixture distinguishes the 9.1.90 offset from the 9.2.0 +8
-offset; it does not enable or exercise a real Spotify manager on 9.2.0.
+offset; it does not exercise a real Spotify manager on 9.2.0.

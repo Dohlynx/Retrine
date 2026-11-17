@@ -42,7 +42,6 @@ class StaticProfile(unittest.TestCase):
         self.assertEqual(read_input(self.ipa,False)[0],self.raw)
         with ZipFile(self.ipa) as archive,self.assertRaisesRegex(ValueError,"Jailbreak"):
             input_profile(archive,require_enabled=False,jailbreak=True)
-        self.assertFalse(V9200.reservation_counters_verified)
 
     def test_primary_compatibility_and_ordinary_artifact_names(self):
         self.assertEqual(artifact_name("1.2.3",V9200),"vitrine-1.2.3-pixie.ipa")

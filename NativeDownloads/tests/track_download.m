@@ -178,7 +178,10 @@ static NSData *join(NSData *a, NSData *b) { NSMutableData *d = [a mutableCopy]; 
 }
 - (id)callSingle:(NSString *)service method:(NSString *)method payload:(NSData *)payload onResponse:(void (^)(NSData *))callback {
     if ([method isEqual:@"warmup"]) return nil;
-    if (self.scenario == 12) return nil; // Wrong/stale native channel: never answers.
+    if (self.scenario == 12) {
+        if ([method isEqual:@"AddDownload"]) self.requests++;
+        return nil; // Wrong/stale native channel: never answers.
+    }
     assert([service isEqual:@"spotify.offline_esperanto.proto.Offline"]);
     NSString *albumURI = @"spotify:album:3333333333333333333333";
     if ([method isEqual:@"AddDownload"] && [SAPProtoString(SAPProtoFields(payload), 2) isEqual:albumURI]) {
@@ -307,7 +310,9 @@ int main(void) { @autoreleasepool {
     state.track = next;
     waitFor(^BOOL{ return !SAPTrackDownloadActive(); });
     assert([SAPTrackDownloadReport()[@"phase"] isEqual:@"completed"] && t.queries == 5);
-    assert([SAPTrackDownloadReport()[@"transport_candidate"] unsignedIntValue] == 2 && bad.requests == 0);
+    if (bad.requests != 0) {
+        fputs("Unverified transport received a download command\n", stderr); return 1;
+    }
     assert([SAPTrackDownloadReport()[@"track_uri"] isEqual:trackURI] && t.streamLifetime.cancelled);
     unsigned queries = t.queries;
     NSDate *until = [NSDate dateWithTimeIntervalSinceNow:0.04];

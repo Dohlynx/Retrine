@@ -1,4 +1,5 @@
 """Execute selected-profile runtime admission using dyld and bundle doubles."""
+from dataclasses import replace
 from pathlib import Path
 import subprocess
 import sys
@@ -21,8 +22,7 @@ int main(int argc,char **argv) {@autoreleasepool {
     }
     publishImages();
     uintptr_t base=(uintptr_t)&images[0];
-    BOOL enabled=!strcmp(argv[1],"9.1.90");
-    if(SAPRuntimeProfileAdmitted()!=enabled){fputs("wrong exact-profile admission\n",stderr);return 1;}
+    if(!SAPRuntimeProfileAdmitted()){fputs("wrong exact-profile admission\n",stderr);return 1;}
     NSDictionary *correct=metadata;
     for(NSString *key in @[@"CFBundleShortVersionString",@"CFBundleVersion"]) {
         NSMutableDictionary *bad=[correct mutableCopy];bad[key]=@"other";metadata=bad;
@@ -42,7 +42,7 @@ int main(int argc,char **argv) {@autoreleasepool {
     imageCount=2;
     publishImages();
     if(SAPProfileMatchesImage(base+1)){fputs("accepted unrelated image\n",stderr);return 1;}
-    puts("PASS exact runtime fingerprint and disabled-profile admission");return 0;
+    printf("PASS Spotify %s runtime admission and fingerprint rejection\n",argv[1]);return 0;
 }}
 '''
 with tempfile.TemporaryDirectory(prefix="pixie-runtime-profile-") as temporary:
@@ -57,3 +57,11 @@ with tempfile.TemporaryDirectory(prefix="pixie-runtime-profile-") as temporary:
         subprocess.run(["xcrun","clang","-fobjc-arc","-I"+str(include),"-I"+str(ROOT/"src"),"-I"+str(ROOT/"tests"),
                         str(source),"-framework","Foundation","-o",str(folder/"check")],check=True)
         subprocess.run([str(folder/"check"),*args],check=True)
+        if profile == V9200:
+            generate_headers(include,replace(profile,runtime_layout_verified=False))
+            subprocess.run(["xcrun","clang","-fobjc-arc","-I"+str(include),"-I"+str(ROOT/"src"),"-I"+str(ROOT/"tests"),
+                            str(source),"-framework","Foundation","-o",str(folder/"closed")],check=True)
+            result=subprocess.run([str(folder/"closed"),*args],capture_output=True,text=True)
+            if result.returncode != 1 or result.stderr.strip() != "wrong exact-profile admission":
+                raise AssertionError("Closing the 9.2.0 layout gate did not fail the admission fixture")
+            print("PASS mutation: closed 9.2.0 layout gate detected")
