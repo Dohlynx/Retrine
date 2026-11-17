@@ -425,7 +425,7 @@ static UIImage *coverPlaceholder(void) {
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {
     if (section == 0) return _history.count ? SGL(@"settings.player.queue.history", @"History") : nil;
     if (section == 1) return _current ? SGL(@"settings.player.queue.now", @"Now Playing") : nil;
-    return _tracks.count ? SGL(@"settings.player.queue.up_next", @"Up Next") : nil;
+    return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {

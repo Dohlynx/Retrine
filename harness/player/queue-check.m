@@ -129,6 +129,13 @@ static UILabel *labelIn(UIView *view, NSString *text) {
 static void spin(NSTimeInterval seconds) {
     [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
 }
+static NSUInteger visibleHeadings(UIView *view, NSString *text) {
+    if (view.hidden || view.alpha <= 0 || !view.window) return 0;
+    NSUInteger count = [view isKindOfClass:UILabel.class] &&
+        [((UILabel *)view).text isEqual:text] && !CGRectIsEmpty(view.bounds) ? 1 : 0;
+    for (UIView *child in view.subviews) count += visibleHeadings(child, text);
+    return count;
+}
 static void report(NSString *revision) {
     state.queueRevision = revision;
     for (id<SGPlayerStateObserver> observer in observers.allObjects) [observer playerStateDidReport:state];
@@ -151,10 +158,20 @@ static void run(void) {
     UITableView *table = screen.tableView;
     [table layoutIfNeeded];
     spin(0.3);
+    check(visibleHeadings([table headerViewForSection:2], @"Up Next") == 1,
+          @"Up Next has exactly one visible heading");
     UILabel *now = labelIn([table headerViewForSection:1], @"Now Playing"), *next = labelIn([table headerViewForSection:2], @"Up Next");
     CGFloat nowX = CGRectGetMinX([table convertRect:now.bounds fromView:now]), nextX = CGRectGetMinX([table convertRect:next.bounds fromView:next]);
     check(now && next && fabs(nowX - nextX) < 0.5,
           [NSString stringWithFormat:@"the Up Next heading starts where the system's Now Playing heading does (%.1f, %.1f)", nextX, nowX]);
+    NSString *screenshot = NSProcessInfo.processInfo.environment[@"QUEUE_SCREENSHOT"];
+    if (screenshot.length) {
+        UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithBounds:window.bounds]
+            imageWithActions:^(UIGraphicsImageRendererContext *context) {
+                [window drawViewHierarchyInRect:window.bounds afterScreenUpdates:YES];
+            }];
+        check([UIImagePNGRepresentation(image) writeToFile:screenshot atomically:YES], @"queue screenshot saved");
+    }
     UIImage *(^shown)(NSIndexPath *) = ^UIImage *(NSIndexPath *path) {
         return ((UIListContentConfiguration *)[table cellForRowAtIndexPath:path].contentConfiguration).image;
     };
