@@ -9,7 +9,13 @@ FLEX_ARG := $(if $(filter 0,$(FLEX)),--no-flex,)
 WIREGUARD ?= 1
 export WIREGUARD
 PIXIE ?= 0
-PIXIE_ARG := $(if $(filter 1,$(PIXIE)),--pixie,)
+ifeq ($(PIXIE),1)
+# Explicit IPA= and environment inputs still win; opt-in defaults to the primary target.
+ifeq ($(origin IPA),file)
+IPA := $(shell python3 -B NativeDownloads/tools/pixie_target.py --primary-ipa)
+endif
+endif
+PIXIE_ARG := $(if $(filter 1,$(PIXIE)),--pixie,--no-pixie)
 NO_PLUGINS ?= 0
 NO_PLUGINS_ARG := $(if $(filter 1,$(NO_PLUGINS)),--no-plugins,)
 

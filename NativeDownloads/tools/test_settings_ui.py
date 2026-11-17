@@ -23,7 +23,7 @@ assert booted,'Boot an iPhone simulator first'
 udid=booted[0]['udid']
 sdk=run('xcrun','--sdk','iphonesimulator','--show-sdk-path')
 objects=[]
-for src in ['src/DownloadSettingsUI.m','src/Diagnostics.m','src/DiagnosticTrace.m','src/NativeKeyTrace.m','src/WireProto.m','src/Localization.m','tests/trace_platform_stub.m','tests/SettingsFixtureActions.m',str(root.parent/'tweak/Sources/Core/SGLocalize.m')]:
+for src in ['tests/admitted_host.c','src/DownloadSettingsUI.m','src/Diagnostics.m','src/DiagnosticTrace.m','src/NativeKeyTrace.m','src/WireProto.m','src/Localization.m','tests/trace_platform_stub.m','tests/SettingsFixtureActions.m',str(root.parent/'tweak/Sources/Core/SGLocalize.m')]:
  obj=out/(Path(src).stem+'.o');objects.append(obj)
  run('xcrun','clang','-c','-target','arm64-apple-ios26.0-simulator','-isysroot',sdk,'-fobjc-arc','-std=gnu11','-Isrc','-DSAP_UI_FIXTURE',src,'-o',obj)
 run('xcrun','swiftc','-swift-version','5','-parse-as-library','-target','arm64-apple-ios26.0-simulator','-sdk',sdk,'-Xcc','-DSAP_UI_FIXTURE','-import-objc-header','src/AudioProbeUI.h','tests/SettingsFixture.swift',*objects,'-framework','UIKit','-framework','SwiftUI','-o',app/'SpotifySettingsPreview')

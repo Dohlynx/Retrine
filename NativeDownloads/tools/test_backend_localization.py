@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix="backend-localization-", dir=build) as t
         run("xcrun", "clang", "-arch", "arm64", "-fobjc-arc", "-std=gnu11", "-O1", "-g",
             "-Isrc", "-DSAP_TESTING", "-fsanitize=address,undefined",
             "src/WireProto.m", "src/PlayerTrace.m", *sources, f"tests/{name}.m",
-            "src/Diagnostics.m", "src/Localization.m",
+            "src/Diagnostics.m", "src/Localization.m", "tests/admitted_host.c",
             "src/DiagnosticTrace.m", "src/NativeKeyTrace.m", "tests/trace_platform_stub.m",
             root.parent / "tweak/Sources/Core/SGLocalize.m",
             "-framework", "Foundation", "-o", binary)

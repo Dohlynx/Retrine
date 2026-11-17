@@ -7,6 +7,7 @@ root = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix="pixie-single-track-") as temporary:
     binary = Path(temporary) / "track_download"
     sources = [
+        "tests/admitted_host.c",
         "src/WireProto.m", "src/PlayerTrace.m", "src/TrackDownload.m",
         "src/TrackLibrary.m", "src/TrackMenu.m", "tests/track_download.m",
         "src/Diagnostics.m", "src/Localization.m", "src/DiagnosticTrace.m",

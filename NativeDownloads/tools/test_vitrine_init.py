@@ -12,6 +12,7 @@ out.mkdir(parents=True, exist_ok=True)
 sdk = subprocess.check_output(
     ["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
 sources = [
+    "tests/admitted_host.c",
     "src/DownloadSettingsUI.m", "src/Diagnostics.m", "src/DiagnosticTrace.m",
     "src/NativeKeyTrace.m", "src/WireProto.m", "src/Localization.m",
     "tests/trace_platform_stub.m", "tests/SettingsFixtureActions.m", "tests/vitrine_init.m",

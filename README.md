@@ -94,28 +94,38 @@ The first build spends a minute reading Spotify's flags out of your IPA. `make f
 
 ### Optional Pixie native downloads
 
-    make release PIXIE=1 IPA=ipa/Spotify-9.1.90.ipa
+    make release PIXIE=1                              # primary Spotify 9.2.0
+    make release PIXIE=1 IPA=ipa/Spotify-9.1.90.ipa     # compatibility lane
 
-This produces `out/vitrine-<version>-pixie.ipa`, separately from the input and ordinary
-Vitrine output. `make build PIXIE=1` and `make install PIXIE=1` use the same overlay
+These produce `out/vitrine-<version>-pixie.ipa` and
+`out/vitrine-<version>-pixie-spotify-9.1.90.ipa`, separately from the input and ordinary
+Vitrine output. An explicit `IPA=` overrides the Pixie primary target.
+`make build PIXIE=1` and `make install PIXIE=1` use the same overlay
 (the latter also signs and installs). Direct pipeline usage accepts `--pixie`
 (`--require-pixie` is an alias). Default builds never include Pixie on any version;
 `make quick` does not build the overlay.
 
-Pixie supports **only** the exact decrypted Spotify **9.1.90** profile: bundle build
-`919002269`, thin ARM64 main UUID `fbce22c17e1b3e0d9be866ff9291943e`, and the
-SpotifyShared UUID recorded in `NativeDownloads/targets/spotify-9.1.90.json`.
+Packaging accepts the exact decrypted Spotify **9.2.0** (`920002054`) and
+**9.1.90** (`919002269`) profiles. Main and SpotifyShared UUIDs are recorded in
+`NativeDownloads/targets/spotify-9.2.0.json` and `spotify-9.1.90.json`.
 Version, build, both UUIDs, instruction windows, import bindings and unused executable
 padding are checked before the base build; requested Pixie mismatches fail closed.
-9.2.0 is static-only: requesting Pixie fails with "Pixie not yet enabled for Spotify
-9.2.0". Default builds still work without it. All builds reject existing Pixie
+**9.2.0 packages are not yet functional-download releases.** Packaging admission
+does not override the companion's unverified native-layout/counter gates:
+its runtime remains inactive on 9.2.0. Separately, the host must feed the nebula
+account-attributes response through `SAPRewriteOfflineAccountAttributes`; without
+that integration, Eevee's 9.2 port observed `NOT_ALLOWED (23)` for downloads.
+Neither condition is established by a successful build. Jailbreak packaging is
+9.1.90-only; 9.2.0 DEBs are refused before output mutation.
+Default builds still work without Pixie. All builds reject existing Pixie
 payloads, partial overlays, malformed inputs and encrypted executables.
 The finished Vitrine IPA is checked again and overlaid after App Intents merging, before
 any installation. The companion build needs Xcode's iPhoneOS SDK and `ldid`; application
 entitlements are preserved and the complete ZIP is verified before atomic publication.
 
 Settings → Vitrine reuses Pixie's existing runtime attachment for **Pixie Download Manager**
-and **Send log**. Music stays in Spotify's offline storage, not exported audio files.
+and **Send log**. Downloads stay in Spotify's offline storage; Pixie 1.4 also offers
+separate, explicit audio-export actions.
 Music-track context menus gain **Download**, bound to the selected track rather than
 the currently playing one. The manager's **Add single-track downloads to Liked Songs**
 switch defaults off and applies to subsequent individual downloads, including the
@@ -135,13 +145,17 @@ Pixie's keys and placeholders. Long-term offline licence renewal remains unverif
 
 `NativeDownloads/` imports the sources, tests, patch tools and assets from
 [Glongq/Vitrine-Pixie](https://github.com/Glongq/Vitrine-Pixie) at exact commit
-[`0e00970f5ad2decc2aa7ed87286c96f2013785ed`](https://github.com/Glongq/Vitrine-Pixie/tree/0e00970f5ad2decc2aa7ed87286c96f2013785ed/NativeDownloads),
+[`2632bdf9081665b9fd78e71cea2878edc6aae73c`](https://github.com/Glongq/Vitrine-Pixie/tree/2632bdf9081665b9fd78e71cea2878edc6aae73c/NativeDownloads),
 under GPL-3.0 with existing notices retained. Upstream credits Pixie development/integration
 to OpenAI Codex under Glongq's direction, and device testing/feedback to Glongq; earlier
-work comes from Glongq/EeveeSpotifyReincarnated. Its Vitrine overlay patch was **not** applied.
+work comes from Glongq/EeveeSpotifyReincarnated. Selected companion fixes are pinned to
+Eevee [`0d9feaa9008e53b06382c61fffcb5cfcfceb2981`](https://github.com/Glongq/EeveeSpotifyReincarnated/tree/0d9feaa9008e53b06382c61fffcb5cfcfceb2981).
+Its Vitrine host overlay patch was **not** applied.
 Local adaptations add preflight/atomic build integration, entitlement preservation,
-init-family ownership safety, nonblocking diagnostic notifications and diagnostics privacy guards. Jailbreak sources/tools are
-retained for completeness only; jailbreak packaging and testing are not supported here.
+init-family ownership safety, nonblocking diagnostic notifications and diagnostics privacy guards.
+Jailbreak packaging supports only the exact 9.1.90 profile (rootful and rootless);
+9.2.0 DEBs are rejected. Both Pixie package formats include the root GPL license
+and `NativeDownloads/vendor/M4A-NOTICES.md`. Jailbroken-device execution remains unverified.
 
 Focused checks on an Apple Silicon Mac (no installation):
 
@@ -151,8 +165,8 @@ Focused checks on an Apple Silicon Mac (no installation):
     python3 -B NativeDownloads/tools/test.py
     SPOTIFY_TEST_IPA="$PWD/ipa/Spotify-9.1.90.ipa" python3 -B NativeDownloads/tools/test_native_restrictions.py
 
-The component suite's optional Eevee reminder check requires a different, Eevee-injected
-fixture: do not set `SPOTIFY_TEST_IPA` to the clean input for `tools/test.py`.
+`tools/test.py` and `tools/test14.py` share one current runner, including the
+exact-target admission and frozen-golden checks. These use the clean target IPAs.
 The optional UI fixtures need an already booted iPhone simulator:
 `python3 NativeDownloads/tools/test_settings_ui.py` (iOS 26 or newer) and
 `python3 NativeDownloads/tools/test_vitrine_init.py` (Vitrine root rows and init ownership).
