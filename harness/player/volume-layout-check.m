@@ -39,6 +39,7 @@ static BOOL SGRPlayerLyricsFadeView(UIView *view, BOOL fits) {
 @implementation PlaybackControlsElementsUnit
 @end
 
+#include "volume-margins-production.inc"
 #include "volume-placement-production.inc"
 #include "volume-layout-production.inc"
 

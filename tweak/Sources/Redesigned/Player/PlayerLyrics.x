@@ -1152,6 +1152,17 @@ static void informationUnitLaidOut(UIViewController *unit) {
         if ([v.superview isKindOfClass:UIStackView.class]) { element = v; break; }
     }
     SGRShownTitleWatch(host);
+    // The row's view in the unit's, inset so the title starts at the player's margin, its trailing buttons as far in.
+    UIView *row = element;
+    while (row && row.superview != host) row = row.superview;
+    // Only once the row has placed the title: the inset is measured from where it stands.
+    if (row && element.bounds.size.width > 0) {
+        // Where Spotify put the title, the slide this file gives it beside the thumbnail left out.
+        CGRect placed = CGRectMake(element.center.x - element.bounds.size.width / 2, 0, element.bounds.size.width, 0);
+        CGRect inRow = [element.superview convertRect:placed toView:row];
+        BOOL rtl = host.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+        SGRPlayerHoldMargin(row, rtl ? CGRectGetMaxX(row.bounds) - CGRectGetMaxX(inRow) : CGRectGetMinX(inRow) - CGRectGetMinX(row.bounds));
+    }
     if (element && sg_titleElement != element) {
         sg_titleElement = element;
         static dispatch_once_t once;

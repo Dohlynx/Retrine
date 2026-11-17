@@ -29,8 +29,9 @@
 #import "Redesigned/Kit/SGRGlass.h"
 #import "Redesigned/Kit/SGRTokens.h"
 
-// The size of the words and the room between lines are the Lyrics page's (LyricsLook.h).
-static const CGFloat kMargin = 24, kRowTighten = 2;
+// The size of the words and the room between lines are the Lyrics page's (LyricsLook.h). The lines stand the Music
+// app's 32 pt in from the sides, as the player's title and bar do (Redesigned/Player/Player.h, SGRPlayerSideMargin).
+static const CGFloat kMargin = 32, kRowTighten = 2;
 static const CGFloat kDimAlpha = 0.3, kFillEdge = 22, kLift = 2.5, kDimScale = 0.97;
 static const CGFloat kAnchor = 0.28;   // where the sung line rests, as a share of the height
 static const CGFloat kEdgeFade = 0.1;  // the lines fade out over this share at the top and bottom

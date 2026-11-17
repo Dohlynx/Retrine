@@ -25,6 +25,20 @@ each command in order and answers with its own token. Checks cover all four flag
 set, that the track is cleared before the context, and that the caller gets the last command's answer
 (including nil for no player). Temporary outputs are removed on exit.
 
+## Player title type without a simulator
+
+```sh
+THEOS="$HOME/theos" harness/player/title-style-check.sh
+```
+
+Builds the **complete current `PlayerTitle.x`** through Logos into a temporary Mac Catalyst app, with the production
+`SGCategoryCappedFont` and design tokens. The labels are shaped as Spotify's (the title a marquee view drawing through
+a UILabel inside it, Korean text, Georgia standing in for Spotify's family) and Spotify's setters are called as Spotify
+calls them. It checks 20 pt semibold over 20 pt regular in the secondary color, both kept through Spotify's own
+`setFont:`, `setTextColor:` and attributed text, the intrinsic heights of the 20 pt lines, 17 over 17 with the lyrics
+open, and Spotify's family kept when Spotify's font is the one drawn (`SGAppFontDrawn`). The player harness's
+`stubs.m` stubs the title styling, so the adaptive runs do not cover it.
+
 ## Landscape title notifications without a simulator
 
 From the repository root on an Apple Silicon Mac with Xcode and Theos:
@@ -128,8 +142,8 @@ come late, out of order, or not at all.
   with `scrub checks: ... -- PASS` or `FAIL`.
 - `controls` checks the shared ordinary/DJ glyph helpers: owner/key identity, centering and the DJ offset,
   autoresizing, front ordering and reparenting. Then, with shuffle and repeat both hidden (switched on at launch and
-  off again before it exits), a mock of the controls row (five holders, Spotify's identifiers, a 366 pt stack): previous
-  and next 122 pt either side of play, still there after repeat is taken out and the controls lay out, after a new
+  off again before it exits), a mock of the controls row (five holders, Spotify's identifiers, a 366 pt stack in a 390 pt
+  unit): previous and next a third of the room between the 32 pt margins ((390 - 64) / 3 pt) either side of play, still there after repeat is taken out and the controls lay out, after a new
   repeat is put in (hidden at once), and with repeat's end swapped for a bare placeholder and then a new holder; the
   emptied ends take no touches, so a touch on next where it lies over repeat's end is next's; right to left mirrored; in
   landscape and for a podcast's row in the same holders, Spotify's places and the ends' touches back. The log ends with

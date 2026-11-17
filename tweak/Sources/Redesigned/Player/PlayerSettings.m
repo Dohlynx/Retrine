@@ -441,8 +441,8 @@ static char kCloseGlassKey, kMoreGlassKey;
 
 - (void)reloadLook {
     _glass = SGEnabled(SGRKeyPlayerHeaderGlass);
-    _context.alpha = SGHidden(SGRKeyPlayerHideContext) ? 0 : 1;
-    _context.accessibilityElementsHidden = SGHidden(SGRKeyPlayerHideContext);
+    _context.alpha = SGEnabled(SGRKeyPlayerHideContext) ? 0 : 1;
+    _context.accessibilityElementsHidden = SGEnabled(SGRKeyPlayerHideContext);
     _star = SGHidden(SGRKeyPlayerStarAdd);
     _hideShuffle = SGHidden(SGRKeyPlayerHideShuffle);
     _hideRepeat = SGHidden(SGRKeyPlayerHideRepeat);
@@ -1217,7 +1217,8 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
                                                  SGL(@"settings.player.music_icons.subtitle", @"The Music app's lyrics, AirPlay and queue icons under the controls, and the AI DJ's button as a waveform, in place of Spotify's."),
                                                  SGRKeyPlayerMusicIcons), @"playerMusicIcons");
     musicIcons.changed = ^(BOOL on) { SGRPlayerLookChanged(); };
-    SGModRow *hideContext = SGOptionRow(SGL(@"settings.player.hide_context.title", @"Hide where it plays from"),
+    // On until switched off, as the Music app's header has only the grabber over the cover.
+    SGModRow *hideContext = SGSwitchRow(SGL(@"settings.player.hide_context.title", @"Hide where it plays from"),
                                       SGL(@"settings.player.hide_context.subtitle", @"Hide the artist, album or playlist name at the top of the player."),
                                       SGRKeyPlayerHideContext);
     hideContext.changed = ^(BOOL on) {
@@ -1249,7 +1250,7 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
                                    @"background still. Animated and Visualizer use these where they show Fluid.")),
         SGNotedSection(SGL(@"settings.player.controls.header", @"Controls"), @[headerGlass, hideContext, SGSwitchRow(SGL(@"settings.player.volume.title", @"Volume"), nil, SGRKeyPlayerVolume),
                                       SGOptionRow(SGL(@"settings.player.follows_cover.title", @"Follow the cover"), nil, SGRKeyPlayerFollowsCover),
-                                      SGWithNew(SGSwitchRow(SGL(@"settings.player.lyric_line.title", @"Lyrics Line"),
+                                      SGWithNew(SGOptionRow(SGL(@"settings.player.lyric_line.title", @"Lyrics Line"),
                                                   SGL(@"settings.player.lyric_line.subtitle", @"The line being sung, under the cover. Tap it to open the lyrics."),
                                                   SGRKeyPlayerLyricLine), @"playerLyricLine"),
                                       SGWithNew(SGSwitchRow(SGL(@"settings.player.rolling_digits.title", @"Rolling time digits"),

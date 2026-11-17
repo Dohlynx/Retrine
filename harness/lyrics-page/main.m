@@ -54,6 +54,9 @@ static void runChecks(UIViewController *page) {
     SGRKaraokeView *preview = [page valueForKey:@"preview"];
     NSArray<UIButton *> *chips = chipsOf(page);
     expect(chips.count == SGRLyricsLookPresetNames().count && lit(chips[0]), @"with nothing stored Apple Music is lit");
+    expect([[preview valueForKey:@"fontSize"] doubleValue] == 34 && [[preview valueForKey:@"margin"] doubleValue] == 32,
+           [NSString stringWithFormat:@"with nothing stored the lines are the Music app's 34 pt, 32 pt in from the sides (%@ pt, %@ pt)",
+            [preview valueForKey:@"fontSize"], [preview valueForKey:@"margin"]]);
     expect([preview valueForKey:@"tops"] != nil && !preview.hidden, @"the preview plays its lines");
     UIView *header = ((UITableViewController *)page).tableView.tableHeaderView;
     expect(CGRectGetMaxY([chips[0] convertRect:chips[0].bounds toView:header]) < header.bounds.size.height,

@@ -110,31 +110,35 @@ static BOOL isHiddenButton(UIView *view) {
         || (sg_hideRepeat && [identifier isEqualToString:kRepeatID]);
 }
 
+static BOOL isShuffleOrRepeat(UIView *view) {
+    NSString *identifier = view.accessibilityIdentifier;
+    return [identifier isEqualToString:kShuffleID] || [identifier isEqualToString:kRepeatID];
+}
+
 // Spotify also swaps in a new button a moment after the controls lay out (seen for repeat on 9.1.90: the instance
 // found leaves the window 40 ms later and another arrives at alpha 1), with no layout pass after it. The new one is
-// caught as it arrives, and the controls are asked to lay out again, so previous and next are placed for the row as it
-// is now (spreadSkips). The class is an Encore button's, taken from the first one found (`class`, not a KVO class
-// it may be observed through), since its name carries a build hash. It is the class of every Encore button, the
-// playlist, album and artist headers' shuffle among them, so only one inside the player's controls goes; any other
-// pays a window check and an identifier compare as it moves.
+// caught as it arrives, hidden if its switch says so, and the controls are asked to lay out again, so previous and
+// next are placed for the row as it is now (spreadSkips): a shown one ends the spread its empty end allowed. The class
+// is an Encore button's, taken from the first shuffle or repeat found (`class`, not a KVO class it may be observed
+// through), since its name carries a build hash. It is the class of every Encore button, the playlist, album and
+// artist headers' shuffle among them, so only one inside the player's controls counts; any other pays a window check
+// and an identifier compare as it moves.
 %group SGRPlayerButtonArrival
 %hook SGRPlayerButton
 - (void)didMoveToWindow {
     %orig;
     UIView *view = (UIView *)self;
     UIView *host = sg_buttonsHost;
-    if (!view.window || !isHiddenButton(view) || !host || ![view isDescendantOfView:host]) return;
-    SGRSuppress(view);
+    if (!view.window || !isShuffleOrRepeat(view) || !host || ![view isDescendantOfView:host]) return;
+    if (isHiddenButton(view)) SGRSuppress(view);
     [host setNeedsLayout];
 }
 %end
 %end
 
-static void suppressButton(UIView *button) {
-    if (!button) return;
-    SGRSuppress(button);
+static void watchArrivals(UIView *button) {
     static BOOL hooked;
-    if (hooked) return;
+    if (!button || hooked) return;
     hooked = YES;
     %init(SGRPlayerButtonArrival, SGRPlayerButton = button.class);
 }
@@ -156,27 +160,32 @@ static BOOL emptyEnd(UIView *end, UIView *hiddenButton) {
 }
 
 // Each is looked for only in its own end of the row, so a row without it (a podcast's) costs a walk of one
-// element, not the unit. YES when both are switched on and both ends of the row are empty (emptyEnd).
-static BOOL hideShuffleAndRepeat(UIView *host, UIStackView *row) {
+// element, not the unit; one switched off is hidden. YES when both ends of the row are empty (emptyEnd): both
+// switched off, or Spotify built the row without them (a Free account's).
+static BOOL shuffleAndRepeatGone(UIView *host, UIStackView *row) {
     sg_buttonsHost = host;
     NSArray<UIView *> *arranged = row.arrangedSubviews;
     UIView *first = arranged.firstObject, *last = arranged.lastObject;
-    UIView *shuffle = sg_hideShuffle ? SGRFindByIdentifier(first, kShuffleID, &kShuffleKey) : nil;
-    UIView *repeat = sg_hideRepeat ? SGRFindByIdentifier(last, kRepeatID, &kRepeatKey) : nil;
-    suppressButton(shuffle);
-    suppressButton(repeat);
-    return sg_hideShuffle && sg_hideRepeat && first != last && emptyEnd(first, shuffle) && emptyEnd(last, repeat);
+    UIView *shuffle = SGRFindByIdentifier(first, kShuffleID, &kShuffleKey);
+    UIView *repeat = SGRFindByIdentifier(last, kRepeatID, &kRepeatKey);
+    watchArrivals(shuffle ?: repeat);
+    if (!sg_hideShuffle) shuffle = nil;
+    if (!sg_hideRepeat) repeat = nil;
+    if (shuffle) SGRSuppress(shuffle);
+    if (repeat) SGRSuppress(repeat);
+    return first != last && emptyEnd(first, shuffle) && emptyEnd(last, repeat);
 }
 
-#pragma mark - previous and next, with shuffle and repeat both hidden
+#pragma mark - previous and next, with shuffle and repeat gone
 
 // The Music app's three transport glyphs stand well apart; Spotify's previous and next stay next to play with the
-// empty slots of shuffle and repeat outside them. With both slots empty, each moves out until its center is
-// kSpreadReachMax (or a third of the row, whichever is less) from play's, less where that would take either past the
-// row's edge; one already farther out stays. Play keeps its place and every button its size. A translation on the
-// row's slot, set in the unit's own layout pass: the stack places its slots by center and bounds, which a transform
-// leaves alone, so Spotify's layout stays underneath and identity puts it back exactly. In landscape, with only one
-// of the two hidden, or on a row without them (a podcast's), the slots are Spotify's.
+// empty slots of shuffle and repeat outside them. With both slots empty, each moves out until its center is a third of
+// the room between the player's margins (SGRPlayerSideMargin) from play's, kSpreadReachMax at most, less where that
+// would take either past the row's edge; one already farther out stays. Play keeps its place and every button its
+// size. A translation on the row's slot, set in the unit's own layout pass: the stack places its slots by center and
+// bounds, which a transform leaves alone, so Spotify's layout stays underneath and identity puts it back exactly. In
+// landscape, with either shown, or on a row whose ends hold other controls (a podcast's 15 s skips), the slots are
+// Spotify's.
 // The emptied ends stay where the stack put them, and next's moves under repeat's (the last of the row is on top):
 // an empty view that takes touches swallows them, so the ends take none while the two are spread (quietEnds).
 static const CGFloat kSpreadReachMax = 140;
@@ -231,21 +240,22 @@ static void quietEnds(UIStackView *row, BOOL quiet) {
     }
 }
 
-static void spreadSkips(UIView *host, UIStackView *row, BOOL bothHidden) {
+static void spreadSkips(UIView *host, UIStackView *row, BOOL endsEmpty) {
     UIView *play = slotOf(row, SGRFindByIdentifier(host, @"SPTNowPlayingPlayButton", &kPlayKey));
     UIView *previous = slotOf(row, SGRFindByIdentifier(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey));
     UIView *next = slotOf(row, SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey));
     // An iPhone in landscape is compact in height.
     BOOL portrait = row.traitCollection.verticalSizeClass != UIUserInterfaceSizeClassCompact;
     CGFloat previousShift = 0, nextShift = 0;
-    BOOL spread = bothHidden && portrait && play && previous && next && previous != play && next != play && previous != next;
+    BOOL spread = endsEmpty && portrait && play && previous && next && previous != play && next != play && previous != next;
     if (spread) {
         CGFloat width = row.bounds.size.width, playX = play.center.x;
         // From play's center to the farthest a button's center can go on its side with the button still in the row.
         CGFloat (^room)(UIView *) = ^CGFloat(UIView *slot) {
             return (slot.center.x < playX ? playX : width - playX) - slot.bounds.size.width / 2;
         };
-        CGFloat reach = MIN(MIN(width / 3, kSpreadReachMax), MIN(room(previous), room(next)));
+        CGFloat inside = MIN(width, host.bounds.size.width - 2 * SGRPlayerSideMargin);
+        CGFloat reach = MIN(MIN(inside / 3, kSpreadReachMax), MIN(room(previous), room(next)));
         CGFloat (^outward)(UIView *) = ^CGFloat(UIView *slot) {
             CGFloat offset = slot.center.x - playX;
             CGFloat more = MAX(0, reach - fabs(offset));
@@ -264,7 +274,7 @@ static void spreadSkips(UIView *host, UIStackView *row, BOOL bothHidden) {
     quietEnds(row, spread);
     if (previousShift || nextShift) {
         static dispatch_once_t once;
-        dispatch_once(&once, ^{ SGLog(@"redesign player: shuffle and repeat hidden, previous and next moved %.1f and %.1fpt out in a %.0fpt row", previousShift, nextShift, row.bounds.size.width); });
+        dispatch_once(&once, ^{ SGLog(@"redesign player: shuffle and repeat gone, previous and next moved %.1f and %.1fpt out in a %.0fpt row", previousShift, nextShift, row.bounds.size.width); });
     }
 }
 
@@ -362,8 +372,8 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     skipGlyph(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey, @"backward.fill", SGRPressNudgeBack);
     skipGlyph(host, @"SPTNowPlayingNextTrackButton", &kNextKey, @"forward.fill", SGRPressNudgeForward);
     SGRPlayerPlayGlyphIn(host);
-    BOOL bothHidden = hideShuffleAndRepeat(host, row);
-    if (row) spreadSkips(host, row, bothHidden);
+    BOOL endsEmpty = shuffleAndRepeatGone(host, row);
+    if (row) spreadSkips(host, row, endsEmpty);
 }
 %end
 
@@ -761,6 +771,10 @@ static void keepScrubLook(UIView *host) {
 static void durationLaidOut(UIViewController *unit) {
     UIView *host = unit.viewIfLoaded;
     if (!host) return;
+    // The bar's element, its times at its edges, inset to the player's margin.
+    UIView *bar = SGRFindByIdentifier(host, kSliderID, &kSliderKey);
+    while (bar && bar.superview != host) bar = bar.superview;
+    if (bar) SGRPlayerHoldMargin(bar, 0);
     watchSlider(host);
     UILabel *taken = monospaced(host, @"now-playing-time-take-label-internal", &kTakeKey);
     monospaced(host, @"now-playing-time-remaning-label-internal", &kRemainingKey);

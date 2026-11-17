@@ -55,7 +55,8 @@ static inline NSArray<UIView *> *SGRPlayerPreviewsToGiveBack(NSHashTable<UIView 
     return all;
 }
 
-// On until switched off, read at launch; the Player page's Controls section has its row (PlayerSettings.m).
+// Off until switched on, read at launch, as the Music app keeps the room under its cover empty; the Player page's
+// Controls section has its row (PlayerSettings.m).
 #define SGRKeyPlayerLyricLine @"spotifyglass.redesign.player.lyricLine"
 BOOL SGRPlayerLyricLineOn(void);
 // The line's place over the title in `view`'s coordinates while it has room there (it then shows whatever synced

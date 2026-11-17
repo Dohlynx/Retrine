@@ -187,7 +187,7 @@ static void settle(UIView *stack, UIView *row, BOOL moved, CGRect frame) {
     });
 }
 
-BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin) {
+BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin, BOOL rhythm) {
     SGRVolumeRow *volume = objc_getAssociatedObject(stack, &kVolumeKey);
     if (!SGRPlayerVolumeOn() || !controls) {
         SGRPlayerLyricsFadeView(volume, NO);
@@ -198,8 +198,8 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
         objc_setAssociatedObject(stack, &kVolumeKey, volume, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (volume.superview != stack) [stack addSubview:volume];
-    // Halfway between the play button's bottom and the footer glyphs' top, each where it is drawn (convertRect: takes
-    // the moves' transforms in). Without the button there is nothing to stand under: a guess from the controls' unit
+    // Between the play button's bottom and the footer glyphs' top, each where it is drawn (convertRect: takes the moves'
+    // transforms in). Without the button there is nothing to stand under: a guess from the controls' unit
     // put the row across the buttons on an iPhone 13 Pro with iOS 17 (issue #32) and took their taps, so no row.
     UIView *play = SGRFindByIdentifier(controls, @"SPTNowPlayingPlayButton", &kPlayKey);
     if (!play) {
@@ -212,9 +212,14 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
         return NO;
     }
     CGFloat above = CGRectGetMaxY([play convertRect:play.bounds toView:stack]);
-    CGFloat below = [row convertPoint:CGPointMake(CGRectGetMidX(row.bounds), CGRectGetMidY(row.bounds)) toView:stack].y - kGlyphsHalf;
+    CGFloat rowMiddle = [row convertPoint:CGPointMake(CGRectGetMidX(row.bounds), CGRectGetMidY(row.bounds)) toView:stack].y;
+    CGFloat below = rowMiddle - kGlyphsHalf;
     CGFloat height = kRowHeight, room = below - above;
-    CGRect frame = CGRectMake(margin, round((above + below - height) / 2), MAX(0, stack.bounds.size.width - 2 * margin), height);
+    // With the rhythm, the Music app's distance over the footer row where the room is as tall as the rhythm makes it;
+    // halfway between the play button and the footer's glyphs where it is shorter, and without the rhythm.
+    CGFloat halfway = (above + below) / 2;
+    CGFloat middle = rhythm ? MAX(halfway, rowMiddle - SGRPlayerVolumeToRow) : halfway;
+    CGRect frame = CGRectMake(margin, round(middle - height / 2), MAX(0, stack.bounds.size.width - 2 * margin), height);
     BOOL moved = !CGRectEqualToRect(volume.frame, frame);
     if (moved) volume.frame = frame;
     settle(stack, row, moved, frame);

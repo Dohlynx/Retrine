@@ -97,6 +97,21 @@ SGRArtworkField *SGRPlayerField(void);
 // Visualizer (PlayerField.x).
 void SGRPlayerHoldField(void);
 
+#pragma mark - the player's margins and rhythm
+
+// The Music app's side margin: the cover (PlayerArtwork.x), the title row and the progress bar (SGRPlayerHoldMargin) and
+// the volume row (PlayerFooter.x) start this far in from the player's edges, where Spotify's own sit nearer.
+static const CGFloat SGRPlayerSideMargin = 32;
+// Insets `view`, which Spotify's constraints lay out in its superview (a unit's view), on both sides so that its content,
+// starting `contentX` in from the view's own leading edge, starts SGRPlayerSideMargin in from the superview's. Called
+// after each of Spotify's layout passes; the inset is measured once from Spotify's layout and added to the constants of
+// Spotify's side constraints (each one's own constant kept), so it never compounds, the content inside lays out for
+// the new width, and a view Spotify already insets as far is left alone.
+void SGRPlayerHoldMargin(UIView *view, CGFloat contentX);
+// The Music app's gap from the volume row's middle to the footer row's middle: the footer's rhythm makes the room for it
+// (PlayerFooter.x) and the volume row stands this far over the footer where the room allows (PlayerVolume.m).
+static const CGFloat SGRPlayerVolumeToRow = 48;
+
 #pragma mark - the cover (PlayerArtwork.x)
 
 // The sideways list of covers behind the player, nil until one has laid out.
@@ -122,8 +137,12 @@ void SGRPlayerSetCoverHidden(BOOL hidden);
 // The title the redesign shows for a track, simplified or translated as the Lyrics page sets, and in
 // \`shownArtist\` the artist; the title as given while neither is on or nothing is in. Main thread.
 NSString *SGRShownTitle(NSString *trackID, NSString *title, NSString *artist, NSString **shownArtist);
-// Finds Spotify's title and artist labels in the information unit's view and has them show the title above.
+// Finds Spotify's title and artist labels in the information unit's view and has them show the title above, in the
+// Music app's type.
 void SGRShownTitleWatch(UIView *unit);
+// The lyrics came or went (SGRPlayerLyricsChanged): the two labels take the type for it, 17 over 17 beside the
+// lyrics' thumbnail, 20 over 20 otherwise.
+void SGRShownTitleRestyle(void);
 
 #pragma mark - iPad (PlayerLyrics.x, Redesigned/NowPlayingBar/NowPlayingBar.x)
 
@@ -195,11 +214,13 @@ SGModRow *SGRLyricsHideRow(void);
 
 // A volume slider under the controls (PlayerVolume.m), the system's: this iPhone's, or the Connect device's.
 // On until switched off. Placed by the footer's layout, between the controls (`controls`) and the footer row
-// (`row`), both arranged in Spotify's bottom stack, `margin` in from each side.
+// (`row`), both arranged in Spotify's bottom stack, `margin` in from each side: SGRPlayerVolumeToRow over the footer row
+// where the room allows while the footer keeps the Music app's rhythm (`rhythm`: taller than wide, one column), else
+// halfway between the play button and the footer's glyphs.
 #define SGRKeyPlayerVolume @"spotifyglass.redesign.player.volume"
 BOOL SGRPlayerVolumeOn(void);
 // YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
-BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin);
+BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin, BOOL rhythm);
 
 // Follow the cover (PlayerCoverAccent.x): the player's lit controls painted in the cover's color instead of the accent.
 // Off until switched on, read at launch. The cover's color (a gray one gives the accent back), and a paint of Spotify's
@@ -233,8 +254,8 @@ void SGRPlayerLookChanged(void);
 
 // Shuffle and repeat left out of the controls (PlayerControls.x), each on its own switch under Hide on the player, the
 // way the Music app keeps them off its main controls. Off until switched on, read at launch. The buttons go by alpha
-// and keep their slots, so previous, play and next stay centered; with both gone, in portrait, previous and next move
-// out from play (PlayerControls.x, spreadSkips).
+// and keep their slots, so previous, play and next stay centered; with neither shown (both hidden, or a row Spotify
+// builds without them), in portrait, previous and next move out from play (PlayerControls.x, spreadSkips).
 #define SGRKeyPlayerHideShuffle @"spotifyglass.redesign.player.hideShuffle"
 #define SGRKeyPlayerHideRepeat @"spotifyglass.redesign.player.hideRepeat"
 

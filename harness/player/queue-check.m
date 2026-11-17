@@ -72,6 +72,24 @@ SGTransitionFacts *SGAutoMixCurrentTransition(void) { return nil; }
 BOOL SGRMixShowsQueue(void) { return NO; }
 BOOL SGRMixTrackIs(SPTPlayerTrack *track, NSString *uri, NSString *uid) { return NO; }
 BOOL SGTransitionSettingsRead(SGTransitionSettings *settings) { return NO; }
+const CGFloat SGRRadiusThumb = 6;
+// The cover each song's metadata names, landing a turn of the run loop later as a fetched one does; "Current" names none.
+// While covers are held none lands, as a slow download's; each fetch's progress is kept by the song's title.
+static UIImage *fetchedCover;
+static BOOL coversHeld;
+static NSMutableDictionary<NSString *, NSProgress *> *coverFetches;
+static NSCountedSet<NSString *> *coverAsks;
+NSProgress *SGRPlayerTrackCover(SPTPlayerTrack *track, BOOL small, void (^done)(UIImage *image)) {
+    BOOL named = ![track.trackTitle isEqual:@"Current"];
+    NSProgress *progress = [NSProgress discreteProgressWithTotalUnitCount:1];
+    if (!coverFetches) coverFetches = [NSMutableDictionary dictionary];
+    if (!coverAsks) coverAsks = [NSCountedSet set];
+    coverFetches[track.trackTitle] = progress;
+    [coverAsks addObject:track.trackTitle];
+    // On the run loop rather than the main queue, so a check waiting in the run loop (spin) sees it land.
+    if (!coversHeld) CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{ if (!progress.cancelled) done(named ? fetchedCover : nil); });
+    return progress;
+}
 NSNotificationName const SGAutoMixTransitionDidChangeNotification = @"queue-test.mix";
 NSNotificationName const SGAutoMixPlayerOptionsDidChangeNotification = @"queue-test.options";
 
@@ -100,14 +118,27 @@ static NSArray *titles(NSInteger section) {
     }
     return values;
 }
+static UILabel *labelIn(UIView *view, NSString *text) {
+    if ([view isKindOfClass:UILabel.class] && [((UILabel *)view).text isEqual:text]) return (UILabel *)view;
+    for (UIView *child in view.subviews) {
+        UILabel *found = labelIn(child, text);
+        if (found) return found;
+    }
+    return nil;
+}
+static void spin(NSTimeInterval seconds) {
+    [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
+}
 static void report(NSString *revision) {
     state.queueRevision = revision;
     for (id<SGPlayerStateObserver> observer in observers.allObjects) [observer playerStateDidReport:state];
 }
 static void run(void) {
+    fetchedCover = [[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(8, 8)] imageWithActions:^(UIGraphicsImageRendererContext *context) {}];
     player = [QueuePlayer new];
     player.currentQueue = [QueueSnapshot new];
     player.currentQueue.track = song(@"current", @"Current");
+    [player.currentQueue.track setValue:@"spotify:track:current" forKey:@"URI"];
     player.currentQueue.prevTracks = @[song(@"old", @"Earlier"), song(@"recent", @"Recent")];
     player.currentQueue.nextTracks = @[song(@"one", @"First occurrence"), song(@"two", @"Second occurrence")];
     state = [QueueState new]; state.playbackId = @"playback"; state.queueRevision = @"100";
@@ -117,6 +148,18 @@ static void run(void) {
     [screen loadViewIfNeeded];
     check([titles(0) isEqual:@[@"Earlier", @"Recent"]] && [titles(1) isEqual:@[@"Current"]] &&
           [titles(2) isEqual:@[@"First occurrence", @"Second occurrence"]], @"Spotify History appears chronologically above current and Up Next");
+    UITableView *table = screen.tableView;
+    [table layoutIfNeeded];
+    spin(0.3);
+    UILabel *now = labelIn([table headerViewForSection:1], @"Now Playing"), *next = labelIn([table headerViewForSection:2], @"Up Next");
+    CGFloat nowX = CGRectGetMinX([table convertRect:now.bounds fromView:now]), nextX = CGRectGetMinX([table convertRect:next.bounds fromView:next]);
+    check(now && next && fabs(nowX - nextX) < 0.5,
+          [NSString stringWithFormat:@"the Up Next heading starts where the system's Now Playing heading does (%.1f, %.1f)", nextX, nowX]);
+    UIImage *(^shown)(NSIndexPath *) = ^UIImage *(NSIndexPath *path) {
+        return ((UIListContentConfiguration *)[table cellForRowAtIndexPath:path].contentConfiguration).image;
+    };
+    check(shown(row(2, 0)) == fetchedCover && shown(row(1, 0)) && shown(row(1, 0)) != fetchedCover,
+          @"a row takes the cover its song's metadata names as it lands; a song without one keeps the placeholder");
     UITableViewCell *history = [screen tableView:screen.tableView cellForRowAtIndexPath:row(0, 1)];
     [screen tableView:screen.tableView didSelectRowAtIndexPath:row(0, 1)];
     check(history.selectionStyle == UITableViewCellSelectionStyleNone &&
@@ -150,6 +193,40 @@ static void run(void) {
     }
     [screen tableView:screen.tableView didSelectRowAtIndexPath:row(2, 1)];
     check([((QueueTrack *)player.currentQueue.track).UID isEqual:@"episode"], @"Up Next retains its episode skip action");
+    coversHeld = YES;
+    player.withoutQueueAPI = NO;
+    QueueTrack *kept = song(@"kept", @"Kept"), *dropped = song(@"dropped", @"Dropped");
+    [kept setValue:@"spotify:track:kept" forKey:@"URI"];
+    [dropped setValue:@"spotify:track:dropped" forKey:@"URI"];
+    player.currentQueue.nextTracks = @[kept, dropped];
+    [state setValue:@[kept, dropped] forKey:@"future"];
+    report(@"105");
+    titles(2);
+    NSProgress *keptCover = coverFetches[@"Kept"], *droppedCover = coverFetches[@"Dropped"];
+    player.currentQueue.nextTracks = @[kept];
+    [state setValue:@[kept] forKey:@"future"];
+    report(@"106");
+    check(keptCover && droppedCover && droppedCover.cancelled && !keptCover.cancelled,
+          @"a cover still coming for a song gone from the list is cancelled; a listed song's keeps coming");
+    [screen.navigationController pushViewController:[UIViewController new] animated:NO];
+    spin(0.3);
+    check(keptCover.cancelled, @"Playing Next leaving the screen cancels the covers still coming");
+    // Back on screen with the same list and cells: the cancelled cover is asked for once more and lands.
+    coversHeld = NO;
+    NSUInteger keptAsks = [coverAsks countForObject:@"Kept"];
+    [screen.navigationController popViewControllerAnimated:NO];
+    spin(0.3);
+    check(shown(row(2, 0)) == fetchedCover && [coverAsks countForObject:@"Kept"] == keptAsks + 1,
+          [NSString stringWithFormat:@"Playing Next shown again asks once more for a cover cancelled while away and shows it (%lu asks)",
+                                     (unsigned long)([coverAsks countForObject:@"Kept"] - keptAsks)]);
+    NSUInteger asksShown = coverAsks.count, totalAsks = 0;
+    for (NSString *title in coverAsks) totalAsks += [coverAsks countForObject:title];
+    [screen.navigationController pushViewController:[UIViewController new] animated:NO];
+    [screen.navigationController popViewControllerAnimated:NO];
+    spin(0.3);
+    NSUInteger totalAfter = 0;
+    for (NSString *title in coverAsks) totalAfter += [coverAsks countForObject:title];
+    check(coverAsks.count == asksShown && totalAfter == totalAsks, @"shown again with every cover in, no cover is asked for again");
     printf("queue checks: %d of %d right -- PASS\n", checked, checked);
     fflush(stdout);
     exit(0);

@@ -23,6 +23,12 @@ BOOL SGRMixShowsQueue(void);
 // bounds and are placed again only when either changed; a hidden slider does nothing.
 void SGRPlayerMixSliderLaidOut(UISlider *slider);
 
+// The cover `track`'s metadata names, fetched (cached by the URL session) and decoded for display off main: the largest
+// for AutoMix's stage, a thumbnail's (Playing Next's rows, PlayerQueue.m) when `small`. `done` runs on main with the
+// image, nil when the metadata names none (then at once, and nothing is returned) or it did not come. Cancelling the
+// returned progress stops the download and the decoding where they are, and `done` is then never called.
+NSProgress *SGRPlayerTrackCover(SPTPlayerTrack *track, BOOL small, void (^done)(UIImage *image));
+
 #pragma mark - the cover's stage (PlayerArtwork.x)
 
 // Puts `stage` over the cover on screen, at its place and scale, and hides the cover while its shadow stays; nil

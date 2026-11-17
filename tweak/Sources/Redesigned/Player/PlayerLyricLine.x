@@ -56,7 +56,7 @@ static CGRect takenPreviewIn(UIView *view);
 BOOL SGRPlayerLyricLineOn(void) {
     static BOOL on;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ on = SGEnabled(SGRKeyPlayerLyricLine); });
+    dispatch_once(&once, ^{ on = SGHidden(SGRKeyPlayerLyricLine); });
     return on;
 }
 

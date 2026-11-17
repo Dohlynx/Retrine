@@ -43,7 +43,7 @@ static void contextVisibility(UIView *header) {
     UIView *context = SGRFindByIdentifier(header, @"now-playing-navigation-unit-title-label", &kContextKey);
     if (!context) return;
     NSArray<NSNumber *> *saved = objc_getAssociatedObject(context, &kContextStateKey);
-    if (SGHidden(SGRKeyPlayerHideContext)) {
+    if (SGEnabled(SGRKeyPlayerHideContext)) {
         if (!saved) {
             saved = @[@(context.alpha), @(context.isAccessibilityElement), @(context.accessibilityElementsHidden)];
             objc_setAssociatedObject(context, &kContextStateKey, saved, OBJC_ASSOCIATION_RETAIN_NONATOMIC);

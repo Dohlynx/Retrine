@@ -48,13 +48,22 @@ static UIView *coverIn(UIView *tilt) {
     return nil;
 }
 
-static BOOL inCoverCell(UIView *tilt) {
+static UIView *coverCellOf(UIView *tilt) {
     static Class cell;
     if (!cell) cell = NSClassFromString(@"_TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl");
     for (UIView *v = tilt.superview; v; v = v.superview) {
-        if ([v isKindOfClass:cell]) return YES;
+        if ([v isKindOfClass:cell]) return v;
     }
-    return NO;
+    return nil;
+}
+
+// How far in from each side of its tilt view the cover is drawn, so it stands SGRPlayerSideMargin in from the player's
+// sides (the cell is the player's width) as the Music app's does, where Spotify's tilt view stands nearer (24 pt, so
+// the cover is 338 rather than 354 on a 402 pt iPhone). Nothing where Spotify's own is as far in, an iPad's.
+static CGFloat coverInset(UIView *tilt, UIView *cell) {
+    CGRect inCell = [cell convertRect:tilt.bounds fromView:tilt];
+    CGFloat nearest = MIN(CGRectGetMinX(inCell) - CGRectGetMinX(cell.bounds), CGRectGetMaxX(cell.bounds) - CGRectGetMaxX(inCell));
+    return MAX(0, SGRPlayerSideMargin - nearest);
 }
 
 static void scaleCover(UIView *tilt, CGFloat scale) {
@@ -311,9 +320,9 @@ static void watchHold(UIView *tilt) {
 %hook _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
 - (void)layoutSubviews {
     UIView *tilt = (UIView *)self;
-    BOOL player = inCoverCell(tilt);
+    UIView *cell = coverCellOf(tilt);
     %orig;
-    if (tilt.bounds.size.width < kCoverMinWidth || !player) return;
+    if (tilt.bounds.size.width < kCoverMinWidth || !cell) return;
     UIView *cover = coverIn(tilt);
     if (!cover) return;
     [sg_tilts addObject:tilt];
@@ -324,9 +333,11 @@ static void watchHold(UIView *tilt) {
     }
     watchHold(tilt);
     SGRPlayerMotionCoverLaidOut();
-    // The cover fills the tilt view (01.txt:37); bounds and center, unlike a frame, hold under the scale.
-    CGRect bounds = tilt.bounds;
-    CGPoint middle = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+    // The cover fills the tilt view (01.txt:37) less the inset to the player's margin, its top where Spotify's is; bounds
+    // and center, unlike a frame, hold under the scale.
+    CGFloat inset = coverInset(tilt, cell);
+    CGRect bounds = CGRectMake(0, 0, tilt.bounds.size.width - 2 * inset, tilt.bounds.size.height - 2 * inset);
+    CGPoint middle = CGPointMake(CGRectGetMidX(tilt.bounds), CGRectGetMinY(tilt.bounds) + bounds.size.height / 2);
     if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
     if (!CGPointEqualToPoint(cover.center, middle)) cover.center = middle;
     // Its image is placed again for the new size (the ImageViewProxy hook below makes it fill the cover).

@@ -113,7 +113,10 @@ static void removeImported(BOOL resetSelection) {
         [NSFileManager.defaultManager removeItemAtURL:url error:nil];
     }
     for (NSString *key in @[SGKeyAppFontFiles, SGKeyAppFontName]) [store removeObjectForKey:key];
-    if (resetSelection && SGAppFontChosen() == SGAppFontCustom) SGSetInt(SGKeyAppFont, SGAppFontSpotify);
+    if (resetSelection && SGAppFontChosen() == SGAppFontCustom) {
+        [store removeObjectForKey:SGKeyAppFont];
+        SGPrefsChanged();
+    }
 }
 
 static void tell(NSString *title, NSString *message) {

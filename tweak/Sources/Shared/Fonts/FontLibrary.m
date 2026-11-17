@@ -314,8 +314,9 @@ void SGFontLibraryRemove(NSString *identifier) {
     [families() removeObjectForKey:identifier];
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     if (SGAppFontChosen() == SGAppFontLibrary && [[store stringForKey:SGKeyAppFontLibrary] isEqualToString:identifier]) {
-        SGSetInt(SGKeyAppFont, SGAppFontSpotify);
+        [store removeObjectForKey:SGKeyAppFont];
         [store removeObjectForKey:SGKeyAppFontLibrary];
+        SGPrefsChanged();
     }
     changed(identifier);
 }

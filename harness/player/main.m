@@ -1930,7 +1930,8 @@ static void installSettingsWorkProbes(void) {
     UIView *close = SGRFindByIdentifier(headerUnit.view, @"now-playing-minimize-button", &closeKey);
     UIView *more = SGRFindByIdentifier(headerUnit.view, @"Context menu", &moreKey);
     CGRect closeFrame = close.frame, moreFrame = more.frame, contextFrame = context.frame;
-    BOOL defaultShown = context.alpha == 1 && context.isAccessibilityElement && !context.accessibilityElementsHidden;
+    // Nothing stored hides it, as the Music app's header has no context line.
+    BOOL defaultConcealed = context.alpha == 0 && !context.isAccessibilityElement && context.accessibilityElementsHidden;
     SGModRow *contextRow = nil;
     for (SGModSection *section in ((SGModPage *)SGRPlayerSettingsPage(@[])).sections)
         for (SGModRow *row in section.rows)
@@ -1943,11 +1944,14 @@ static void installSettingsWorkProbes(void) {
     SGSetEnabled(SGRKeyPlayerHideContext, NO);
     if (contextRow.changed) contextRow.changed(NO);
     [headerUnit.view layoutIfNeeded];
-    [self expect:contextRow && defaultShown && concealed && context.alpha == 1
+    [self expect:contextRow && defaultConcealed && concealed && context.alpha == 1
                  && context.isAccessibilityElement && !context.accessibilityElementsHidden
                  && CGRectEqualToRect(close.frame, closeFrame) && CGRectEqualToRect(more.frame, moreFrame)
-            step:@"context switch hides and restores text and VoiceOver live, keeping header slots"
+            step:@"context hidden by default; its switch hides and restores text and VoiceOver live, keeping header slots"
           detail:NSStringFromCGRect(context.frame)];
+    // Nothing stored again, so the next run on this install finds the default too.
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:SGRKeyPlayerHideContext];
+    SGPrefsChanged();
     __block UINavigationController *nav;
     __block __weak UIView *closedCard;
     __block __weak UIView *closedDecoder;
@@ -3053,7 +3057,7 @@ static UIView *controlSlot(UIStackView *row, CGFloat side, Class cls, NSString *
 }
 
 // Shuffle and repeat both hidden (switched on for this scenario at launch): previous and next spread a third of the
-// 366 pt row (122 pt) either side of play, and stay spread while Spotify takes repeat out, lays the controls out and
+// room between the Music app's 32 pt margins of the 390 pt unit ((390 - 64) / 3 pt) either side of play, and stay spread while Spotify takes repeat out, lays the controls out and
 // puts a new repeat in, or swaps repeat's end for a bare placeholder and then a new holder. The emptied ends take no
 // touches meanwhile, so a touch on next where it overlaps repeat's end is next's. A landscape row and a row whose ends
 // hold other controls (a podcast's) get Spotify's places and the ends' touches back.
@@ -3088,7 +3092,8 @@ static UIView *controlSlot(UIStackView *row, CGFloat side, Class cls, NSString *
         UIView *hit = [self.window hitTest:outer withEvent:nil];
         BOOL onNext = [hit isDescendantOfView:nextButton];
         BOOL quiet = !shuffleEnd.userInteractionEnabled && !repeatEnd.userInteractionEnabled;
-        BOOL placed = spread ? fabs(fabs(previousAt) - 122) < 0.5 && fabs(fabs(nextAt) - 122) < 0.5 && previousAt * nextAt < 0
+        const CGFloat reach = (390 - 2 * 32) / 3.0;
+        BOOL placed = spread ? fabs(fabs(previousAt) - reach) < 0.5 && fabs(fabs(nextAt) - reach) < 0.5 && previousAt * nextAt < 0
                              : CGAffineTransformIsIdentity(previous.transform) && CGAffineTransformIsIdentity(next.transform);
         *right = placed && (spread ? quiet && onNext : shuffleEnd.userInteractionEnabled && repeatEnd.userInteractionEnabled);
         return [NSString stringWithFormat:@"previous %+.1f, next %+.1f pt from play; ends %@; a touch on next over repeat's end lands on %@",
