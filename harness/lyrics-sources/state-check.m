@@ -7,6 +7,7 @@
 #import <Security/Security.h>
 #import "Shared/Player/PlayerState.h"
 #import "Core/SGOptionalWork.h"
+#import "Shared/AnimatedArtwork/AnimatedArtwork.h"
 #define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "FAILED line %d: %s\n", __LINE__, #cond); exit(1); } } while (0)
 
 static void (^sg_pinnedReply)(SGLyricsResult *);
@@ -49,9 +50,14 @@ static void holdableAfter(dispatch_time_t when, dispatch_queue_t queue, dispatch
 }
 #define dispatch_after holdableAfter
 static BOOL sg_aheadAllowed = YES;
+static BOOL sg_expensivePath, sg_backgroundConsumer;
 static BOOL optionalForWatcher(BOOL expensive) {
-    return sg_aheadAllowed && SGEnabled(SGKeyLoadAhead);
+    return sg_aheadAllowed && (!sg_expensivePath || expensive) && SGEnabled(SGKeyLoadAhead);
 }
+BOOL SGLiveActivityLyricsActive(void) { return sg_backgroundConsumer; }
+BOOL SGLyricsPiPActive(void) { return NO; }
+BOOL SGLyricsPiPStarting(void) { return NO; }
+SGLockArtwork SGLockScreenArtwork(void) { return SGLockArtworkOff; }
 static NSMutableArray<NSString *> *sg_prefetched;
 static void observedPrefetch(NSString *track) {
     [sg_prefetched addObject:track];
@@ -1991,6 +1997,7 @@ static void checkPickRaces(NSUInteger only) {
 }
 
 static void checkBackgroundSkip(void) {
+    sg_backgroundConsumer = YES;
     id oldPlayer = sg_player;
     NSDictionary *oldHeaders = sg_spclientHeaders;
     Method appMethod = class_getClassMethod(UIApplication.class, @selector(sharedApplication));
@@ -2671,6 +2678,50 @@ static void checkHeaderOrigin(void) {
     puts("header origin: exact HTTPS host, case-insensitivity, malicious hosts and HTTP rejection passed");
 }
 
+static void checkBackgroundTimedDelivery(void) {
+    NSArray *keys = @[@"musixmatch", @"netease"];
+    SGLyricsProvider *first = SGLyricsProviderFor(keys[0]), *second = SGLyricsProviderFor(keys[1]);
+    SGLyricsAsk firstAsk = first.ask, secondAsk = second.ask;
+    BOOL firstNeedsName = first.needsName, secondNeedsName = second.needsName;
+    first.needsName = NO; second.needsName = YES;
+    NSArray *order = SGLyricsOrder();
+    NSInteger mode = SGInt(SGKeyLyricsAskMode, 1);
+    for (NSNumber *choice in @[@1, @2]) {
+        SGSetInt(SGKeyLyricsAskMode, choice.integerValue);
+        SGLyricsSetOrder(keys);
+        __block void (^plainReply)(SGLyricsResult *), (^timedReply)(SGLyricsResult *);
+        first.ask = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *)) { plainReply = done; };
+        second.ask = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *)) { timedReply = done; };
+        NSString *track = [@"background-timed-" stringByAppendingString:choice.stringValue];
+        __block SGLyricsResult *delivered;
+        sg_waiting[track] = [NSMutableArray arrayWithObject:[^(SGLyricsResult *result) { delivered = result; } copy]];
+        SGLyricsQuery *query = [SGLyricsQuery new]; query.trackID = track;
+        sg_backgroundConsumer = YES;
+        // The concurrent walk learns the name only after it has moved to the background.
+        sg_testApplication.applicationState = choice.integerValue == 2 ? UIApplicationStateActive : UIApplicationStateBackground;
+        startWalk(track, query);
+        CHECK(plainReply && !timedReply);
+        sg_testApplication.applicationState = UIApplicationStateBackground;
+        SGLyricsResult *plain = madeUpLyrics(@"Plain only", SGKaraokeTimingNone);
+        plain.title = @"Song"; plain.artist = @"Singer";
+        plainReply(plain);
+        drainReplies();
+        CHECK(timedReply && !delivered);
+        timedReply(madeUpLyrics(@"Timed background line", SGKaraokeTimingLine));
+        drainReplies();
+        CHECK(delivered.synced && [delivered.texts.firstObject isEqual:@"Timed background line"]);
+        SGLyricsRetire(track);
+        [sg_waiting removeObjectForKey:track];
+    }
+    sg_backgroundConsumer = NO;
+    sg_testApplication.applicationState = UIApplicationStateActive;
+    first.ask = firstAsk; second.ask = secondAsk;
+    first.needsName = firstNeedsName; second.needsName = secondNeedsName;
+    SGLyricsSetOrder(order);
+    SGSetInt(SGKeyLyricsAskMode, mode);
+    puts("background delivery: plain replies do not prevent later timed providers in either scheduler");
+}
+
 static void checkUpNext(void) {
     NSString *previousID = sg_lastSeenID;
     SPTPlayerTrack *previousTrack = sg_lastSeen;
@@ -2688,6 +2739,7 @@ static void checkUpNext(void) {
     sg_fixtureState = (id)state;
     SGSetEnabled(SGKeyLoadAhead, NO);
     [watcher playerStateDidChange:(id)state];
+    drainReplies();
     CHECK(([sg_prefetched isEqual:@[@"ahead-current"]]));
     SGSetEnabled(SGKeyLoadAhead, YES);
     [watcher playerUpNextDidChange:(id)state];
@@ -2705,20 +2757,35 @@ static void checkUpNext(void) {
     CHECK(sg_prefetched.count == 3);
     sg_aheadAllowed = YES; [watcher playerStateDidChange:(id)state];
     CHECK([sg_prefetched.lastObject isEqual:@"ahead-old"]);
-    // Drain the actual source owner's coalesced requests and deliver B after C.
+    // Cancelled advance requests cannot advance to another provider or publish a late answer.
     NSMutableDictionary *replies = [NSMutableDictionary dictionary];
     SGLyricsProvider *provider = SGLyricsProviderFor(@"musixmatch");
     SGLyricsAsk saved = provider.ask;
     provider.ask = ^(SGLyricsQuery *q, void (^done)(SGLyricsResult *)) { replies[q.trackID] = [done copy]; };
-    pumpUntil(^BOOL { return replies.count == 3; });
-    SGLyricsResult *new = madeUpLyrics(@"new", SGKaraokeTimingWords);
+    pumpUntil(^BOOL { return replies[@"ahead-old"] != nil; });
     SGLyricsResult *old = madeUpLyrics(@"old", SGKaraokeTimingWords);
-    ((void (^)(SGLyricsResult *))replies[@"ahead-new"])(new);
+    CHECK(!SGLyricsKeptAnswer(@"ahead-new"));
+    Method appMethod = class_getClassMethod(UIApplication.class, @selector(sharedApplication));
+    IMP oldApp = method_setImplementation(appMethod, (IMP)fakeApplication);
+    sg_testApplication = [HarnessApplication new];
+    sg_testApplication.applicationState = UIApplicationStateBackground;
+    sg_expensivePath = YES;
+    [watcher background:nil];
+    drainReplies();
+    CHECK(!watcher.ahead);
     ((void (^)(SGLyricsResult *))replies[@"ahead-old"])(old);
-    ((void (^)(SGLyricsResult *))replies[@"ahead-current"])(nil);
-    __block BOOL delivered = NO;
-    SGLyricsFetch(@"ahead-new", ^(SGLyricsResult *answer) { CHECK([answer.texts.firstObject isEqual:@"new"]); delivered = YES; });
-    pumpUntil(^BOOL { return delivered; });
+    CHECK(!SGLyricsKeptAnswer(@"ahead-old"));
+    sg_backgroundConsumer = NO;
+    NSUInteger before = sg_prefetched.count;
+    prefetch(@"background-unused");
+    drainReplies();
+    CHECK(sg_prefetched.count == before);
+    sg_backgroundConsumer = YES;
+    prefetch(@"background-needed");
+    CHECK([sg_prefetched.lastObject isEqual:@"background-needed"]);
+    sg_testApplication.applicationState = UIApplicationStateActive;
+    sg_expensivePath = NO; sg_backgroundConsumer = NO;
+    method_setImplementation(appMethod, oldApp);
     provider.ask = saved;
     sg_prefetched = nil;
     sg_fixtureState = nil;
@@ -2752,6 +2819,9 @@ int main(void) {
         atexit(removeTestDefaults);
         Method defaultsMethod = class_getClassMethod(NSUserDefaults.class, @selector(standardUserDefaults));
         method_setImplementation(defaultsMethod, (IMP)fakeDefaults);
+        sg_testApplication = [HarnessApplication new];
+        sg_testApplication.applicationState = UIApplicationStateActive;
+        method_setImplementation(class_getClassMethod(UIApplication.class, @selector(sharedApplication)), (IMP)fakeApplication);
         NSUserDefaults *defaults = sg_testDefaults;
         if (!aheadOnly) {
             checkLanguageStore();
@@ -2768,6 +2838,7 @@ int main(void) {
         if (getenv("VITRINE_TRANSLATION_CASE")) { checkLiveTranslations(); return 0; }
         if (getenv("VITRINE_STORE_ONLY")) { checkStoredTranslationLanguage(); return 0; }
         checkAsyncLRCLIBPick();
+        checkBackgroundTimedDelivery();
         checkUpNext();
         if (aheadOnly) { puts("lyrics up-next: replacement, coalescing, stale result and foreground gate passed"); return 0; }
         checkTranslationDelivery();
@@ -2823,6 +2894,8 @@ int main(void) {
         printf("offsets: clamp, zero removal, 500 tracks, negative total, cached clock, route notification and seek passed\n");
 
         NSDictionary *record = @{@"id": @123, @"syncedLyrics": @"[00:01]Chosen line"};
+        sg_testApplication.applicationState = UIApplicationStateActive;
+        sg_providerReply = nil;
         __block NSUInteger pinNotes = 0;
         observer = [NSNotificationCenter.defaultCenter addObserverForName:SGLyricsPinDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
             CHECK(NSThread.isMainThread);

@@ -322,6 +322,9 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     // Standing in for Spotify's download button: its state drawn, and read again while on screen.
     SGRDownloadGlyph *_download;
     NSTimer *_downloadTimer;
+    NSTimeInterval _downloadInterval;
+    BOOL _downloadInactive;
+    BOOL _downloadWatching;
     // A two-state glyph drawn for Spotify (add-to, readState): 1 on, 0 off, -1 none drawn.
     NSInteger _stateShown;
 }
@@ -339,6 +342,10 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     [self addTarget:self action:@selector(sgr_down) forControlEvents:UIControlEventTouchDown];
     [self addTarget:self action:@selector(sgr_up) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     [self addTarget:self action:@selector(sgr_tap) forControlEvents:UIControlEventTouchUpInside];
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    for (NSNotificationName name in @[UIApplicationWillResignActiveNotification, UIApplicationDidEnterBackgroundNotification])
+        [center addObserver:self selector:@selector(sgr_downloadResigned) name:name object:nil];
+    [center addObserver:self selector:@selector(sgr_downloadBecameActive) name:UIApplicationDidBecomeActiveNotification object:nil];
     return self;
 }
 
@@ -387,15 +394,16 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
-    if (!_download && _stateShown < 0 && !self.readState) return;
     // Read again on the way in -- the state may have moved on while the page was away -- and not at all
     // while out of the window.
-    if (self.window && self.source) [self feedFrom:self.source];
-    else [self sgr_followDownload:0];
+    if ([self sgr_downloadVisible] && self.source && (_download || _stateShown >= 0 || self.readState))
+        [self feedFrom:self.source];
+    [self sgr_updateDownloadTimer];
 }
 
 - (void)dealloc {
     [_downloadTimer invalidate];
+    [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
 // Shows Spotify's download state; YES when `source` is a download button.
@@ -431,7 +439,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     // twice a second while one runs, for the ring, and now and then otherwise, for one started or removed
     // from elsewhere (the ⋯ sheet). Only while the button is on screen.
     BOOL running = state == SGRDownloadWaiting || state == SGRDownloadDownloading;
-    [self sgr_followDownload:self.window ? (running ? 0.5 : 2) : 0];
+    [self sgr_followDownload:running ? 0.5 : 2];
     return YES;
 }
 
@@ -457,7 +465,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     NSString *word = source.accessibilityLabel ?: wordIn(source);
     if (word && ![self.accessibilityLabel isEqualToString:word]) self.accessibilityLabel = word;
     // Nothing is laid out when it changes from elsewhere (the ⋯ sheet), so it is read again as download is.
-    [self sgr_followDownload:self.window ? 2 : 0];
+    [self sgr_followDownload:2];
 }
 
 // Shows whether Spotify's add-to button has its album or playlist saved; YES when `source` is one.
@@ -473,7 +481,37 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 
 // Reads the state again every `interval` seconds; 0 stops.
 - (void)sgr_followDownload:(NSTimeInterval)interval {
-    if (interval <= 0) {
+    _downloadInterval = interval;
+    BOOL watch = interval > 0;
+    if (watch != _downloadWatching) {
+        _downloadWatching = watch;
+        __weak SGRMirrorButton *weakSelf = self;
+        SGRObserveVisibility(self, watch ? ^{ [weakSelf sgr_updateDownloadTimer]; } : nil);
+    }
+    [self sgr_updateDownloadTimer];
+}
+
+- (BOOL)sgr_downloadVisible {
+    if (!self.window || _downloadInactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return NO;
+    for (UIView *view = self; view; view = view.superview)
+        if (view.hidden || view.alpha <= 0.01) return NO;
+    return YES;
+}
+
+- (void)sgr_downloadResigned {
+    // WillResignActive can arrive before applicationState changes.
+    _downloadInactive = YES;
+    [self sgr_updateDownloadTimer];
+}
+
+- (void)sgr_downloadBecameActive {
+    _downloadInactive = NO;
+    [self sgr_updateDownloadTimer];
+}
+
+- (void)sgr_updateDownloadTimer {
+    NSTimeInterval interval = _downloadInterval;
+    if (interval <= 0 || ![self sgr_downloadVisible] || !self.source) {
         [_downloadTimer invalidate];
         _downloadTimer = nil;
         return;
@@ -483,7 +521,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     __weak SGRMirrorButton *weakSelf = self;
     _downloadTimer = [NSTimer scheduledTimerWithTimeInterval:interval repeats:YES block:^(NSTimer *timer) {
         SGRMirrorButton *button = weakSelf;
-        if (!button || !button.window || !button.source) {
+        if (!button || ![button sgr_downloadVisible] || !button.source) {
             [timer invalidate];
             return;
         }
@@ -502,7 +540,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     if (self.readState) {
         BOOL on = NO;
         if (self.readState(&on)) [self sgr_showOn:on off:self.stateOffSymbol on:self.stateOnSymbol source:source];
-        else [self sgr_followDownload:self.window ? 2 : 0];
+        else [self sgr_followDownload:2];
         BOOL known = _stateShown >= 0;
         if (_glyph.hidden == known) _glyph.hidden = !known;
         if (self.userInteractionEnabled != known) {

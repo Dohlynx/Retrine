@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 #ifdef SG_BASELINE
         BOOL written = SGLyricsClipWriteWithLayout(video, backdrop, nil, nil, nil, size, SGLyricsClipStill, SGLyricsClipLeft);
 #else
-        BOOL written = SGLyricsClipWriteWithLayout(video, backdrop, cover, nil, nil, nil, nil, size, SGLyricsClipStill, SGLyricsClipLeft);
+        BOOL written = SGLyricsClipWriteWithLayout(video, backdrop, cover, nil, nil, nil, nil, size, SGLyricsClipStill, SGLyricsClipLeft, nil);
 #endif
         check(written, @"motion fixture written");
         CGImageRef motion = written ? SGLyricsClipMotionFrame(video, previous, line, translation, nil, 0, 2, SGLyricsClipLeft) : NULL;
@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
         CGImageRef patterned = render(NULL, cover, previous, line, translation, size, SGLyricsClipOverArtwork);
         save(patterned, dir, @"artwork-after.png", YES);
         for (SGLyricsClipStyle style = SGLyricsClipStill; style <= SGLyricsClipAnimated; style++) {
-            check(SGLyricsClipWriteWithLayout(video, NULL, cover, previous, line, translation, nil, size, style, SGLyricsClipOverArtwork),
+            check(SGLyricsClipWriteWithLayout(video, NULL, cover, previous, line, translation, nil, size, style, SGLyricsClipOverArtwork, nil),
                   @"OverArtwork encodes in both styles");
             AVURLAsset *asset = [AVURLAsset URLAssetWithURL:video options:nil];
             check(fabs(CMTimeGetSeconds(asset.duration) - (style == SGLyricsClipStill ? 2 : 4)) < .01,

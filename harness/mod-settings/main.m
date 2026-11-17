@@ -288,6 +288,11 @@ static void pageStyleChecks(void) {
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"background-check"]) {
+        extern void SGCheckSettingsBackground(void);
+        SGCheckSettingsBackground();
+        exit(0);
+    }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"page-style-check"]) {
         pageStyleChecks();
         exit(0);

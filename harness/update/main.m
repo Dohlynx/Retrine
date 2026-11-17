@@ -7,6 +7,7 @@
 #import <UIKit/UIKit.h>
 #import "App/About/About.h"
 #import "../harness-fail.h"
+#import "../timer-lifecycle.h"
 
 // Spotify's welcome tour is not built here, and nothing holds the screen against the notice.
 BOOL SGOnboardingShowing(void) {
@@ -38,7 +39,7 @@ static UIViewController *plainScreen(void) {
 
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     NSArray<NSString *> *arguments = NSProcessInfo.processInfo.arguments;
-    if ([arguments containsObject:@"footers"]) {
+    if ([arguments containsObject:@"footers"] || [arguments containsObject:@"background-check"]) {
         // Fresh cached releases keep SGUpdatePage's normal check offline.
         [NSUserDefaults.standardUserDefaults setVolatileDomain:@{
             @"spotifyglass.update.checked": @(NSDate.date.timeIntervalSince1970),
@@ -47,6 +48,11 @@ static UIViewController *plainScreen(void) {
             ],
         } forName:NSArgumentDomain];
         UITableViewController *page = (UITableViewController *)SGUpdatePage();
+        if ([arguments containsObject:@"background-check"]) {
+            SGHarnessCheckPageBackground(page);
+            puts("PASS update page refresh stops in background and resumes only when visible");
+            exit(0);
+        }
         UITableView *table = page.tableView;
         NSInteger sections = [table.dataSource numberOfSectionsInTableView:table];
         HARNESS_CHECK(sections == 3);

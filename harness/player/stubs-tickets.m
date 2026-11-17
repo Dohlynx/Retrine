@@ -3,9 +3,17 @@
 // contract; a cancelled consumer is not called when the shared lookup finishes.
 #import "Shared/AnimatedArtwork/SGMotionTicket.h"
 
+static NSMutableArray<SGMotionTicket *> *sg_backgroundTickets;
+NSArray<SGMotionTicket *> *SGRHarnessMotionTickets(void) { return sg_backgroundTickets ?: @[]; }
+
 SGMotionTicket *SGMotionRequestClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, CGFloat pixels,
                                    void (^done)(NSURL *file, NSString *source)) {
     SGMotionTicket *ticket = [SGMotionTicket new];
+    if ([NSProcessInfo.processInfo.environment[@"HARNESS_SCENARIO"] isEqual:@"background"]) {
+        if (!sg_backgroundTickets) sg_backgroundTickets = [NSMutableArray array];
+        [sg_backgroundTickets addObject:ticket];
+        return ticket;
+    }
     SGMotionClipFor(uri, canvas, artist, album, pixels, ^(NSURL *file, NSString *source) {
         if (!ticket.cancelled) done(file, source);
     });

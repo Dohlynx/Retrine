@@ -940,6 +940,10 @@ static void loadLyrics(void) {
     else if ([scenario() isEqualToString:@"options"]) [self runOptionsChecks];
     else if ([scenario() isEqualToString:@"renderer"]) [self runRendererChecks];
     else if ([scenario() isEqualToString:@"automix"]) SGRHarnessRunAutoMix(self.window, _units[2], _tilt);
+    else if ([scenario() isEqualToString:@"background"]) {
+        extern void SGRHarnessRunBackground(UIWindow *, UIViewController *, UIView *);
+        dispatch_async(dispatch_get_main_queue(), ^{ SGRHarnessRunBackground(self.window, _background, _tilt); });
+    }
     // Opened, closed and opened again, so a screenshot can be taken of each state and of the move itself.
     else for (NSNumber *at in @[@2, @6, @10]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(at.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -4036,6 +4040,8 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
 // Before every %ctor, so the redesign's gate reads on, and every session gets the picture server.
 __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"spotifyglass.redesign"];
+    if ([scenario() isEqualToString:@"background"])
+        [NSUserDefaults.standardUserDefaults setInteger:SGRPlayerBackgroundAnimated forKey:@"spotifyglass.redesign.player.background"];
     // Animated artwork, its clip served by the picture server to the shared session too.
     if ([scenario() isEqualToString:@"visualiser"]) [NSUserDefaults.standardUserDefaults setInteger:4 forKey:@"spotifyglass.redesign.player.background"];
     // Still at launch, so the player looks up no clip; an address of this run's own, so the store has none of it yet.

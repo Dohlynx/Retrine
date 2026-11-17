@@ -114,6 +114,7 @@
     _currentTicket = _aheadTicket = nil;
     _ahead = nil;
     _track = nil;
+    _walked = NO;
     _walk++;
     SPTPlayerState *state = SGPlayerState();
     if (state) [self playerStateDidChange:state];

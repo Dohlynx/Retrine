@@ -150,8 +150,9 @@ static BOOL isBlue(UIImage *image) {
 
 int main(void) {
     @autoreleasepool {
+        __block BOOL visible = YES;
         __attribute__((objc_precise_lifetime)) SGMotionFollower *follower = [[SGMotionFollower alloc] initWithBegin:^BOOL(NSString *uri, SPTPlayerState *value) {
-            return YES;
+            return visible;
         } found:^(NSString *uri, NSURL *file) {}];
         observer = follower;
         requested = [NSMutableArray array];
@@ -191,7 +192,17 @@ int main(void) {
         advanceAllowed = NO;
         state.track = a; state.future = @[b]; publish(state);
         CHECK(requested.count == 5 && [requested.lastObject isEqual:a.URI]);
-        (void)follower;
+        advanceAllowed = YES;
+        [follower restart];
+        SGMotionTicket *current = tickets[a.URI], *ahead = tickets[b.URI];
+        NSUInteger beforeSuspending = requested.count;
+        visible = NO;
+        [follower restart];
+        CHECK(current.cancelled && ahead.cancelled);
+        CHECK(requested.count == beforeSuspending);
+        visible = YES;
+        [follower restart];
+        CHECK(requested.count == beforeSuspending + 2);
 
         NSURL *root = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
             URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];

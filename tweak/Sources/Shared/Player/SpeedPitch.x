@@ -1024,7 +1024,7 @@ static OSStatus stopOutput(AudioUnit unit) {
     Output *output = outputOf(unit);
     if (output && atomic_exchange(&output->running, false)) {
         updateChecking();
-        reselect(NO, @"its output stopped");
+        reselect(music() == output, @"its output stopped");
         SGLog(@"audio: output %p stopped (Spotify's side %.0f Hz); the processors are on %@", unit, rateOf(&output->client), describe(music()));
     }
     pthread_mutex_unlock(&sg_outputsLock);
@@ -1306,6 +1306,11 @@ void SGPlayerSetGain(float gain) {
 AudioUnit SGPlayerMusicOutput(void) {
     Output *output = music();
     return output ? atomic_load(&output->unit) : NULL;
+}
+
+BOOL SGPlayerMusicOutputRunning(void) {
+    Output *output = music();
+    return output && atomic_load(&output->running);
 }
 
 BOOL SGPlayerMusicClientFormat(AudioStreamBasicDescription *format) {

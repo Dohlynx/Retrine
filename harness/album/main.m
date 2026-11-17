@@ -15,6 +15,7 @@
 #import "more-check.h"
 #import "Album.h"
 #import "beside-check.h"
+#import "download-background-check.h"
 
 // Download and ⋯ as one glass capsule: adjacent, level, one 88x44 shape (radius 22) under both, carried by
 // download, ⋯ drawing none, its trailing edge 16pt in from the page's.
@@ -469,6 +470,16 @@ static NSString *trailingLabel(UIView *root) {
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"download-background"]) {
+        self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        self.window.rootViewController = [UIViewController new];
+        [self.window makeKeyAndVisible];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            downloadBackgroundChecks(self.window);
+            exit(0);
+        });
+        return YES;
+    }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"cover-beside"])
         [NSUserDefaults.standardUserDefaults setBool:YES forKey:SGRKeyCoverBeside];
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];

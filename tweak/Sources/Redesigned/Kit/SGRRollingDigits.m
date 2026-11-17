@@ -19,6 +19,8 @@ static const NSTimeInterval kRollDuration = 0.25;
 static const CGFloat kGlyphSlack = 2;
 
 static char kStateKey;
+static NSHashTable<UILabel *> *sg_labels;
+static BOOL sg_inactive;
 
 @interface SGRDigitsState : NSObject
 // The window the label was in at its last change; nil once it moved to another or out of one.
@@ -31,16 +33,44 @@ static char kStateKey;
 @implementation SGRDigitsState
 @end
 
+static void finish(UILabel *label, SGRDigitsState *state);
+
+static BOOL visible(UILabel *label) {
+    UIWindow *window = label.window;
+    if (sg_inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive || !window) return NO;
+    for (UIView *view = label; view; view = view.superview)
+        if (view.hidden || view.alpha <= 0.01) return NO;
+    return CGRectIntersectsRect(window.bounds, [label convertRect:label.bounds toView:window]);
+}
+
 BOOL SGRRollingDigitsWatched(UILabel *label) {
     return objc_getAssociatedObject(label, &kStateKey) != nil;
 }
 
 void SGRRollDigits(UILabel *label) {
     if (![label isKindOfClass:UILabel.class]) return;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        sg_labels = [NSHashTable weakObjectsHashTable];
+        NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+        [center addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+            sg_inactive = YES;
+            for (UILabel *watched in sg_labels) {
+                SGRDigitsState *state = objc_getAssociatedObject(watched, &kStateKey);
+                finish(watched, state);
+                state.window = nil;
+                state.changedAt = 0;
+            }
+        }];
+        [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+            sg_inactive = NO;
+        }];
+    });
     if (!SGRRollingDigitsWatched(label)) {
         SGRDigitsState *state = [SGRDigitsState new];
         state.window = label.window;
         objc_setAssociatedObject(label, &kStateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [sg_labels addObject:label];
     }
     SGRMonospacedDigits(label);
 }
@@ -207,6 +237,12 @@ static void animate(UILabel *label, SGRDigitsState *state, NSAttributedString *b
 void SGRRollingDigitsTextChanged(UILabel *label, NSAttributedString *before) {
     SGRDigitsState *state = objc_getAssociatedObject(label, &kStateKey);
     if (!state) return;
+    if (!visible(label)) {
+        finish(label, state);
+        state.window = nil;
+        state.changedAt = 0;
+        return;
+    }
     NSString *after = label.text ?: @"";
     UIWindow *window = label.window;
     CFTimeInterval now = CACurrentMediaTime();

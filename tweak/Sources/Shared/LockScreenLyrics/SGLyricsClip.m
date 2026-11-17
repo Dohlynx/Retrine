@@ -712,9 +712,55 @@ CGImageRef SGLyricsClipFrameWithLayout(CGImageRef backdrop, CGImageRef cover, NS
     return frame;
 }
 
+@interface SGLyricsWriterStatus : NSObject
+@property (nonatomic, copy) dispatch_block_t failed;
+@end
+@implementation SGLyricsWriterStatus
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    AVAssetWriterStatus status = [(AVAssetWriter *)object status];
+    if (status == AVAssetWriterStatusFailed || status == AVAssetWriterStatusCancelled) self.failed();
+}
+@end
+
+// The encoder pulls only when ready. The caller remains on its worker queue until completion.
+static BOOL writeReady(AVAssetWriter *writer, AVAssetWriterInput *input, CMTime length,
+                       BOOL (^current)(void), NSInteger (^frame)(void)) {
+    dispatch_semaphore_t complete = dispatch_semaphore_create(0);
+    dispatch_queue_t queue = dispatch_queue_create("spotifyglass.lyrics.encoder", DISPATCH_QUEUE_SERIAL);
+    __block BOOL finished = NO;
+    dispatch_block_t fail = ^{
+        if (finished) return;
+        finished = YES;
+        [writer cancelWriting];
+        dispatch_semaphore_signal(complete);
+    };
+    SGLyricsWriterStatus *status = [SGLyricsWriterStatus new];
+    status.failed = ^{ dispatch_async(queue, fail); };
+    [writer addObserver:status forKeyPath:@"status" options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew context:NULL];
+    [input requestMediaDataWhenReadyOnQueue:queue usingBlock:^{
+        if (finished) return;
+        while (input.readyForMoreMediaData) {
+            NSInteger result = (!current || current()) && writer.status == AVAssetWriterStatusWriting ? frame() : -1;
+            if (result > 0) continue;
+            [input markAsFinished];
+            if (result < 0) {
+                fail();
+            } else {
+                finished = YES;
+                [writer endSessionAtSourceTime:length];
+                [writer finishWritingWithCompletionHandler:^{ dispatch_semaphore_signal(complete); }];
+            }
+            return;
+        }
+    }];
+    dispatch_semaphore_wait(complete, DISPATCH_TIME_FOREVER);
+    [writer removeObserver:status forKeyPath:@"status"];
+    return writer.status == AVAssetWriterStatusCompleted && (!current || current());
+}
+
 BOOL SGLyricsClipWriteWithLayout(NSURL *file, CGImageRef backdrop, CGImageRef cover, NSString *previous, NSString *line,
                                  NSString *translation, NSString *next, CGSize size, SGLyricsClipStyle style,
-                                 SGLyricsClipLayout layout) {
+                                 SGLyricsClipLayout layout, BOOL (^current)(void)) {
     // Written beside the file and moved over it once whole, so a clip cut off halfway is never found.
     NSURL *partial = [file URLByAppendingPathExtension:@"partial"];
     [NSFileManager.defaultManager removeItemAtURL:partial error:nil];
@@ -748,13 +794,13 @@ BOOL SGLyricsClipWriteWithLayout(NSURL *file, CGImageRef backdrop, CGImageRef co
     [writer startSessionAtSourceTime:kCMTimeZero];
     CGImageRef words = newPicture(backdrop, cover, previous, line, translation, next, size, layout);
     CGImageRef background = newBackdrop(backdrop, cover, size, layout);
-    BOOL ok = YES;
-    for (int32_t i = 0; i < frames && ok; i++) {
-        while (!input.readyForMoreMediaData && writer.status == AVAssetWriterStatusWriting) [NSThread sleepForTimeInterval:0.002];
+    __block int32_t i = 0;
+    BOOL ok = writeReady(writer, input, length, current, ^NSInteger {
+        if (i == frames) return 0;
         CVPixelBufferRef buffer = NULL;
-        ok = writer.status == AVAssetWriterStatusWriting && adaptor.pixelBufferPool
+        BOOL allocated = adaptor.pixelBufferPool
             && CVPixelBufferPoolCreatePixelBuffer(NULL, adaptor.pixelBufferPool, &buffer) == kCVReturnSuccess;
-        if (!ok) break;
+        if (!allocated) return -1;
         CVPixelBufferLockBaseAddress(buffer, 0);
         CGContextRef context = newContext(size, CVPixelBufferGetBaseAddress(buffer), CVPixelBufferGetBytesPerRow(buffer));
         drawFrame(context, background, words, size, (double)i / frames);
@@ -763,22 +809,16 @@ BOOL SGLyricsClipWriteWithLayout(NSURL *file, CGImageRef backdrop, CGImageRef co
         CVBufferSetAttachment(buffer, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
         CVBufferSetAttachment(buffer, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, kCVAttachmentMode_ShouldPropagate);
         CVBufferSetAttachment(buffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-        ok = [adaptor appendPixelBuffer:buffer withPresentationTime:CMTimeMake(i, kFPS)];
+        BOOL appended = [adaptor appendPixelBuffer:buffer withPresentationTime:CMTimeMake(i++, kFPS)];
         CVPixelBufferRelease(buffer);
-    }
+        return appended ? 1 : -1;
+    });
     CGImageRelease(words);
     CGImageRelease(background);
     if (!ok) {
-        [writer cancelWriting];
+        [NSFileManager.defaultManager removeItemAtURL:partial error:nil];
         return NO;
     }
-    [input markAsFinished];
-    // The last frame, or a still's only one, is held to the end of the loop.
-    [writer endSessionAtSourceTime:length];
-    dispatch_semaphore_t written = dispatch_semaphore_create(0);
-    [writer finishWritingWithCompletionHandler:^{ dispatch_semaphore_signal(written); }];
-    dispatch_semaphore_wait(written, DISPATCH_TIME_FOREVER);
-    if (writer.status != AVAssetWriterStatusCompleted) return NO;
     [NSFileManager.defaultManager removeItemAtURL:file error:nil];
     return [NSFileManager.defaultManager moveItemAtURL:partial toURL:file error:nil];
 }
@@ -1014,24 +1054,42 @@ static BOOL drawOver(CVPixelBufferRef buffer, Motion motion, Over *over) {
 
 // Each frame of the video from `from` seconds (taken round its length) for `seconds`, round its end as often
 // as needed, timed from 0, to `each`, which returns NO to stop. NO when a read failed.
-static BOOL eachFrame(AVURLAsset *asset, AVAssetTrack *track, Motion motion, double from, double seconds,
-                      BOOL (^each)(CMSampleBufferRef sample)) {
-    int32_t scale = 600;   // a tick that 24, 25, 30 and 60 fps all land on
-    double at = fmod(MAX(from, 0), motion.length), done = 0;
-    // When the next frame is due: kMotionFPS on a schedule, so a 60 fps video keeps every other frame.
-    double due = 0;
-    while (seconds - done > 0.01) {
-        double take = MIN(motion.length - at, seconds - done);
-        AVAssetReader *reader = [AVAssetReader assetReaderWithAsset:asset error:nil];
-        AVAssetReaderTrackOutput *output = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:track outputSettings:@{
+@interface SGLyricsMotionFrames : NSObject {
+    AVURLAsset *asset;
+    AVAssetTrack *track;
+    Motion motion;
+    double at, done, due, seconds, take;
+    AVAssetReader *reader;
+    AVAssetReaderTrackOutput *output;
+}
+@property (nonatomic) BOOL failed;
+- (instancetype)initWithAsset:(AVURLAsset *)value track:(AVAssetTrack *)video motion:(Motion)shape from:(double)from seconds:(double)duration;
+- (CMSampleBufferRef)copyNextSample CF_RETURNS_RETAINED;
+@end
+@implementation SGLyricsMotionFrames
+- (instancetype)initWithAsset:(AVURLAsset *)value track:(AVAssetTrack *)video motion:(Motion)shape from:(double)from seconds:(double)duration {
+    if ((self = [super init])) {
+        asset = value; track = video; motion = shape;
+        at = fmod(MAX(from, 0), motion.length); seconds = duration;
+    }
+    return self;
+}
+- (CMSampleBufferRef)copyNextSample {
+    const int32_t scale = 600;
+    while (!_failed && seconds - done > 0.01) {
+      if (!reader) {
+        take = MIN(motion.length - at, seconds - done);
+        reader = [AVAssetReader assetReaderWithAsset:asset error:nil];
+        output = [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:track outputSettings:@{
             (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
         }];
         // Copies, so drawing into one never touches a frame the decoder still refers to.
         output.alwaysCopiesSampleData = YES;
-        if (!reader || ![reader canAddOutput:output]) return NO;
+        if (!reader || ![reader canAddOutput:output]) { _failed = YES; return NULL; }
         [reader addOutput:output];
         reader.timeRange = CMTimeRangeMake(CMTimeMakeWithSeconds(at, scale), CMTimeMakeWithSeconds(take, scale));
-        if (![reader startReading]) return NO;
+        if (![reader startReading]) { _failed = YES; return NULL; }
+      }
         CMSampleBufferRef sample;
         while ((sample = [output copyNextSampleBuffer])) {
             // The first frame may start before `at`; it shows from the start of this stretch.
@@ -1045,18 +1103,28 @@ static BOOL eachFrame(AVURLAsset *asset, AVAssetTrack *track, Motion motion, dou
             if (!keep) continue;
             // A jump in the video (its loop) starts the schedule again rather than keeping a burst of frames.
             due = due + 1.0 / kMotionFPS < CMTimeGetSeconds(time) ? CMTimeGetSeconds(time) + 0.5 / kMotionFPS : due + 1.0 / kMotionFPS;
-            BOOL more = each(timed);
-            CFRelease(timed);
-            if (!more) {
-                [reader cancelReading];
-                return YES;
-            }
+            return timed;
         }
-        if (reader.status != AVAssetReaderStatusCompleted) return NO;
+        if (reader.status != AVAssetReaderStatusCompleted) { _failed = YES; return NULL; }
+        reader = nil; output = nil;
         done += take;
         at = 0;
     }
-    return YES;
+    return NULL;
+}
+- (void)dealloc { [reader cancelReading]; }
+@end
+
+static BOOL eachFrame(AVURLAsset *asset, AVAssetTrack *track, Motion motion, double from, double seconds,
+                      BOOL (^each)(CMSampleBufferRef sample)) {
+    SGLyricsMotionFrames *frames = [[SGLyricsMotionFrames alloc] initWithAsset:asset track:track motion:motion from:from seconds:seconds];
+    CMSampleBufferRef sample;
+    while ((sample = [frames copyNextSample])) {
+        BOOL more = each(sample);
+        CFRelease(sample);
+        if (!more) break;
+    }
+    return !frames.failed;
 }
 
 CGImageRef SGLyricsClipMotionFrame(NSURL *motionFile, NSString *previous, NSString *line, NSString *translation, NSString *next,
@@ -1086,7 +1154,7 @@ CGImageRef SGLyricsClipMotionFrame(NSURL *motionFile, NSString *previous, NSStri
 }
 
 BOOL SGLyricsClipWriteOverMotion(NSURL *file, NSURL *motionFile, NSString *previous, NSString *line, NSString *translation,
-                                 NSString *next, double from, double seconds, SGLyricsClipLayout layout) {
+                                 NSString *next, double from, double seconds, SGLyricsClipLayout layout, BOOL (^current)(void)) {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:motionFile options:nil];
     Motion motion;
     AVAssetTrack *track = motionTrack(asset, &motion);
@@ -1116,22 +1184,24 @@ BOOL SGLyricsClipWriteOverMotion(NSURL *file, NSURL *motionFile, NSString *previ
     [writer startSessionAtSourceTime:kCMTimeZero];
     __block Over over = makeOver(motion, previous, line, translation, next, layout);
     fitBand(asset, motion, &over, from, seconds);
-    __block BOOL ok = YES, any = NO;
-    BOOL read = eachFrame(asset, track, motion, from, seconds, ^BOOL(CMSampleBufferRef sample) {
+    __block BOOL any = NO;
+    SGLyricsMotionFrames *frames = [[SGLyricsMotionFrames alloc] initWithAsset:asset track:track motion:motion from:from seconds:seconds];
+    BOOL ok = writeReady(writer, input, CMTimeMakeWithSeconds(seconds, 600), current, ^NSInteger {
+        CMSampleBufferRef sample = [frames copyNextSample];
+        if (!sample) return frames.failed || !any ? -1 : 0;
         CVPixelBufferRef buffer = CMSampleBufferGetImageBuffer(sample);
         if (!drawOver(buffer, motion, &over)) {
-            ok = NO;
-            return NO;
+            CFRelease(sample);
+            return -1;
         }
         // Aspect-fill would scale the complete stored frame when both crop dimensions shrink,
         // shifting the already-drawn letters relative to the preview. Submit precisely its crop instead.
         CGRect cut = cutIn(motion);
-        while (!input.readyForMoreMediaData && writer.status == AVAssetWriterStatusWriting) [NSThread sleepForTimeInterval:0.002];
         CVPixelBufferRef cropped = NULL;
         if (writer.status != AVAssetWriterStatusWriting || !adaptor.pixelBufferPool
             || CVPixelBufferPoolCreatePixelBuffer(NULL, adaptor.pixelBufferPool, &cropped) != kCVReturnSuccess) {
-            ok = NO;
-            return NO;
+            CFRelease(sample);
+            return -1;
         }
         // Pool storage is aligned and IOSurface-backed, unlike a borrowed, offset view of the decoder's bytes.
         CVPixelBufferLockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly);
@@ -1156,23 +1226,18 @@ BOOL SGLyricsClipWriteOverMotion(NSURL *file, NSURL *motionFile, NSString *previ
                 CVBufferRemoveAttachment(cropped, colorKeys[i]);
             }
         }
-        ok = writer.status == AVAssetWriterStatusWriting
+        BOOL appended = writer.status == AVAssetWriterStatusWriting
             && [adaptor appendPixelBuffer:cropped withPresentationTime:CMSampleBufferGetPresentationTimeStamp(sample)];
         CVPixelBufferRelease(cropped);
+        CFRelease(sample);
         any = YES;
-        return ok;
+        return appended ? 1 : -1;
     });
     freeOver(over);
-    if (!read || !ok || !any) {
-        [writer cancelWriting];
+    if (!ok) {
+        [NSFileManager.defaultManager removeItemAtURL:partial error:nil];
         return NO;
     }
-    [input markAsFinished];
-    [writer endSessionAtSourceTime:CMTimeMakeWithSeconds(seconds, 600)];
-    dispatch_semaphore_t written = dispatch_semaphore_create(0);
-    [writer finishWritingWithCompletionHandler:^{ dispatch_semaphore_signal(written); }];
-    dispatch_semaphore_wait(written, DISPATCH_TIME_FOREVER);
-    if (writer.status != AVAssetWriterStatusCompleted) return NO;
     [NSFileManager.defaultManager removeItemAtURL:file error:nil];
     return [NSFileManager.defaultManager moveItemAtURL:partial toURL:file error:nil];
 }

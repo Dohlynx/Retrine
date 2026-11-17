@@ -33,6 +33,10 @@ NSString *const SGWGKindSOCKS5 = @"socks5";
 static atomic_int gState = SGWGStateOff;
 static atomic_bool gActive;       // armed before checking any capability
 static atomic_bool gReady, gGuardsReady, gEngineReady;
+static atomic_bool gEngineRecoverable;
+static os_unfair_lock gReadinessLock = OS_UNFAIR_LOCK_INIT;
+static uint64_t gReadinessGeneration;
+static BOOL gEngineAvailable;    // unvalidated engine event, protected by gReadinessLock
 static BOOL gSessionGuards;
 static int gPort = -1;            // local proxy port (fixed for the launch)
 static int gListenerFD = -1;      // reserved socket handed to Go on start
@@ -52,7 +56,9 @@ static atomic_int gCredentialStatus;
 
 SGWGState SGWGCurrentState(void) { return (SGWGState)atomic_load(&gState); }
 BOOL SGWGActiveThisLaunch(void) { return gActive; }
-BOOL SGWGReady(void) { return atomic_load_explicit(&gReady, memory_order_acquire); }
+BOOL SGWGReady(void) {
+    return atomic_load_explicit(&gReady, memory_order_acquire) && atomic_load(&gEngineReady);
+}
 BOOL SGWGGuardsInstalled(void) { return atomic_load(&gGuardsReady); }
 
 NSString *SGWGStateDescription(SGWGState state) {
@@ -704,6 +710,22 @@ NSDictionary *SGWGEngineStatus(void) {
     return JSONFromGo(SGWGStatus()) ?: @{@"running": @NO};
 }
 
+static void EngineChanged(int state) {
+    if (state == SGWGEngineDestinationFailed) return;
+    BOOL available = state == SGWGEngineAvailable;
+    os_unfair_lock_lock(&gReadinessLock);
+    gReadinessGeneration++;
+    gEngineAvailable = available;
+    atomic_store(&gEngineRecoverable, state == SGWGEngineUnavailable || available);
+    atomic_store(&gEngineReady, false);
+    atomic_store_explicit(&gReady, false, memory_order_release);
+    atomic_store(&gState, available ? SGWGStateRunning : SGWGStateFailed);
+    os_unfair_lock_unlock(&gReadinessLock);
+    // Rebind may still occupy gQueue. Revoke admission before returning to Go, not behind that work.
+    if (!available) SGWGNotifyRecovery();
+    dispatch_async(gQueue, ^{ SGWGRefreshReadiness(); });
+}
+
 static void StartEngine(void) {
     dispatch_async(gQueue, ^{
         SGWGState state = SGWGCurrentState();
@@ -720,9 +742,9 @@ static void StartEngine(void) {
         atomic_store(&gState, SGWGStateStarting);
         int fd = gListenerFD;
         gListenerFD = -1; // ownership moves to Go
+        SGWGSetStateCallback((uintptr_t)EngineChanged);
         int port = SGWGStart((char *)profile.UTF8String, gUser, gPass, fd, gPort);
-        atomic_store(&gEngineReady, port == gPort);
-        atomic_store(&gState, port == gPort ? SGWGStateRunning : SGWGStateFailed);
+        if (port != gPort) EngineChanged(SGWGEngineStopped);
         SGWGRefreshReadiness();
     });
 }
@@ -733,7 +755,7 @@ void SGWGRequestRebind(NSString *reason) {
         SGWGState state = SGWGCurrentState();
         if (state == SGWGStateWaitingProfile) {
             StartEngine();
-        } else if (state == SGWGStateRunning) {
+        } else if (state == SGWGStateRunning || (state == SGWGStateFailed && atomic_load(&gEngineRecoverable))) {
             SGWGRebind();
             atomic_fetch_add(&gRebinds, 1);
         }
@@ -848,21 +870,39 @@ static void StartExternalProxy(void) {
         }
     }
     atomic_store(&gState, gBlockAll ? SGWGStateBlocked : SGWGStateExternalProxy);
-    atomic_store(&gEngineReady, !gBlockAll);
+    os_unfair_lock_lock(&gReadinessLock);
+    gReadinessGeneration++;
+    gEngineAvailable = !gBlockAll;
+    atomic_store(&gEngineReady, false);
+    atomic_store_explicit(&gReady, false, memory_order_release);
+    os_unfair_lock_unlock(&gReadinessLock);
     SGWGRefreshReadiness();
 }
 
 void SGWGRefreshReadiness(void) {
+    os_unfair_lock_lock(&gReadinessLock);
+    uint64_t generation = gReadinessGeneration;
+    BOOL available = gEngineAvailable;
+    os_unfair_lock_unlock(&gReadinessLock);
+    // Patching can itself load an image. Validate outside the lock, then commit only that generation.
     BOOL native = SGWGInstallNativePatches();
     BOOL guards = gSessionGuards && native;
-    atomic_store(&gGuardsReady, guards);
-    BOOL ready = guards && SGWGIsSupportedOS() && SGWGAdmissionReady() && atomic_load(&gEngineReady) && !gBlockAll;
-    atomic_store_explicit(&gReady, ready, memory_order_release);
+    BOOL ready = guards && SGWGIsSupportedOS() && SGWGAdmissionReady() && available && !gBlockAll;
+    os_unfair_lock_lock(&gReadinessLock);
+    if (generation == gReadinessGeneration) {
+        atomic_store(&gGuardsReady, guards);
+        atomic_store(&gEngineReady, available);
+        atomic_store_explicit(&gReady, ready, memory_order_release);
+    }
+    os_unfair_lock_unlock(&gReadinessLock);
 }
 
 static void ImageChanged(const struct mach_header *header, intptr_t slide) {
     if (!gActive) return;
+    os_unfair_lock_lock(&gReadinessLock);
+    gReadinessGeneration++;
     atomic_store_explicit(&gReady, false, memory_order_release);
+    os_unfair_lock_unlock(&gReadinessLock);
     dispatch_async(gQueue, ^{ SGWGRefreshReadiness(); });
 }
 
@@ -892,9 +932,11 @@ __attribute__((constructor)) static void SGWGInit(void) {
                        SGWGIsSupportedOS() && SGWGAdmissionReady()) {
                 if ([gKind isEqualToString:SGWGKindWireGuard]) StartEngine();
                 else StartExternalProxy();
+            } else if (SGWGCurrentState() == SGWGStateFailed && atomic_load(&gEngineRecoverable)) {
+                SGWGRequestRebind(@"engine unavailable");
             }
 #ifndef SGWG_TESTING
-            SGWGNotifyRecovery();
+            if (!SGWGReady()) SGWGNotifyRecovery();
 #endif
         });
         dispatch_resume(recovery);

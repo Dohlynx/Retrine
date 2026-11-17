@@ -396,7 +396,7 @@ static UIColor *cardTint(NSUInteger index) {
     CADisplayLink *_link;
     CFTimeInterval _last;
     NSTimeInterval _elapsed;
-    BOOL _holding, _dragging, _sharing;
+    BOOL _holding, _dragging, _sharing, _visible, _inactive;
     NSURL *_shareDirectory;   // the picture the share sheet holds, removed when the sheet or the story goes
 }
 
@@ -486,8 +486,10 @@ static UIButton *storyButton(NSString *symbol, NSString *label) {
     for (UIGestureRecognizer *recognizer in @[tap, hold, _dismissPan]) [_host addGestureRecognizer:recognizer];
 
     [self showCard:0 direction:0];
-    for (NSNotificationName name in @[UIAccessibilityVoiceOverStatusDidChangeNotification, UIApplicationWillResignActiveNotification, UIApplicationDidBecomeActiveNotification])
-        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(resetClock) name:name object:nil];
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self selector:@selector(resetClock) name:UIAccessibilityVoiceOverStatusDidChangeNotification object:nil];
+    [center addObserver:self selector:@selector(resignActive) name:UIApplicationWillResignActiveNotification object:nil];
+    [center addObserver:self selector:@selector(becomeActive) name:UIApplicationDidBecomeActiveNotification object:nil];
 }
 
 - (void)dealloc {
@@ -510,17 +512,21 @@ static UIButton *storyButton(NSString *symbol, NSString *label) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    _visible = YES;
     if (!_link) {
         SGStoryTicker *ticker = [SGStoryTicker new];
         ticker.story = self;
         _link = [CADisplayLink displayLinkWithTarget:ticker selector:@selector(tick:)];
         [_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     }
+    [self resetClock];
     UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, _card.firstElement);
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    _visible = NO;
+    [self resetClock];
     if (self.isBeingDismissed) {
         [_link invalidate];
         _link = nil;
@@ -539,6 +545,17 @@ static UIButton *storyButton(NSString *symbol, NSString *label) {
 
 - (void)resetClock {
     _last = 0;
+    _link.paused = !_visible || _inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive;
+}
+
+- (void)resignActive {
+    _inactive = YES;
+    [self resetClock];
+}
+
+- (void)becomeActive {
+    _inactive = NO;
+    [self resetClock];
 }
 
 - (void)tick:(CADisplayLink *)link {

@@ -22,6 +22,8 @@ BOOL SGRMixShowsQueue(void);
 // A progress bar's slider laid out (PlayerControls.x): its own bands, put into it once, follow the facts and its
 // bounds and are placed again only when either changed; a hidden slider does nothing.
 void SGRPlayerMixSliderLaidOut(UISlider *slider);
+// A cover became ready after the field; resume a stage waiting without an arm timer.
+void SGRPlayerMixCoverLaidOut(void);
 
 // The cover `track`'s metadata names, fetched (cached by the URL session) and decoded for display off main: the largest
 // for AutoMix's stage, a thumbnail's (Playing Next's rows, PlayerQueue.m) when `small`. `done` runs on main with the

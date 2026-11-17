@@ -147,6 +147,7 @@ CGFloat SGMotionPixels(void) { return 32; }
 NSString *SGURIString(id uri) { return [uri isKindOfClass:NSString.class] ? uri : [uri absoluteString]; }
 SPTPlayerState *SGPlayerState(void) { return state; }
 NSInteger SGKaraokePositionMs(void) { return position; }
+void harnessPosition(NSInteger value) { position = value; }
 void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer) {
     if (!observers) observers = [NSHashTable weakObjectsHashTable];
     [observers addObject:observer];
@@ -255,12 +256,12 @@ static void recordClip(NSURL *file, NSString *line, NSString *translation) {
 }
 BOOL SGLyricsClipWriteWithLayout(NSURL *file, CGImageRef backdrop, CGImageRef cover, NSString *previous, NSString *line,
                                  NSString *translation, NSString *next, CGSize size, SGLyricsClipStyle style,
-                                 SGLyricsClipLayout layout) {
+                                 SGLyricsClipLayout layout, BOOL (^current)(void)) {
     recordClip(file, line, translation);
     return writeFrame(file, backdrop);
 }
 BOOL SGLyricsClipWriteOverMotion(NSURL *file, NSURL *motion, NSString *previous, NSString *line, NSString *translation,
-                                 NSString *next, double from, double seconds, SGLyricsClipLayout layout) {
+                                 NSString *next, double from, double seconds, SGLyricsClipLayout layout, BOOL (^current)(void)) {
     recordClip(file, line, translation);
     return writeFrame(file, blue.CGImage);
 }

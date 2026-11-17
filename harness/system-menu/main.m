@@ -17,6 +17,7 @@
 #import "Redesigned/ContextMenu/ContextMenu.h"
 #import "Shared/LyricsSources/LyricsSources.h"
 #import "../harness-fail.h"
+#import "../background-work.h"
 
 // The album footer is exercised by harness/album-queue and the Spotify simulator test. These
 // player-menu fixtures do not provide an album page or the shared album footer.
@@ -31,8 +32,15 @@ extern void SGHarnessTap(UIWindow *window, CGPoint point);
 @interface SGRMenuSession : NSObject
 @property (nonatomic) BOOL direct;
 @property (nonatomic, weak) UIControl *spotify;
+@property (nonatomic, weak) UIViewController *presented;
+@property (nonatomic, weak) UIButton *anchor;
 - (void)requestSheet;
 - (void)menuEnded;
+- (void)pollRows;
+- (void)shown;
+- (UIDeferredMenuElement *)deferredRows;
+- (NSArray<UIMenuElement *> *)rowElements;
+- (void)adoptSheet:(UIViewController *)sheet from:(UIViewController *)presenter completion:(dispatch_block_t)completion;
 @end
 
 static NSString *scenario(void) {
@@ -545,6 +553,67 @@ static NSArray<NSString *> *quickTitles(void) {
 }
 
 - (void)run:(NSString *)run {
+    if ([run isEqual:@"background"]) {
+        sg_rowsHeld = sg_rowsNever = YES;
+        SGRMenuSession *session = [SGRMenuSession new];
+        UIButton *anchor = [[NSClassFromString(@"SGRMenuAnchor") alloc] initWithFrame:CGRectMake(0, 0, 44, 44)];
+        [self.view addSubview:anchor];
+        session.anchor = anchor;
+        _TtC24ContextMenu_InternalImpl25ContextMenuViewController *sheet = [_TtC24ContextMenu_InternalImpl25ContextMenuViewController new];
+        [session shown];
+        [session adoptSheet:sheet from:self completion:^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+        NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+        [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+        SGHarnessBeginBackgroundWork();
+        [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+        check(SGHarnessLiveTimers() == 1, @"unresolved rows arm one poll");
+        // Capture UIKit's deferred-provider boundary; the provider and row lifecycle remain production code.
+        Method factory = class_getClassMethod(UIDeferredMenuElement.class, @selector(elementWithUncachedProvider:));
+        IMP original = method_getImplementation(factory);
+        __block void (^provider)(void (^)(NSArray<UIMenuElement *> *));
+        IMP replacement = imp_implementationWithBlock(^id(id cls, void (^supplied)(void (^)(NSArray<UIMenuElement *> *))) {
+            provider = [supplied copy];
+            return ((id (*)(id, SEL, id))original)(cls, @selector(elementWithUncachedProvider:), supplied);
+        });
+        method_setImplementation(factory, replacement);
+        [session deferredRows];
+        method_setImplementation(factory, original);
+        imp_removeBlock(replacement);
+        __block NSArray<UIMenuElement *> *received;
+        __block NSUInteger completions = 0;
+        provider(^(NSArray<UIMenuElement *> *elements) { received = elements; completions++; });
+        [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+        check(SGHarnessLiveTimers() == 0, @"resign-active stops row polling before app state changes");
+        sg_testAppState = UIApplicationStateBackground;
+        [session pollRows];
+        check(SGHarnessLiveTimers() == 0, @"background cannot restart row polling");
+        sg_testAppState = UIApplicationStateActive;
+        [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+        check(SGHarnessLiveTimers() == 1, @"foreground resumes unresolved rows");
+        NSTimer *poll = sg_testTimers.lastObject;
+        for (NSUInteger attempt = 0; attempt < 50; attempt++) [poll fire];
+        check(SGHarnessLiveTimers() == 0, @"unresolved rows exhaust a finite polling budget");
+        BOOL completedAtExpiry = completions == 1 && received.count > 0;
+        provider(^(NSArray<UIMenuElement *> *elements) { received = elements; completions++; });
+        BOOL completedAfterExpiry = completions == 2 && received.count > 0;
+        [sheet giveRows];
+        [sheet viewDidLayoutSubviews];
+        BOOL shareArrived = NO;
+        for (UIMenu *group in [session rowElements])
+            for (UIAction *action in group.children)
+                if ([action.title isEqual:@"Share"]) shareArrived = YES;
+        NSLog(@"[harness] expiry fallback %d, late Share %d, completions %lu",
+              completedAtExpiry, shareArrived, (unsigned long)completions);
+        check(completedAtExpiry && completedAfterExpiry && shareArrived && completions == 2 && SGHarnessLiveTimers() == 0,
+              @"expiry completes deferred rows; late layout accepts Spotify rows without polling or duplicate completion");
+        SGHarnessEndBackgroundWork();
+        NSLog(@"[harness] background PASS");
+        exit(0);
+        });
+        }];
+        return;
+    }
     void (^finish)(void) = ^{
         NSLog(@"[harness] done");
         exit(0);

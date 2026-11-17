@@ -36,6 +36,10 @@ UIViewController *SGLyricsTypesPage(void);
 SGModRow *SGLyricsTypesRow(void);
 
 @class SGLyricsResult, SGLyricsQuery;
+// Main queue: background consumers that need timed lines now, not a hidden lyric view.
+BOOL SGLyricsBackgroundNeeded(void);
+void SGLyricsCancelPrefetch(NSString *trackID);
+void SGLyricsResumeDeferred(void);
 // Calls back on the main queue, nil when the source has nothing for the track.
 typedef void (^SGLyricsAsk)(SGLyricsQuery *query, void (^done)(SGLyricsResult *result));
 // One invocation, never a provider-wide or track-wide counter. Subrequests OR their outcomes.

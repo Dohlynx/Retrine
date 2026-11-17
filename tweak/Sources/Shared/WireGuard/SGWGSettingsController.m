@@ -20,7 +20,6 @@ typedef NS_ENUM(NSInteger, WGCheckRow) { WGCheckCountry, WGCheckConnection, WGCh
 @property (nonatomic, copy) NSArray<NSString *> *scanLines;
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic) BOOL busy;
-@property (nonatomic, strong) NSTimer *statusTimer;
 @end
 
 @implementation SGWGSettingsController
@@ -30,28 +29,21 @@ typedef NS_ENUM(NSInteger, WGCheckRow) { WGCheckCountry, WGCheckConnection, WGCh
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self reloadState];
-    __weak typeof(self) weakSelf = self;
-    self.statusTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
-        typeof(self) self = weakSelf;
-        UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:WGSectionTunnel]];
-        UIListContentConfiguration *content = (UIListContentConfiguration *)cell.contentConfiguration;
-        NSString *line = [self stateLine];
-        if (![content isKindOfClass:UIListContentConfiguration.class] || [content.secondaryText isEqualToString:line]) return;
-        BOOL taller = [content.secondaryText componentsSeparatedByString:@"\n"].count != [line componentsSeparatedByString:@"\n"].count;
-        content.secondaryText = line;
-        cell.contentConfiguration = content;
-        if (taller) { [self.tableView beginUpdates]; [self.tableView endUpdates]; }
-    }];
+    self.refreshSelector = @selector(refreshStatus);
 }
 
-- (void)viewWillDisappear:(BOOL)animated {
-    [super viewWillDisappear:animated];
-    [self.statusTimer invalidate];
-    self.statusTimer = nil;
+- (void)refreshStatus {
+    UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:WGSectionTunnel]];
+    UIListContentConfiguration *content = (UIListContentConfiguration *)cell.contentConfiguration;
+    NSString *line = [self stateLine];
+    if (![content isKindOfClass:UIListContentConfiguration.class] || [content.secondaryText isEqualToString:line]) return;
+    BOOL taller = [content.secondaryText componentsSeparatedByString:@"\n"].count != [line componentsSeparatedByString:@"\n"].count;
+    content.secondaryText = line;
+    cell.contentConfiguration = content;
+    if (taller) { [self.tableView beginUpdates]; [self.tableView endUpdates]; }
 }
 
 - (void)dealloc {
-    [self.statusTimer invalidate];
     [self.session invalidateAndCancel];
 }
 
@@ -621,15 +613,15 @@ static NSString *ErrorText(NSError *error) {
 
 @end
 
-void SGWGNotifyRecovery(void) {
-    if (!SGWGActiveThisLaunch()) return;
-    NSDictionary *status = SGWGEngineStatus();
-    BOOL failedTunnel = [SGWGActiveKind() isEqualToString:SGWGKindWireGuard] &&
-        [status[@"handshakeAgeSec"] longLongValue] < 0 && [status[@"connections"][@"failed"] unsignedLongLongValue] > 0;
-    if (SGWGReady() && !failedTunnel) return;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        static BOOL shown;
-        if (shown) return;
+static BOOL sg_recoveryPending, sg_recoveryShown;
+
+static void PresentPendingRecovery(void) {
+        if (!sg_recoveryPending) return;
+        if (SGWGReady() || !SGWGActiveThisLaunch() || sg_recoveryShown) {
+            sg_recoveryPending = NO;
+            return;
+        }
+        if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
         UIViewController *presenter = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if (scene.activationState != UISceneActivationStateForegroundActive || ![scene isKindOfClass:UIWindowScene.class]) continue;
@@ -648,6 +640,21 @@ void SGWGNotifyRecovery(void) {
         [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.wireguard.later", @"Later") style:UIAlertActionStyleCancel handler:nil]];
         SGPresentDark(alert);
         [presenter presentViewController:alert animated:YES completion:nil];
-        shown = YES;
+        sg_recoveryShown = YES;
+        sg_recoveryPending = NO;
+}
+
+void SGWGNotifyRecovery(void) {
+    if (!SGWGActiveThisLaunch()) return;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil
+            usingBlock:^(NSNotification *note) {
+                dispatch_async(dispatch_get_main_queue(), ^{ PresentPendingRecovery(); });
+            }];
+    });
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!SGWGReady()) sg_recoveryPending = YES;
+        PresentPendingRecovery();
     });
 }

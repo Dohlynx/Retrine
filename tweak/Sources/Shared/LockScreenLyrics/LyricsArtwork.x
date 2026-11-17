@@ -228,13 +228,14 @@ static BOOL writeClip(NSString *artworkID, SGLockLine *line, CGSize size) {
     CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
     BOOL tryMotion = line.motion && !motionFailed(line.motion);
     BOOL over = tryMotion && SGLyricsClipWriteOverMotion(file, line.motion, line.previous, line.line, line.translation, line.next, line.from,
-                                                         line.seconds, line.layout);
+                                                         line.seconds, line.layout, ^BOOL { return currentLine(line); });
+    if (!currentLine(line)) return NO;
     if (tryMotion && !over) markMotionFailed(line.motion, artworkID);
     BOOL ok = over;
     if (!ok) {
         CGImageRef backdrop = newBackdrop(line, size);
         ok =SGLyricsClipWriteWithLayout(file, backdrop, line.cover.CGImage, line.previous, line.line, line.translation, line.next,
-                                         size, line.style, line.layout);
+                                         size, line.style, line.layout, ^BOOL { return currentLine(line); });
         CGImageRelease(backdrop);
     }
     // The first few of a launch of each kind, and any that fails: one a line would fill the log.
@@ -249,6 +250,7 @@ static BOOL writeClip(NSString *artworkID, SGLockLine *line, CGSize size) {
 // The next line's preview and clip, drawn while this one shows: a line change then hands both over at once, where
 // drawing them on request left the lock screen on the plain cover for half a second.
 static void drawAhead(NSString *artworkID, SGLockLine *line) {
+    if (NSProcessInfo.processInfo.lowPowerModeEnabled) return;
     CFAbsoluteTime time = CFAbsoluteTimeGetCurrent();
     CGSize size = line.size;
     if (time - sg_previewAskedAt <= 15) dispatch_async(sg_previewQueue, ^{ previewFor(artworkID, line, size); });

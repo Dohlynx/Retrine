@@ -9,8 +9,8 @@
 //
 // The clip is a subview of the field, not of the background plane: the plane's layout brings the field to
 // the front on every pass, and a sibling would end up under it. Each of the field's layout passes attaches
-// it (SGRPlayerMotionFieldLaidOut), so a clip that came in before the player first opened, or a field
-// Spotify built again, gets it.
+// it (SGRPlayerMotionFieldLaidOut), including a field Spotify built again.
+// Only the visible, active player requests clips; its current and ahead tickets are released when it leaves.
 //
 // The clip holds still when the moving field does (SGRField.m): out of a window, with the app not in front,
 // while the player opens or closes, and while the song is paused. Under Reduce Motion and in Low Power Mode
@@ -762,7 +762,7 @@ static void layOut(void) {
     CGRect frame = CGRectMake(0, 0, size.width, MAX(size.height, screen) + field.bleed.bottom);
     if (!CGRectEqualToRect(sg_motion.frame, frame)) sg_motion.frame = frame;
     sg_motion.screenHeight = screen;
-    // A field Spotify built again, or the first one after a clip that came in before it, is covered too.
+    // A field Spotify built again is covered too.
     field.covered = sg_covering;
 }
 
@@ -852,15 +852,15 @@ void SGRPlayerMotionFieldLaidOut(void) {
 
 static void attachCoverClip(void);
 
-// A clip that came in before the player opened finds no cover to hide at the field's first pass, the covers
+// A clip that came in while the player opened can find no cover to hide at the field's first pass, the covers
 // laying out after it (issue #19: the cover over the clip after a relaunch), so each cover's layout asks too.
 void SGRPlayerMotionCoverLaidOut(void) {
     setCoverShown(coverWanted(), NO);
     attachCoverClip();
 }
 
-// The square clip goes into the cover on screen when it has none to be in: it came in while the player was
-// closed, or Spotify built the covers again. A cover it is in that is still in a window keeps it, so a swipe
+// The square clip goes into the cover on screen when it has none to be in: Spotify is still laying out
+// the covers, or built them again. A cover it is in that is still in a window keeps it, so a swipe
 // that shows the next cover a moment does not carry the clip over to it.
 static void attachCoverClip(void) {
     SGRPlayerMotionView *clip = sg_coverClip;
@@ -975,6 +975,11 @@ UIView *SGRPlayerMotionPreview(void (^arrived)(void)) {
 }
 
 static SGMotionFollower *sg_follower;
+static BOOL sg_inactive;
+
+static BOOL consumerVisible(void) {
+    return !sg_inactive && UIApplication.sharedApplication.applicationState == UIApplicationStateActive && SGRPlayerIsVisible();
+}
 
 // Spotify's units that are showing its music video, held weakly: one that goes without saying so lets go.
 static NSHashTable *sg_videos;
@@ -1066,11 +1071,11 @@ static void showBehind(NSString *track, NSString *name, void (^draw)(SGRPlayerMo
 }
 
 static void show(NSString *track, NSURL *file) {
-    if (!file || ![track isEqualToString:sg_track]) return;
+    if (!consumerVisible() || !file || ![track isEqualToString:sg_track]) return;
     NSUInteger begun = sg_begun;
     SGMotionPoster(file, ^(UIImage *poster) {
         // A walk begun while the poster was read (switched off, Spotify's video) has the say.
-        if (!poster || poster.size.width <= 0 || begun != sg_begun) return;
+        if (!consumerVisible() || !poster || poster.size.width <= 0 || begun != sg_begun) return;
         clear(YES);
         if (poster.size.height / poster.size.width <= kSquareAspect) {
             showInCover(track, file, poster);
@@ -1091,7 +1096,7 @@ BOOL SGRPlayerStillOn(void) {
 // the Kit has is this track's own and at least kStillLeastPixels wide; YES while this track's still shows. The same
 // picture again changes nothing, and another picture of the track is drawn in place.
 static BOOL showStill(void) {
-    if (!SGRPlayerStillOn() || ![sg_noClip isEqualToString:sg_track] || !clipWanted()) return NO;
+    if (!consumerVisible() || !SGRPlayerStillOn() || ![sg_noClip isEqualToString:sg_track] || !clipWanted()) return NO;
     NSString *uri = nil, *identity = nil;
     UIImage *picture = SGRNowPlayingArtwork(&uri, &identity);
     BOOL showing = sg_stillOf && [sg_shown isEqualToString:sg_track];
@@ -1167,7 +1172,7 @@ static BOOL beginTrack(NSString *track) {
     sg_noClip = nil;
     // The Visualizer standing in for the last track's missing clip goes with the lookup this walk starts.
     SGRPlayerVisualiserUpdate();
-    BOOL wanted = clipWanted();
+    BOOL wanted = consumerVisible() && clipWanted();
     if (wanted && [track isEqualToString:sg_shown]) return YES;
     // The clip on screen is another track's: it waits kHandOver for the next one to cross over it, but its
     // recovery stops here, at once, so a failure during the handover is not played again behind the next track.
@@ -1276,6 +1281,7 @@ void SGPlayerMenuSetAnimatedArtwork(BOOL on) {
     sg_follower = [[SGMotionFollower alloc] initWithBegin:^BOOL(NSString *uri, SPTPlayerState *state) {
         return beginTrack(uri);
     } found:^(NSString *uri, NSURL *file) {
+        if (!consumerVisible()) return;
         if (file) {
             show(uri, file);
             return;
@@ -1284,6 +1290,17 @@ void SGPlayerMenuSetAnimatedArtwork(BOOL on) {
         if (!showStill()) clear(YES);
         SGRPlayerVisualiserUpdate();
     }];
+    for (NSNotificationName name in @[UIApplicationWillResignActiveNotification, UIApplicationDidBecomeActiveNotification,
+                                      SGRPlayerVisibilityDidChangeNotification]) {
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+            if ([note.name isEqualToString:UIApplicationWillResignActiveNotification]) sg_inactive = YES;
+            else if ([note.name isEqualToString:UIApplicationDidBecomeActiveNotification]) sg_inactive = NO;
+            // Invalidate posters as well as both tickets, including when no player state is available.
+            sg_begun++;
+            if (!consumerVisible()) clear(NO);
+            [sg_follower restart];
+        }];
+    }
     // A larger cover, or the track's own after the last one's, can make the still: the Kit posts on main.
     [NSNotificationCenter.defaultCenter addObserverForName:SGRNowPlayingArtworkDidChangeNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) { showStill(); }];

@@ -333,6 +333,7 @@ static void watchHold(UIView *tilt) {
     }
     watchHold(tilt);
     SGRPlayerMotionCoverLaidOut();
+    SGRPlayerMixCoverLaidOut();
     // The cover fills the tilt view (01.txt:37) less the inset to the player's margin, its top where Spotify's is; bounds
     // and center, unlike a frame, hold under the scale.
     CGFloat inset = coverInset(tilt, cell);

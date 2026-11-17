@@ -15,6 +15,8 @@
 #import "Shared/LyricsSources/LyricsSources.h"
 #import "Shared/Sing/Sing.h"
 #import "Shared/Player/PlayerState.h"
+#import "Shared/LiveActivity/LiveActivity.h"
+#import "Shared/LyricsPiP/LyricsPiP.h"
 #import "Headers/SPTPlayer.h"
 #import <AVFoundation/AVFoundation.h>
 #import <mach-o/dyld.h>
@@ -852,7 +854,13 @@ void SGKaraokeRememberTrack(SPTPlayerTrack *track, NSString *trackID) {
 // for the track after it, while this one still plays: Spotify asks for a track's lyrics within a
 // beat of starting it and gives its card list about a second to load, so an answer that is already
 // in is what puts the card there. The track is named here, so no walk waits for a name.
+BOOL SGLyricsBackgroundNeeded(void) {
+    return SGFlag(SGKeyLockScreenLyrics, NO) || SGLockArtworkShowsLyrics(SGLockScreenArtwork())
+        || SGLiveActivityLyricsActive() || SGLyricsPiPActive() || SGLyricsPiPStarting();
+}
+
 static void prefetch(NSString *trackID) {
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive && !SGLyricsBackgroundNeeded()) return;
     // Spotify never asks for a local file's lyrics, so they are asked for and kept here, a source of the
     // mod's on or not (SGKaraokeRequestLyrics). The state is read on any thread, and the kept lines are
     // the main queue's.
@@ -883,7 +891,7 @@ static void seen(SPTPlayerState *state) {
         if ([trackID isEqualToString:SGKaraokePlayingTrack()] && resumeSourceRetries(trackID))
             SGKaraokeRequestLyrics(trackID);
     });
-    prefetch(trackID);
+    dispatch_async(dispatch_get_main_queue(), ^{ prefetch(trackID); });
 }
 
 // The -state hook runs only when something asks the player, which nothing may do with the app in the
@@ -899,13 +907,18 @@ static void seen(SPTPlayerState *state) {
     if (!(self = [super init])) return nil;
     self.translationLanguage = SGLyricsTranslationLanguage();
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(becameActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(defaultsChanged:) name:NSUserDefaultsDidChangeNotification object:nil];
     return self;
 }
 - (void)becameActive:(NSNotification *)note {
+    SGLyricsResumeDeferred();
     NSString *playing = SGKaraokePlayingTrack();
     resumeSourceRetries(playing);
     if (playing && !sg_lyrics[playing] && !SGKaraokeLooking(playing)) SGKaraokeRequestLyrics(playing);
+    [self playerUpNextDidChange:SGPlayerState()];
+}
+- (void)background:(NSNotification *)note {
     [self playerUpNextDidChange:SGPlayerState()];
 }
 - (void)playerStateDidChange:(SPTPlayerState *)state {
@@ -916,11 +929,14 @@ static void seen(SPTPlayerState *state) {
 - (void)playerUpNextDidChange:(SPTPlayerState *)state {
     SPTPlayerTrack *next = SGPlayerUpNextIn(state);
     NSString *nextID = idOf(next);
-    if (!sg_ownSources || !nextID || !SGOptionalWorkMayRun(YES)) {
+    BOOL foreground = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
+    if (!sg_ownSources || !nextID || !SGOptionalWorkMayRun(foreground)) {
+        if (![self.ahead isEqualToString:idOf(state.track)]) SGLyricsCancelPrefetch(self.ahead);
         self.ahead = nil;
         return;
     }
     if ([nextID isEqualToString:self.ahead]) return;
+    if (![self.ahead isEqualToString:idOf(state.track)]) SGLyricsCancelPrefetch(self.ahead);
     self.ahead = nextID;
     remember(next, nextID);
     // The existing lyric owner coalesces by track ID and keeps late replies under that ID.

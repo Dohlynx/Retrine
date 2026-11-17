@@ -32,7 +32,7 @@
 // After a pick of Spotify's, how long its sheet has to start going, or to push a page of its own (which shows
 // it at once), before it is taken to have stayed up for some other reason and is shown.
 static const NSTimeInterval kSettle = 1;
-// How often the sheet is asked for its rows until it has them.
+// Poll within the quick-wait budget; after that, sheet layout reports late rows.
 static const NSTimeInterval kRowsPoll = 0.1;
 // How long a pick made before the sheet has its live rows waits for them before the sheet is shown.
 static const NSTimeInterval kQuickWait = 4;
@@ -443,6 +443,8 @@ static void raiseHost(UIWindow *window) {
     // The quick row as the menu shows it, to know whether the rows changed it.
     NSString *_quickShown;
     NSTimer *_poll;
+    BOOL _rowsActive, _rowsRequested, _rowsExhausted, _readingRows;
+    NSUInteger _rowAttempts;
     CFTimeInterval _openedAt, _askedAt;
     // The menu is asked for while the sheet's presentation is still under way, which UIKit takes only some of
     // the time; if it does not come, it is asked for again once the sheet is up.
@@ -451,6 +453,42 @@ static void raiseHost(UIWindow *window) {
     // so it goes as it comes; a row picked on it presented something of Spotify's.
     BOOL _requested, _failed, _dropOnArrival, _rowPresented;
     CFTimeInterval _requestedAt;
+}
+
+- (instancetype)init {
+    if (!(self = [super init])) return nil;
+    _rowsActive = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self selector:@selector(rowsResigned) name:UIApplicationWillResignActiveNotification object:nil];
+    [center addObserver:self selector:@selector(rowsActivated) name:UIApplicationDidBecomeActiveNotification object:nil];
+    return self;
+}
+
+- (void)dealloc {
+    [_poll invalidate];
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
+- (void)rowsResigned {
+    _rowsActive = NO;
+    [_poll invalidate];
+    _poll = nil;
+}
+
+- (void)rowsActivated {
+    _rowsActive = YES;
+    [self rowsChanged];
+    if (_rowsRequested) [self pollRows];
+}
+
+- (void)completeRowWaiters {
+    NSArray<dispatch_block_t> *waiting = _whenRead;
+    _whenRead = [NSMutableArray array];
+    for (dispatch_block_t block in waiting) block();
+}
+
+- (void)rowsChanged {
+    if (!_groups && !(self.ended && !_waiting)) [self readRows];
 }
 
 - (UIViewController *)sheet {
@@ -582,9 +620,7 @@ static void raiseHost(UIWindow *window) {
         session->_failed = YES;
         SGLog(@"system menu: Spotify's sheet did not come %.0f s after it was asked for", kRequestWindow);
         session->_waiting = NO;
-        NSArray<dispatch_block_t> *waiting = session->_whenRead;
-        session->_whenRead = [NSMutableArray array];
-        for (dispatch_block_t block in waiting) block();
+        [session completeRowWaiters];
     });
 }
 
@@ -658,7 +694,7 @@ static void raiseHost(UIWindow *window) {
             return;
         }
         if (session.direct) [session requestSheet];
-        if (session->_failed) {
+        if (session->_failed || session->_rowsExhausted) {
             completion([session unavailable]);
             return;
         }
@@ -838,14 +874,26 @@ static NSString *storedKey(NSString *kind) {
 #pragma mark the rows
 
 - (void)pollRows {
-    if (_poll) return;
+    _rowsRequested = YES;
+    if (_poll || !_rowsActive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive
+        || _groups || self.revealed || (self.ended && !_waiting) || _rowAttempts >= (NSUInteger)ceil(kQuickWait / kRowsPoll)) return;
     __weak SGRMenuSession *weakSelf = self;
     // In the common modes, so a scroll through the menu does not hold the rows back.
     _poll = [NSTimer timerWithTimeInterval:kRowsPoll repeats:YES block:^(NSTimer *timer) {
         SGRMenuSession *session = weakSelf;
-        if (!session || (session.ended && !session->_waiting) || [session readRows]) {
+        if (session) session->_rowAttempts++;
+        if (!session || !session->_rowsActive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive
+            || session.revealed || (session.ended && !session->_waiting) || [session readRows]
+            || session->_rowAttempts >= (NSUInteger)ceil(kQuickWait / kRowsPoll)) {
             [timer invalidate];
-            if (session) session->_poll = nil;
+            if (session) {
+                session->_poll = nil;
+                session->_rowsRequested = NO;
+                if (!session->_groups && session->_rowAttempts >= (NSUInteger)ceil(kQuickWait / kRowsPoll)) {
+                    session->_rowsExhausted = YES;
+                    [session completeRowWaiters];
+                }
+            }
         }
     }];
     [NSRunLoop.mainRunLoop addTimer:_poll forMode:NSRunLoopCommonModes];
@@ -853,9 +901,11 @@ static NSString *storedKey(NSString *kind) {
 
 // Reads the sheet's rows once it has them, and runs what waited for them. Whether they are read.
 - (BOOL)readRows {
+    if (_readingRows || !_rowsActive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return NO;
     if (_groups) return YES;
     UITableView *table = tableIn(self.sheet.viewIfLoaded, 0);
     if (!table || rowCount(table) == 0) return NO;
+    _readingRows = YES;
     SGAlbumQueueInstall(self.sheet);
     CFTimeInterval started = CACurrentMediaTime();
     [table layoutIfNeeded];
@@ -876,6 +926,10 @@ static NSString *storedKey(NSString *kind) {
     NSArray<SGRSheetRow *> *footer = [self modRows:modRowsIn(table.tableFooterView)];
     if (footer.count) [groups addObject:footer];
     _groups = groups;
+    _readingRows = NO;
+    _rowsRequested = _rowsExhausted = NO;
+    [_poll invalidate];
+    _poll = nil;
     CFTimeInterval now = CACurrentMediaTime(), from = self.touchedAt ?: self.takenAt;
     SGLog(@"system menu: %lu of Spotify's rows and %lu of the mod's read in %.0f ms, %.2f s after the %@", (unsigned long)read,
           (unsigned long)(header.count + footer.count), (now - started) * 1000, now - from, self.touchedAt ? @"⋯ touch" : @"takeover");
@@ -884,11 +938,15 @@ static NSString *storedKey(NSString *kind) {
     // A page's menu: its anchor's menu becomes the rows themselves. UIKit builds the menu it shows again from the
     // anchor's (the one asked for while the sheet came up is never on screen), so the menu comes up whole instead of
     // from its loading row, growing down as the rows come (device, 2026-10-23).
-    if (!self.items && self.anchor && !self.ended) self.anchor.menu = [UIMenu menuWithChildren:[self rowElements]];
+    if (!self.items && self.anchor && !self.ended) {
+        NSArray<UIMenuElement *> *elements = [self rowElements];
+        self.anchor.menu = [UIMenu menuWithChildren:elements];
+        if (self.displayed) [self.anchor.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
+            return [visible menuByReplacingChildren:elements];
+        }];
+    }
 
-    NSArray<dispatch_block_t> *waiting = _whenRead;
-    _whenRead = [NSMutableArray array];
-    for (dispatch_block_t block in waiting) block();
+    [self completeRowWaiters];
     [self refreshQuickRow];
     [self refreshMore];
     return YES;
@@ -953,7 +1011,13 @@ static NSString *storedKey(NSString *kind) {
 #pragma mark the pick
 
 - (void)waitForRowsNamed:(NSString *)name requestSheet:(BOOL)request then:(dispatch_block_t)pick {
+    if (_rowsExhausted) {
+        _waiting = NO;
+        [self reveal];
+        return;
+    }
     _waiting = YES;
+    _rowAttempts = 0;
     __weak SGRMenuSession *weakSelf = self;
     if (!_whenRead) _whenRead = [NSMutableArray array];
     [_whenRead addObject:pick];
@@ -1350,6 +1414,7 @@ static void openWhenUp(SGRMenuSession *session, UIViewController *sheet, int tri
     // Until its menu opens: a session that has opened hides its sheet itself, or is an earlier showing's. The
     // player's sheet stays hidden at every layout until it is shown.
     if (session && (!session.opened || session.direct) && !session.revealed) [session hide];
+    [session rowsChanged];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

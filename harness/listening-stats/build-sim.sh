@@ -3,7 +3,7 @@
 # through Logos), the Settings/ framework, stubs.m for the player.
 set -e
 SRC=$(cd "$(dirname "$0")/../../tweak/Sources" && pwd)
-OUT=$(dirname "$0")/build/sim
+OUT=${OUT:-$(dirname "$0")/build/sim}
 rm -rf "$OUT"; mkdir -p "$OUT/gen" "$OUT/ListeningStatsHarness.app"
 "${THEOS:-$HOME/theos}/bin/logos.pl" -c generator=internal "$SRC/Shared/ListeningStats/ListeningStats.x" > "$OUT/gen/ListeningStats.m"
 

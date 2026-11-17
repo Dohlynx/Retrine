@@ -386,6 +386,7 @@ static BOOL stateHolds(SPTPlayerState *state) {
 @interface SGRMixStage : NSObject
 - (void)follow;
 - (void)restart;
+- (void)coverLaidOut;
 @end
 
 @implementation SGRMixStage {
@@ -396,6 +397,7 @@ static BOOL stateHolds(SPTPlayerState *state) {
     SGRMixStageView *_view;
     CADisplayLink *_link;
     NSTimer *_arm;
+    BOOL _inactive;
     BOOL _onNext;                // the next song is the one playing
     CGFloat _progress;
     CFTimeInterval _overdueSince;
@@ -403,16 +405,35 @@ static BOOL stateHolds(SPTPlayerState *state) {
 
 - (instancetype)init {
     if (!(self = [super init])) return nil;
+    _inactive = UIApplication.sharedApplication.applicationState != UIApplicationStateActive;
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(resigned) name:UIApplicationWillResignActiveNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(activated) name:UIApplicationDidBecomeActiveNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(follow) name:SGRPlayerVisibilityDidChangeNotification object:nil];
     return self;
 }
 
 - (void)resigned {
-    if (_view) [self stop:@"the app is not active" done:NO];
+    _inactive = YES;
+    [self follow];
+}
+
+- (void)activated {
+    _inactive = NO;
+    [self follow];
+}
+
+- (void)coverLaidOut {
+    if (!_arm && !_view) [self follow];
 }
 
 // A report, new facts or a cover that came in.
 - (void)follow {
+    if (_inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive || !SGRPlayerIsVisible()) {
+        [_arm invalidate];
+        _arm = nil;
+        if (_view) [self stop:@"the player is not visible or active" done:NO];
+        return;
+    }
     SPTPlayerState *state = SGPlayerState();
     if (_view) {
         // On the outgoing song the facts must still be the plan's; on the incoming one the plan is the blend that
@@ -475,7 +496,8 @@ static BOOL stateHolds(SPTPlayerState *state) {
 - (void)arm {
     [_arm invalidate];
     _arm = nil;
-    if (!_plan || _done || _view) return;
+    if (_inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive || !SGRPlayerIsVisible()
+        || !seen(SGRPlayerShowingCover()) || !_plan || _done || _view) return;
     SPTPlayerState *state = SGPlayerState();
     if (!SGRMixTrackIs(state.track, _plan.fromURI, _plan.fromUID) || stateHolds(state) || state.playbackSpeed <= 0) return;
     double position = positionOf(state);
@@ -571,6 +593,10 @@ static BOOL stateHolds(SPTPlayerState *state) {
 
 static void stageFollows(void) {
     [sg_mixStage follow];
+}
+
+void SGRPlayerMixCoverLaidOut(void) {
+    [sg_mixStage coverLaidOut];
 }
 
 #pragma mark - wiring

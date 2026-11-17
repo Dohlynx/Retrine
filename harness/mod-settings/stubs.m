@@ -91,6 +91,7 @@ NSArray<SGModRow *> *SGOnDeviceTranslatorRows(void) {
     return rows;
 }
 SGModSection *SGSleepTimerSettingsSection(void) { return SGSection(nil, @[]); }
+SGModSection *SGSponsorBlockSettingsSection(void) { return SGSection(nil, @[]); }
 SGModSection *SGRPlayerButtonsSection(void) { return SGSection(nil, @[]); }
 void SGMotionCacheBytes(void (^done)(uint64_t bytes)) { done(0); }
 void SGMotionCacheClear(void (^done)(BOOL complete)) { done(YES); }
