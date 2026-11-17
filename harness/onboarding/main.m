@@ -13,8 +13,20 @@
 #import "App/Onboarding/Onboarding.h"
 #import "Shared/Lyrics/Lyrics.h"
 #import "Core/SGPrefs.h"
+#import <objc/runtime.h>
 
 static BOOL sg_old;
+static NSDictionary *sg_installInfo;
+static NSMutableArray<NSString *> *sg_warningTitles;
+
+@interface NSBundle (SGInstallFixture)
+- (id)sg_installObjectForInfoDictionaryKey:(NSString *)key;
+@end
+@implementation NSBundle (SGInstallFixture)
+- (id)sg_installObjectForInfoDictionaryKey:(NSString *)key {
+    return sg_installInfo ? sg_installInfo[key] : [self sg_installObjectForInfoDictionaryKey:key];
+}
+@end
 
 // Core/SGUIMode.m, with the OS the tour believes it runs on taken from the arguments.
 BOOL SGRedesignAvailable(void) { return !sg_old; }
@@ -33,7 +45,10 @@ void SGShowSigningFixIfPending(void) {}
 #import "Shared/LiveActivity/LiveActivity.h"
 #import "Shared/Haptics/Haptics.h"
 // Settings/SGModPage.m, for the Mod Settings rows, which the harness does not show.
-SGModRow *SGWarningRow(NSString *title, NSString *subtitle, void (^action)(void)) { return nil; }
+SGModRow *SGWarningRow(NSString *title, NSString *subtitle, void (^action)(void)) {
+    [sg_warningTitles addObject:title];
+    return (SGModRow *)[NSObject new];
+}
 // Shared/Lyrics/KaraokeSource.x's look for EeveeSpotify, by the loaded image's name alone.
 BOOL SGEeveeSpotifyInjected(void) {
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
@@ -43,8 +58,40 @@ BOOL SGEeveeSpotifyInjected(void) {
     return NO;
 }
 // LiveActivitySettings.m and HapticsSettings.m: what the install's Info.plist says.
-BOOL SGLiveActivityAllowedByInstall(void) { return [[NSBundle.mainBundle objectForInfoDictionaryKey:@"NSSupportsLiveActivities"] boolValue]; }
+BOOL SGLiveActivityAllowedByInstall(void) {
+    return !sg_installInfo && [[NSBundle.mainBundle objectForInfoDictionaryKey:@"NSSupportsLiveActivities"] boolValue];
+}
 BOOL SGMusicHapticsListedByInstall(void) { return [[NSBundle.mainBundle objectForInfoDictionaryKey:@"MusicHapticsSupported"] boolValue]; }
+
+// A released IPA stripped of extensions still has its plist changes; a hand-injected .deb does not.
+static int checkInstallWarnings(void) {
+    Method original = class_getInstanceMethod(NSBundle.class, @selector(objectForInfoDictionaryKey:));
+    Method fixture = class_getInstanceMethod(NSBundle.class, @selector(sg_installObjectForInfoDictionaryKey:));
+    method_exchangeImplementations(original, fixture);
+    NSArray<NSDictionary *> *installs = @[
+        @{@"CFBundleShortVersionString": @"9.1.90", @"NSSupportsLiveActivities": @YES, @"MusicHapticsSupported": @YES},
+        @{@"CFBundleShortVersionString": @"9.1.90"}
+    ];
+    NSArray<NSNumber *> *expectedWarnings = @[@NO, @YES];
+    int result = 0;
+    for (NSUInteger i = 0; i < installs.count; i++) {
+        sg_installInfo = installs[i];
+        sg_warningTitles = [NSMutableArray array];
+        SGEnvironmentWarningRows();
+        BOOL warned = [sg_warningTitles containsObject:@"Installed without the app changes"];
+        if (warned != expectedWarnings[i].boolValue) {
+            NSLog(@"FAIL: %@ must %@show the app-changes warning",
+                  i == 0 ? @"IPA with extension removed" : @"Hand-injected .deb", i == 0 ? @"not " : @"");
+            result = 1;
+            break;
+        }
+    }
+    sg_installInfo = nil;
+    sg_warningTitles = nil;
+    method_exchangeImplementations(original, fixture);
+    if (!result) NSLog(@"PASS: stripped IPA is quiet; hand-injected .deb gets the app-changes warning");
+    return result;
+}
 
 @interface Delegate : UIResponder <UIApplicationDelegate>
 @end
@@ -114,6 +161,8 @@ BOOL SGMusicHapticsListedByInstall(void) { return [[NSBundle.mainBundle objectFo
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
+        if ([NSProcessInfo.processInfo.arguments containsObject:@"environment-check"])
+            return checkInstallWarnings();
         return UIApplicationMain(argc, argv, nil, NSStringFromClass(Delegate.class));
     }
 }

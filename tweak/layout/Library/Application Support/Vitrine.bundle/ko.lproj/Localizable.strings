@@ -16,7 +16,7 @@
 "settings.sponsorblock.skipped" = "팟캐스트 구간을 건너뛰었습니다";
 "settings.sponsorblock.undo" = "실행 취소";
 
-"settings.liveactivity.missing.extension.message" = "이 IPA에는 Vitrine의 실시간 현황 확장 프로그램이 없어 실시간 현황을 사용할 수 없습니다. 앱 확장 프로그램을 제외하고 빌드했다면 NO_PLUGINS=1 없이 다시 빌드하세요(CI에서는 'Remove every app extension'을 끄세요).";
+"settings.liveactivity.missing.extension.message" = "이 설치본에서는 잠금 화면 실시간 현황을 사용할 수 없습니다. 서명 도구가 앱 확장 프로그램을 제거했거나 IPA에 처음부터 포함되지 않았을 수 있으며, LiveContainer도 앱 확장 프로그램을 등록하지 못합니다. 실시간 현황을 쓰려면 서명할 때 앱 확장 프로그램을 유지하고 LiveContainer 밖에 IPA를 직접 설치하세요. Vitrine의 나머지 기능은 그대로 사용할 수 있습니다.";
 
 "settings.home.filter" = "홈 필터";
 "settings.home.show_all" = "모두 보기";

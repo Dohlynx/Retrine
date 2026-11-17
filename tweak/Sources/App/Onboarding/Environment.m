@@ -5,7 +5,6 @@
 // over the same Spotify before, left behind, offered once for deleting.
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/Haptics/Haptics.h"
-#import "Shared/LiveActivity/LiveActivity.h"
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
@@ -63,7 +62,8 @@ static NSArray<NSString *> *missingAppChanges(void) {
     id compatibility = [NSBundle.mainBundle objectForInfoDictionaryKey:@"UIDesignRequiresCompatibility"];
     if (SGRedesignAvailable() && SGRedesignedUIStored() && [compatibility isKindOfClass:NSNumber.class] && [compatibility boolValue])
         [missing addObject:SGL(@"settings.environment.missing.tabbar", @"the tab bar stays Spotify's own, without its glass")];
-    if (!SGLiveActivityAllowedByInstall()) [missing addObject:SGL(@"settings.environment.missing.live_activity", @"the Live Activity is missing")];
+    if (![[NSBundle.mainBundle objectForInfoDictionaryKey:@"NSSupportsLiveActivities"] boolValue])
+        [missing addObject:SGL(@"settings.environment.missing.live_activity", @"the Live Activity is missing")];
     if (!SGMusicHapticsListedByInstall())
         [missing addObject:SGL(@"settings.environment.missing.music_haptics", @"iOS does not list Spotify for Music Haptics, which stops vibrations in the background")];
     return missing;
