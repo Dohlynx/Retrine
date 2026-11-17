@@ -138,20 +138,24 @@ static NSUInteger searchPlacesChecks(void) {
     SGModPage *page = (SGModPage *)nav.topViewController;
     [page loadViewIfNeeded];
     SGSettingsIndex *index = [SGSettingsIndex new];
-    [index startWithRoot:page];
-    while (index.running) [index step];
-    // Every page row of the main page is remembered: each has a name of its own, or (a switch) a key.
-    NSArray<SGSettingsHit *> *hits = [index hitsForQuery:@"appearance"];
-    check(hits.count > 0 && hits.firstObject.place != nil, @"the main page's rows have places");
-    BOOL titled = NO;
-    for (SGSettingsHit *hit in [index hitsForQuery:@"player"]) {
-        if (hit.place.count == 1 && [hit.place.firstObject isEqual:hit.title]) titled = YES;
+    // Search the visible language, but keep the stored place independent of it. Reindex the same open
+    // page after a look switch, as live search does when settings change.
+    BOOL savedLook = SGRedesignedUIStored();
+    for (NSNumber *look in @[@NO, @YES]) {
+        SGSetEnabled(SGKeyRedesign, look.boolValue);
+        [index startWithRoot:page];
+        while (index.running) [index step];
+        NSArray<SGSettingsHit *> *hits = [index hitsForQuery:SGL(@"settings.main.appearance.title", @"Appearance")];
+        check(hits.count > 0 && hits.firstObject.place != nil, @"the main page's rows have places");
+        BOOL titled = NO;
+        for (SGSettingsHit *hit in [index hitsForQuery:SGL(@"settings.main.player.title", @"Player")]) {
+            if (hit.place.count == 1 && [hit.place.firstObject isEqual:hit.title]) titled = YES;
+        }
+        check(!titled, @"no place is a row's title");
+        NSArray *place = look.boolValue ? @[@"page.appearance.redesigned"] : @[@"page.appearance.native"];
+        check([hits.firstObject.place isEqualToArray:place], @"the Appearance row's place names the stored look");
     }
-    check(!titled, @"no place is a row's title");
-    // The Appearance row's place says which look it is: the same row under each look is two places.
-    SGSettingsHit *appearance = [index hitsForQuery:@"appearance"].firstObject;
-    NSString *suffix = SGRedesignedUIStored() ? @"redesigned" : @"native";
-    check([appearance.place.firstObject hasSuffix:suffix], @"the Appearance row's place names the stored look");
+    SGSetEnabled(SGKeyRedesign, savedLook);
     window.hidden = YES;
     fprintf(stderr, "[harness] search places checks: %lu failure(s)\n", (unsigned long)failures);
     return failures;

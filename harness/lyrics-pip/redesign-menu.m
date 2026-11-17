@@ -12,6 +12,9 @@ UIAction *SGRLyricsSearchAction(NSString *track) {
 // LyricsStyle.m and PlayerQueue.m: the lyrics style submenu and Playing Next, whose own items are not under test.
 UIMenu *SGRLyricsStyleMenu(NSString *title) { return [UIMenu menuWithTitle:title children:@[]]; }
 void SGRPlayerShowQueue(UIView *from) {}
+// Audio effects owns its settings sheet; this lane exercises the lyrics menu.
+void SGDSPShowSettingsSheet(UIView *from) {}
+NSString *SGDSPSummary(void) { return @"Off"; }
 // ShareCards.m and ArtistBlock.m: the song card and the song block, offered for a song, are not under test.
 void SGRShareSongCard(UIView *source) {}
 BOOL SGSongBlocked(NSString *uri) { return NO; }
@@ -40,29 +43,30 @@ void SGTestRedesignMenu(void) {
     SGRPlayerMenuWatch(source);
     SGTestPiPState(NO, NO, NO);
     NSArray *items = menuItems();
-    // Sound, the song's card and block, PiP, Playing Next, Search Lyrics, Lyrics Style, then the two backgrounds the
+    // Sound, Audio effects, the song's card and block, PiP, Playing Next, Search Lyrics, Lyrics Style, then the two backgrounds the
     // player is not showing.
-    SGTestAssert(items.count == 10 && [((UIAction *)items.lastObject).title isEqual:@"Lyrics Source"] && [((UIAction *)items[0]).title isEqual:@"Speed, Pitch & Reverb"]
-        && [((UIAction *)items[1]).title isEqual:@"Share Song Card"] && [((UIAction *)items[4]).title isEqual:@"Playing Next"]
-        && [((UIAction *)items[5]).title isEqual:@"Search Lyrics"] && [items[6] isKindOfClass:UIMenu.class]
+    SGTestAssert(items.count == 11 && [((UIAction *)items.lastObject).title isEqual:@"Lyrics Source"] && [((UIAction *)items[0]).title isEqual:@"Speed, Pitch & Reverb"]
+        && [((UIAction *)items[1]).title isEqual:@"Audio effects"]
+        && [((UIAction *)items[2]).title isEqual:@"Share Song Card"] && [((UIAction *)items[5]).title isEqual:@"Playing Next"]
+        && [((UIAction *)items[6]).title isEqual:@"Search Lyrics"] && [items[7] isKindOfClass:UIMenu.class]
         && [menuKind() isEqual:@"track"],
         @"redesign preserves sound, queue, lyric search, lyric style and alternate artwork items");
-    UIAction *pip = items[3];
+    UIAction *pip = items[4];
     SGTestAssert([pip.title isEqual:@"Open lyrics Picture in Picture"] && !(pip.attributes & UIMenuElementAttributesDisabled),
         @"redesign exposes enabled action even when launch flag is off");
     NSUInteger alerts = SGTestDisabledAlerts();
     tap(pip);
     SGTestAssert(SGTestDisabledAlerts() == alerts + 1, @"redesign disabled entry explains activation");
     SGTestPiPState(YES, NO, NO);
-    tap(menuItems()[3]);
+    tap(menuItems()[4]);
     SGTestAssert(SGLyricsPiPStarting(), @"redesign open invokes user-started shared engine");
-    pip = menuItems()[3];
+    pip = menuItems()[4];
     SGTestAssert([pip.title isEqual:@"Close lyrics Picture in Picture"], @"redesign rebuild labels pending start as close");
     tap(pip);
     SGTestAssert(!SGLyricsPiPStarting(), @"redesign close cancels starting session");
     SGTestPiPState(YES, YES, NO);
-    SGTestAssert([((UIAction *)menuItems()[3]).title isEqual:@"Close lyrics Picture in Picture"], @"redesign active entry is close");
+    SGTestAssert([((UIAction *)menuItems()[4]).title isEqual:@"Close lyrics Picture in Picture"], @"redesign active entry is close");
     SGTestSetTrack(@"spotify:episode:episode", nil);
-    SGTestAssert(menuItems().count == 5 && [menuKind() isEqual:@"episode"], @"podcast keeps PiP and Playing Next, and still excludes lyric search and style");
+    SGTestAssert(menuItems().count == 6 && [menuKind() isEqual:@"episode"], @"podcast keeps PiP and Playing Next, and still excludes lyric search and style");
     SGTestPiPState(NO, NO, NO);
 }

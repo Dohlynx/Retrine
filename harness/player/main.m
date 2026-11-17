@@ -3418,7 +3418,14 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
         if (ok) right++;
         NSLog(@"[harness] seek %@: %@ -- %@", step, detail, ok ? @"ok" : @"WRONG");
     };
-    UIViewController *durationUnit = _units[1];
+    UIViewController *durationUnit = nil;
+    for (UIViewController *candidate in _units) {
+        if ([candidate isKindOfClass:_TtC20NowPlaying_ModesImpl19DurationElementUnit.class]) {
+            durationUnit = candidate;
+            break;
+        }
+    }
+    HARNESS_CHECK(durationUnit != nil);
     UIView *unit = durationUnit.view;
     CGFloat W = unit.bounds.size.width;
     UISlider *slider = [[_TtCO17NowPlaying_ECMKit11ProgressBar6Slider alloc] initWithFrame:CGRectMake(24, 2, W - 48, 14)];
@@ -3457,7 +3464,15 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
     for (NSNumber *event in @[@(UIControlEventTouchDown), @(UIControlEventValueChanged), @(UIControlEventTouchUpInside)]) {
         [slider addAction:[UIAction actionWithHandler:^(UIAction *action) {
             [events addObject:event];
-            if (answers && event.unsignedIntegerValue == UIControlEventTouchUpInside) SGKaraokeSeek((NSInteger)(slider.value * 200000));
+            if (answers && event.unsignedIntegerValue == UIControlEventTouchUpInside) {
+                SGKaraokeSeek((NSInteger)(slider.value * 200000));
+                // Arrival is a fresh player report, not merely the karaoke clock moving.
+                SPTPlayerState *state = SGPlayerState();
+                [state setValue:@(slider.value * 200) forKey:@"positionAsOfTimestamp"];
+                [state setValue:NSDate.date forKey:@"timestamp"];
+                extern void SGRHarnessReport(SPTPlayerState *state);
+                SGRHarnessReport(state);
+            }
         }] forControlEvents:event.unsignedIntegerValue];
     }
     CGFloat from = CGRectGetMidX([slider thumbRectForBounds:slider.bounds trackRect:[slider trackRectForBounds:slider.bounds] value:0]);
@@ -3485,6 +3500,7 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
     });
     after(2.6, ^{
         NSLog(@"[harness] seek checks: %lu of %lu right -- %@", (unsigned long)right, (unsigned long)checks, right == checks ? @"PASS" : @"FAIL");
+        exit(right == checks ? 0 : 1);
     });
 }
 

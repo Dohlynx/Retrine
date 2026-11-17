@@ -110,10 +110,10 @@ static void runChecks(UIViewController *page) {
 
 #pragma mark - the Text sizes page
 
-// The view's private style, made as the view makes it: 30 pt, the stored order, every text shown.
-static id styleNow(BOOL romanised) {
+// The view's private style, made as the view makes it: 30 pt and the stored order.
+static id styleNow(BOOL pronunciation, BOOL romanised) {
     return ((id (*)(id, SEL, CGFloat, NSArray *, BOOL, BOOL, BOOL))objc_msgSend)([NSClassFromString(@"SGRKaraokeStyle") alloc],
-        NSSelectorFromString(@"initWithSize:order:pronunciation:translation:romanised:"), 30, SGRLyricsTextOrder(), YES, YES, romanised);
+        NSSelectorFromString(@"initWithSize:order:pronunciation:translation:romanised:"), 30, SGRLyricsTextOrder(), pronunciation, YES, romanised);
 }
 
 static UIFontWeight weightOf(UIFont *font) {
@@ -143,16 +143,17 @@ static NSString *fontText(UIFont *font) {
 static void runTextChecks(UINavigationController *nav) {
     clearTextLooks();
     // Nothing stored is the look there always was: 30, 20 and 16 pt, bold, bold and semibold, the usual brightness.
-    id style = styleNow(YES);
+    id style = styleNow(YES, NO);
     UIFont *lyrics = [style valueForKey:@"lyrics"], *spoken = [style valueForKey:@"pronunciation"], *translation = [style valueForKey:@"translation"];
-    UIFont *romanised = [style valueForKey:@"romanised"];
-    expect(lyrics.pointSize == 30 && spoken.pointSize == 20 && translation.pointSize == 16 && romanised.pointSize == 20,
-           [NSString stringWithFormat:@"unset sizes stay 30, 20, 16 and the romanized 20 (%@, %@, %@, %@)", fontText(lyrics), fontText(spoken), fontText(translation), fontText(romanised)]);
+    // Generated readings now occupy Pronunciation, including when source pronunciation is switched off.
+    UIFont *generated = [styleNow(NO, YES) valueForKey:@"pronunciation"];
+    expect(lyrics.pointSize == 30 && spoken.pointSize == 20 && translation.pointSize == 16 && generated.pointSize == 20,
+           [NSString stringWithFormat:@"unset sizes stay 30, 20, 16 and the generated pronunciation 20 (%@, %@, %@, %@)", fontText(lyrics), fontText(spoken), fontText(translation), fontText(generated)]);
     expect(near(weightOf(lyrics), weightOf([UIFont systemFontOfSize:30 weight:UIFontWeightBold]))
            && near(weightOf(spoken), weightOf([UIFont systemFontOfSize:20 weight:UIFontWeightBold]))
            && near(weightOf(translation), weightOf([UIFont systemFontOfSize:16 weight:UIFontWeightSemibold]))
-           && near(weightOf(romanised), weightOf([UIFont systemFontOfSize:20 weight:UIFontWeightSemibold])),
-           @"unset weights stay bold, bold, semibold and the romanized semibold");
+           && near(weightOf(generated), weightOf([UIFont systemFontOfSize:20 weight:UIFontWeightBold])),
+           @"unset weights stay bold, bold, semibold and the generated pronunciation bold");
     expect(near([[style valueForKey:@"translationDim"] doubleValue], 0.3) && near([[style valueForKey:@"translationLit"] doubleValue], 0.6)
            && near([[style valueForKey:@"spokenDim"] doubleValue], 0.3) && near([[style valueForKey:@"spokenLit"] doubleValue], 0.6)
            && near([[style valueForKey:@"spokenSung"] doubleValue], 1) && near([[style valueForKey:@"noteDim"] doubleValue], 0.22)
@@ -172,7 +173,7 @@ static void runTextChecks(UINavigationController *nav) {
                                                              usingBlock:^(NSNotification *n) { posted++; }];
     SGRSetLyricsTextLook(SGRLyricsTextTranslation, (SGRLyricsTextLook){115, 0, 140});
     SGRSetLyricsTextLook(SGRLyricsTextLyrics, (SGRLyricsTextLook){120, 1, 60});
-    style = styleNow(NO);
+    style = styleNow(YES, NO);
     translation = [style valueForKey:@"translation"];
     lyrics = [style valueForKey:@"lyrics"];
     expect(posted == 2, @"each change is posted, so every lyrics view sets its lines again");
@@ -188,11 +189,11 @@ static void runTextChecks(UINavigationController *nav) {
     expect([[backing valueForKey:@"lyrics"] pointSize] == 22 && near(weightOf([backing valueForKey:@"lyrics"]), weightOf([UIFont systemFontOfSize:22 weight:UIFontWeightSemibold])),
            @"the backing row follows the lyrics' size and weight");
     SGRSetLyricsTextLook(SGRLyricsTextPronunciation, (SGRLyricsTextLook){100, 2, 140});
-    style = styleNow(NO);
+    style = styleNow(YES, NO);
     expect(near([[style valueForKey:@"spokenSung"] doubleValue], 1) && near([[style valueForKey:@"spokenDim"] doubleValue], 0.42),
            @"a bright pronunciation never goes past white as it is sung");
     SGRSetLyricsTextLook(SGRLyricsTextPronunciation, (SGRLyricsTextLook){100, 2, 40});
-    style = styleNow(NO);
+    style = styleNow(YES, NO);
     expect(near([[style valueForKey:@"spokenSung"] doubleValue], 0.4) && near([[style valueForKey:@"spokenDim"] doubleValue], 0.12),
            @"a dim pronunciation is dimmer waiting and sung");
     // What a sung word shows is its lit copy over the waiting one still under it: composited, that is the brightness asked for.
@@ -210,7 +211,7 @@ static void runTextChecks(UINavigationController *nav) {
     line.pronunciation = spokenLine;
     for (NSNumber *bright in @[@40, @100, @140]) {
         SGRSetLyricsTextLook(SGRLyricsTextPronunciation, (SGRLyricsTextLook){100, 2, bright.integerValue});
-        id lineStyle = styleNow(NO);
+        id lineStyle = styleNow(YES, NO);
         UIView *lineView = ((id (*)(id, SEL, id, CGFloat, id, id, BOOL, BOOL))objc_msgSend)([NSClassFromString(@"SGRKaraokeLineView") alloc],
             NSSelectorFromString(@"initWithLine:width:style:under:blurred:sweepsEstimates:"), line, 300, lineStyle, nil, NO, NO);
         NSArray<UIView *> *words = [lineView valueForKey:@"words"];
@@ -298,7 +299,8 @@ static void runTextChecks(UINavigationController *nav) {
         expect(fabs(scrolled - onScreen) < 0.5, [NSString stringWithFormat:@"scrolling leaves the preview where it was (%.1f)", scrolled]);
         after(1.0, ^{
             id restyled = styleOf([page valueForKey:@"preview"]);
-            expect([[restyled valueForKey:@"translation"] pointSize] == 19, @"the preview sets its translation at 120% once restyled");
+            // The default Apple Music look is 34 pt: its third-place text is 18 pt, then 22 at 120%.
+            expect([[restyled valueForKey:@"translation"] pointSize] == 22, @"the preview sets its translation at 120% once restyled");
             [nav popViewControllerAnimated:NO];
             [nav pushViewController:SGRLyricsTextLookPage(SGRLyricsTextLyrics) animated:NO];
             after(0.6, ^{
