@@ -474,15 +474,21 @@ BOOL SGOpenSpotifyURI(NSURL *uri) {
 NSString *const SGRKeyPlayerMusicClose = @"spotifyglass.redesign.player.musicClose";
 CGRect SGRPlayerLyricLineIn(UIView *view) { return CGRectNull; }
 
-// The ⋯'s system menu (PlayerMenu.m, ContextMenu.x), which this harness does not build; PlayerHeader.x hands it
-// the ⋯, and with no button of the mod's over it the ⋯'s own touches press its circle.
-void SGRPlayerMenuWatch(UIView *button) {}
-UIControl *SGRSystemMenuFront(UIView *button) { return nil; }
+// The ⋯'s system menu (PlayerMenu.m, ContextMenu.x), which this harness does not build (harness/system-menu does):
+// the Spotify ⋯ PlayerHeader.x hands over is kept for the header scenario, and the title row is left as it is.
+__weak UIView *SGRHarnessWatchedMore;
+void SGRPlayerMenuWatch(UIView *button) { SGRHarnessWatchedMore = button; }
+void SGRPlayerMenuInTitleRow(UIView *title) {}
 
-// The audio quality badge (Shared/Player/AudioQuality.x), which this harness does not build: its switch is off until
-// switched on, and off the badge is never placed, so no tap near the progress bar is the badge's.
-void SGAudioQualityPlaceBadge(UIView *unitView) {}
-UIView *SGAudioQualityShownBadge(UIView *unitView) { return nil; }
+// PlayerState.x's playback location: this device plays. The audio quality badge (Shared/Player/AudioQuality.x) is built
+// here, and reads Spotify's report of the file it plays from the state's playbackQuality, which the harness sets.
+NSNotificationName const SGPlayerPlaybackLocationDidChangeNotification = @"harness.playbackLocation";
+BOOL SGPlayerPlaybackIsLocal(void) { return YES; }
+static char kQualityKey;
+@implementation SPTPlayerState (HarnessQuality)
+- (id)playbackQuality { return objc_getAssociatedObject(self, &kQualityKey); }
+- (void)setPlaybackQuality:(id)quality { objc_setAssociatedObject(self, &kQualityKey, quality, OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+@end
 
 // Cydia Substrate's hook (substrate.h here), as the runtime does it: the class gets its own copy of an inherited
 // method, so its superclass is left alone.

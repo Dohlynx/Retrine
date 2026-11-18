@@ -1142,7 +1142,8 @@ static void replace(void) {
 
 // The ordinary player's units and the AI DJ's (DJMInformationUnitViewController, DJMDurationElementsUnit, which
 // hold the same title row and progress bar) are measured the same way, so the DJ's player has these lyrics too.
-static void informationUnitLaidOut(UIViewController *unit) {
+// The title's arranged view, nil when the row has no title yet.
+static UIView *informationUnitLaidOut(UIViewController *unit) {
     sg_info = unit;
     UIView *host = unit.viewIfLoaded;
     // The title and the artist are two labels of one arranged element view, which is what moves.
@@ -1169,6 +1170,7 @@ static void informationUnitLaidOut(UIViewController *unit) {
         dispatch_once(&once, ^{ SGLog(@"redesign player: the title rides on %@ %@", NSStringFromClass(element.class), NSStringFromCGRect(element.frame)); });
     }
     replace();
+    return element;
 }
 
 static void durationUnitLaidOut(UIViewController *unit) {
@@ -1176,10 +1178,12 @@ static void durationUnitLaidOut(UIViewController *unit) {
     replace();
 }
 
+// The ordinary player's ⋯ beside its title (PlayerMenu.m); the AI DJ's keeps its own in its header.
 %hook _TtC20NowPlaying_ModesImpl23InformationElementsUnit
 - (void)viewDidLayoutSubviews {
     %orig;
-    informationUnitLaidOut((UIViewController *)self);
+    UIView *title = informationUnitLaidOut((UIViewController *)self);
+    if (title) SGRPlayerMenuInTitleRow(title);
 }
 %end
 

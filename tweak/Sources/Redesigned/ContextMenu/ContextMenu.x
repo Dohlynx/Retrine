@@ -19,8 +19,8 @@
 // unanimated for that to be soon; -performPrimaryAction brings the menu up over the hidden sheet and calls
 // willDisplayMenuForConfiguration: before it returns; a pick runs the action's handler before
 // willEndForConfiguration:, so by the end of the menu's dismissal it is known whether there was one; a deferred
-// element in a submenu is asked for its items when that submenu opens, not with the menu, so More's rows are
-// not kept from one menu to the next: by the time More is opened the sheet has nearly always read them.
+// element in the menu's first level, as the player's rows are, is asked for its items as the menu is built, before
+// it is up, so they come from the last sheet stored or wait for this one's.
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
@@ -180,30 +180,6 @@ static BOOL rowEnabled(UITableView *table, NSIndexPath *path, UITableViewCell *c
     return title.enabled && title.alpha * alpha >= 0.6;
 }
 
-// Fires a control as a tap on it would: its primary action's handlers if it has any, else its touch up inside
-// ones (the mod's own watchers left out of the count), else its accessibility activation. What it did, for the log.
-static NSString *fireControl(UIControl *control) {
-    if (!control) return @"nothing to fire";
-    __block UIControlEvents events = 0;
-    if ([control respondsToSelector:@selector(enumerateEventHandlers:)]) {
-        [control enumerateEventHandlers:^(UIAction *action, id target, SEL selector, UIControlEvents handled, BOOL *stop) {
-            // The mod's own watcher of the ⋯ (Shared/Player/SpeedPitchMenu.x) is not Spotify's action.
-            if (!action && [NSStringFromClass([target class]) hasSuffix:@"TapWatcher"]) return;
-            events |= handled;
-        }];
-    }
-    if (events & UIControlEventPrimaryActionTriggered) {
-        [control sendActionsForControlEvents:UIControlEventPrimaryActionTriggered];
-        return [NSString stringWithFormat:@"%@'s primary action", NSStringFromClass(control.class)];
-    }
-    if (events & UIControlEventTouchUpInside) {
-        [control sendActionsForControlEvents:UIControlEventTouchUpInside];
-        return [NSString stringWithFormat:@"%@'s touch up inside", NSStringFromClass(control.class)];
-    }
-    BOOL done = [control accessibilityActivate];
-    return [NSString stringWithFormat:@"%@'s accessibility activation (%@, events 0x%lx)", NSStringFromClass(control.class), done ? @"taken" : @"refused", (unsigned long)events];
-}
-
 // Picks the row as a tap would; a row that answers to no delegate is tapped through the first control in it.
 // Only the cells on screen exist, so a row further down is scrolled to first (the table is hidden).
 static void selectRow(UITableView *table, NSIndexPath *path) {
@@ -225,7 +201,7 @@ static void selectRow(UITableView *table, NSIndexPath *path) {
     SGForEachView(cell, ^(UIView *view) {
         if (!control && [view isKindOfClass:UIControl.class] && view.userInteractionEnabled) control = (UIControl *)view;
     });
-    SGLog(@"system menu: the sheet's table has no didSelect, so %@ (row %ld%@)", fireControl(control), (long)path.row, cell ? @"" : @", no cell");
+    SGLog(@"system menu: the sheet's table has no didSelect, so %@ (row %ld%@)", SGRFireControl(control), (long)path.row, cell ? @"" : @", no cell");
 }
 
 // The mod's own rows in the table's header or footer view: the view itself or its children, controls of the
@@ -265,8 +241,8 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
 
 // One ⋯ tap: the sheet Spotify presented, the anchor the menu comes from, and what was picked.
 //
-// The player's ⋯ (`direct`) opens its menu itself, from a button of the mod's over Spotify's ⋯ (SGRMenuFront),
-// before Spotify has done anything: Spotify's sheet is asked for (requestSheet, Spotify's ⋯ action run from
+// The player's ⋯ (`direct`) opens its menu itself, from a button of the mod's (SGRMenuFront), before Spotify has
+// done anything: Spotify's sheet is asked for (requestSheet, Spotify's ⋯ action run from
 // code) once the menu is up, and presented in a window of the mod's own under the app's (adoptSheet), unseen,
 // for its rows and to run them. A page's ⋯ is the other way round: Spotify's sheet comes first, from its tap,
 // and the menu is opened over it, hidden (takeOver, open).
@@ -277,7 +253,8 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
 @property (nonatomic, weak) UIViewController *presenter;
 @property (nonatomic, weak) UIViewController *presented;
 @property (nonatomic, weak) SGRMenuAnchor *anchor;
-@property (nonatomic, copy) SGRMenuItems items;
+// The player's: its lead items before Spotify's rows, and its own items after them.
+@property (nonatomic, copy) SGRMenuItems lead, items;
 @property (nonatomic, copy) NSString *kind;
 @property (nonatomic) BOOL displayed, revealed, ended, opened;
 @property (nonatomic, copy) void (^pick)(void);
@@ -304,13 +281,12 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
 @property (nonatomic, strong) SGRMenuSession *session;
 @end
 
-// The player's ⋯ as a pull-down button of the mod's own (HIG, Pull-down buttons): an invisible button over
-// Spotify's ⋯ that takes its touches and opens the menu on touch down, as UIKit opens any button's menu, so the
-// menu waits for nothing of Spotify's and Spotify's ⋯ action does not run on the tap. Its menu is made afresh
-// as it opens, with a session of its own.
+// The player's ⋯ as a pull-down button of the mod's own (HIG, Pull-down buttons), which opens the menu on touch down,
+// as UIKit opens any button's menu, so the menu waits for nothing of Spotify's and Spotify's ⋯ action does not run on
+// the tap. Its menu is made afresh as it opens, with a session of its own.
 @interface SGRMenuFront : SGRMenuAnchor
 @property (nonatomic, weak) UIControl *spotify;
-@property (nonatomic, copy) SGRMenuItems items;
+@property (nonatomic, copy) SGRMenuItems lead, items;
 @property (nonatomic, copy) SGRMenuKind kind;
 @end
 
@@ -333,7 +309,7 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
     // player. The pick fires a turn later, which the sheet takes while the menu is still fading.
     [session menuEnded];
     // The player's ⋯ is pressed for as long as its menu is up (the touch that opened it was canceled at once,
-    // as the menu came): its targets for the press (PlayerHeader.x's circle) are told now that it is let go.
+    // as the menu came): its targets for the press are told now that it is let go.
     if ([self isKindOfClass:SGRMenuFront.class]) [self sendActionsForControlEvents:UIControlEventTouchUpOutside];
 }
 
@@ -348,6 +324,7 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
     session.touchedAt = session.takenAt = CACurrentMediaTime();
     session.anchor = self;
     session.spotify = self.spotify;
+    session.lead = self.lead;
     session.items = self.items;
     session.kind = self.kind ? self.kind() : nil;
     self.session = session;
@@ -358,16 +335,11 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
 // Touch-down diagnostics show the button's state and placement without doing a window hit test on every layout.
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     [super touchesBegan:touches withEvent:event];
-    SGLog(@"system menu: touch down on the mod's ⋯ at %@ in the window (menu %@, %@)", NSStringFromCGRect([self convertRect:self.bounds toView:nil]),
-          self.menu ? @"held" : @"none", self.enabled && self.userInteractionEnabled ? @"taking touches" : @"not taking touches");
-    UIControl *button = self.spotify;
-    if (!button.window || button.bounds.size.width <= 0) return;
-    CGRect over = [self convertRect:self.bounds toView:nil], under = [button convertRect:button.bounds toView:nil];
-    CGPoint middle = CGPointMake(CGRectGetMidX(under), CGRectGetMidY(under));
-    UIView *hit = [button.window hitTest:middle withEvent:nil];
-    NSString *reaches = hit == self ? @"it" : NSStringFromClass(hit.class);
-    SGLog(@"system menu: the mod's ⋯ at %@ over Spotify's at %@ in the window; a touch at the ⋯'s middle reaches %@",
-          NSStringFromCGRect(over), NSStringFromCGRect(under), reaches);
+    CGRect frame = [self convertRect:self.bounds toView:nil];
+    UIView *hit = [self.window hitTest:CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame)) withEvent:nil];
+    SGLog(@"system menu: touch down on the mod's ⋯ at %@ in the window (menu %@, %@, Spotify's ⋯ %@); a touch at its middle reaches %@",
+          NSStringFromCGRect(frame), self.menu ? @"held" : @"none", self.enabled && self.userInteractionEnabled ? @"taking touches" : @"not taking touches",
+          self.spotify ? @"known" : @"not laid out yet", hit == self ? @"it" : NSStringFromClass(hit.class));
 }
 
 // UIKit cancels the touch as the menu comes up, and the press holds until the menu ends (willEndForConfiguration:).
@@ -457,6 +429,8 @@ static void raiseHost(UIWindow *window) {
 
 - (instancetype)init {
     if (!(self = [super init])) return nil;
+    // The player's rows are in its menu's first level, so UIKit asks for them as the menu is built, before it is up.
+    _whenRead = [NSMutableArray array];
     _rowsActive = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     [center addObserver:self selector:@selector(rowsResigned) name:UIApplicationWillResignActiveNotification object:nil];
@@ -609,7 +583,7 @@ static void raiseHost(UIWindow *window) {
     sg_requestedAt = _requestedAt;
     // Speed and pitch's sheet test (and Edit info's) counts the ⋯'s touch, which the menu kept from Spotify's ⋯.
     SGPlayerMenuMarkPlayers();
-    NSString *how = fireControl(self.spotify);
+    NSString *how = SGRFireControl(self.spotify);
     SGLog(@"system menu: Spotify's sheet asked for, %.3f s after the touch down, by %@", _requestedAt - self.touchedAt, how);
     __weak SGRMenuSession *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kRequestWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -664,18 +638,39 @@ static void raiseHost(UIWindow *window) {
 
 #pragma mark the menu
 
-// A page's ⋯: Spotify's rows, waited for. The player's: the quick row, the player's items and More, none of
-// them waited for; More's rows are, when More is opened before the sheet has them.
+// A page's ⋯: Spotify's rows, waited for. The player's, the song's actions first and the mod's after them: the quick
+// row, the lead items, Spotify's rows (kMoreMenu, laid out in place, the stored ones or the loading row until the
+// sheet has them) and the player's own items.
 - (UIMenu *)menu {
     if (!self.items) return [UIMenu menuWithChildren:@[[self deferredRows]]];
     NSMutableArray<UIMenuElement *> *children = [NSMutableArray array];
     UIMenu *quick = [self quickRow];
     if (quick) [children addObject:quick];
+    NSArray<UIMenuElement *> *lead = self.lead ? self.lead() : nil;
+    if (lead.count) [children addObject:inlineGroup(lead)];
+    [children addObject:[UIMenu menuWithTitle:@"" image:nil identifier:kMoreMenu options:UIMenuOptionsDisplayInline children:@[[self deferredRows]]]];
     NSArray<UIMenuElement *> *ours = self.items();
     if (ours.count) [children addObject:inlineGroup(ours)];
-    UIMenu *more = [UIMenu menuWithTitle:SGL(@"settings.playlist.hide.more.title", @"More") image:[UIImage systemImageNamed:@"ellipsis.circle"] identifier:kMoreMenu options:0 children:@[[self deferredRows]]];
-    [children addObject:inlineGroup(@[more])];
     return [UIMenu menuWithTitle:@"" image:nil identifier:kTopMenu options:0 children:children];
+}
+
+// `visible` with Spotify's rows in place of its loading row: a page's has it at its first level, the player's in its
+// group of Spotify's rows.
+static UIMenu *withRows(UIMenu *visible, NSArray<UIMenuElement *> *rows) {
+    if ([visible.identifier isEqualToString:kMoreMenu]) return [visible menuByReplacingChildren:rows];
+    NSMutableArray<UIMenuElement *> *children = [visible.children mutableCopy];
+    for (NSUInteger at = 0; at < children.count; at++) {
+        UIMenuElement *child = children[at];
+        if ([child isKindOfClass:UIDeferredMenuElement.class]) {
+            [children replaceObjectsInRange:NSMakeRange(at, 1) withObjectsFromArray:rows];
+            return [visible menuByReplacingChildren:children];
+        }
+        if ([child isKindOfClass:UIMenu.class] && [((UIMenu *)child).identifier isEqualToString:kMoreMenu]) {
+            children[at] = [(UIMenu *)child menuByReplacingChildren:rows];
+            return [visible menuByReplacingChildren:children];
+        }
+    }
+    return visible;
 }
 
 // The sheet's rows as menu items, but for the quick ones. Uncached: every menu reads the sheet it was opened with.
@@ -693,7 +688,8 @@ static void raiseHost(UIWindow *window) {
             completion(stored);
             return;
         }
-        if (session.direct) [session requestSheet];
+        // Asked as the menu is built, before it is up: the sheet is asked for once it is (shown).
+        if (session.direct && session.displayed) [session requestSheet];
         if (session->_failed || session->_rowsExhausted) {
             completion([session unavailable]);
             return;
@@ -711,13 +707,12 @@ static void raiseHost(UIWindow *window) {
                     SGRMenuSession *later = weakSelf;
                     if (!later || later.ended) return;
                     [later.anchor.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
-                        NSUInteger at = [visible.children indexOfObjectPassingTest:^BOOL(UIMenuElement *child, NSUInteger index, BOOL *stop) {
-                            return [child isKindOfClass:UIDeferredMenuElement.class];
-                        }];
-                        if (at == NSNotFound) return visible;
-                        NSMutableArray<UIMenuElement *> *children = [visible.children mutableCopy];
-                        [children replaceObjectsInRange:NSMakeRange(at, 1) withObjectsFromArray:elements];
-                        return [visible menuByReplacingChildren:children];
+                        BOOL loading = [visible.children indexOfObjectPassingTest:^BOOL(UIMenuElement *child, NSUInteger index, BOOL *stop) {
+                            return [child isKindOfClass:UIDeferredMenuElement.class]
+                                || ([child isKindOfClass:UIMenu.class] && [((UIMenu *)child).identifier isEqualToString:kMoreMenu]
+                                    && [((UIMenu *)child).children.firstObject isKindOfClass:UIDeferredMenuElement.class]);
+                        }] != NSNotFound;
+                        return loading ? withRows(visible, elements) : visible;
                     }];
                 });
             }
@@ -796,13 +791,12 @@ static NSString *storedKey(NSString *kind) {
     [defaults setObject:groups forKey:storedKey(self.kind)];
 }
 
-// The live rows came while More shows the stored ones or the loading row: More is put right in place.
+// The live rows came while the player's menu shows the stored ones or the loading row: they are put right in place.
 - (void)refreshMore {
     if (!self.direct || !self.displayed || self.ended) return;
     NSArray<UIMenuElement *> *live = [self rowElements];
     [self.anchor.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
-        if (![visible.identifier isEqualToString:kMoreMenu]) return visible;
-        return [visible menuByReplacingChildren:live];
+        return [visible.identifier isEqualToString:kTopMenu] || [visible.identifier isEqualToString:kMoreMenu] ? withRows(visible, live) : visible;
     }];
 }
 
@@ -1190,9 +1184,9 @@ BOOL SGPlayerMenuReplaced(UIViewController *menu) {
 
 #pragma mark - the ⋯
 
-void SGRSystemMenuWatch(UIView *button, SGRMenuItems items, SGRMenuKind kind) {
-    if (![button isKindOfClass:UIControl.class]) return;
-    SGRMenuFront *front = objc_getAssociatedObject(button, &kFrontKey);
+UIButton *SGRSystemMenuButtonIn(UIView *host, UIView *spotify, SGRMenuItems lead, SGRMenuItems items, SGRMenuKind kind) {
+    if (!host) return nil;
+    SGRMenuFront *front = objc_getAssociatedObject(host, &kFrontKey);
     if (!front) {
         front = [SGRMenuFront buttonWithType:UIButtonTypeCustom];
         front.showsMenuAsPrimaryAction = YES;
@@ -1202,28 +1196,24 @@ void SGRSystemMenuWatch(UIView *button, SGRMenuItems items, SGRMenuKind kind) {
         // This one stands in until the touch down asks for the session's (configurationForMenuAtLocation:).
         front.menu = [UIMenu menuWithChildren:@[]];
         front.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-        front.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         front.isAccessibilityElement = YES;
         front.accessibilityTraits = UIAccessibilityTraitButton;
-        objc_setAssociatedObject(button, &kFrontKey, front, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        SGLog(@"system menu: the player's ⋯ (%@) opens the menu from a button of the mod's over it", NSStringFromClass(button.class));
+        objc_setAssociatedObject(host, &kFrontKey, front, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        SGLog(@"system menu: the player's ⋯ is a button of the mod's in %@", NSStringFromClass(host.class));
     }
-    front.spotify = (UIControl *)button;
+    if (front.superview != host) [host addSubview:front];
+    else if (host.subviews.lastObject != front) [host bringSubviewToFront:front];
+    if (spotify && front.spotify != spotify) {
+        front.spotify = [spotify isKindOfClass:UIControl.class] ? (UIControl *)spotify : nil;
+        if (!front.spotify) SGLog(@"system menu: Spotify's ⋯ is a %@, not a control: its rows cannot be asked for", NSStringFromClass(spotify.class));
+    }
+    front.lead = lead;
     front.items = items;
     front.kind = kind;
-    // VoiceOver reaches the mod's button rather than Spotify's ⋯, with the ⋯'s own words, so it opens the menu too.
-    if (button.isAccessibilityElement) {
-        if (button.accessibilityLabel.length) front.accessibilityLabel = button.accessibilityLabel;
-        button.isAccessibilityElement = NO;
-    }
-    if (!front.accessibilityLabel.length) front.accessibilityLabel = SGL(@"settings.playlist.hide.more.title", @"More");
-    if (front.superview != button) [button addSubview:front];
-    else if (button.subviews.lastObject != front) [button bringSubviewToFront:front];
-    if (!CGRectEqualToRect(front.frame, button.bounds)) front.frame = button.bounds;
-}
-
-UIControl *SGRSystemMenuFront(UIView *button) {
-    return objc_getAssociatedObject(button, &kFrontKey);
+    // VoiceOver reads it with the ⋯'s own words.
+    NSString *label = front.spotify.accessibilityLabel.length ? front.spotify.accessibilityLabel : SGL(@"settings.playlist.hide.more.title", @"More");
+    if (![front.accessibilityLabel isEqualToString:label]) front.accessibilityLabel = label;
+    return front;
 }
 
 static SGRMenuAnchor *anchorIn(UIView *host) {

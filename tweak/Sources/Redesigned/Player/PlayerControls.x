@@ -642,11 +642,14 @@ static void watchSlider(UIView *host) {
 
 #pragma mark - scrubbing
 
-// While a finger scrubs, the Music app's bar grows thicker and the times under it turn white and step down
-// with it, and all of it goes back when the finger lifts. The track grows through the slider's own track
-// rect, about its middle, so the thumb and the place a tap seeks to stay where they were; only a real drag
+// While a finger scrubs, the Music app's bar grows thicker, its fill turns whole white, and the times under it turn
+// white and step down with it, and all of it goes back when the finger lifts. The track grows through the slider's
+// own track rect, about its middle, so the thumb and the place a tap seeks to stay where they were; only a real drag
 // does it, never the drag a tap to seek plays to the slider (seekTo sends events, it does not track).
 static const CGFloat kScrubTrackGrow = 1.75, kScrubTimeDrop = 3;
+// The Music app keeps its time row clear of the bar: the times, and the audio quality badge between them, stand this
+// much lower than Spotify lays them out, by a translation of theirs, so Spotify's layout stays underneath.
+static const CGFloat kTimesDrop = 8;
 static const NSUInteger kScrubUnitReach = 6;
 static char kScrubTakeKey, kScrubTakeLabelKey, kScrubRemainingKey, kScrubRemainingLabelKey, kScrubColorKey;
 static __weak UISlider *sg_scrubSlider;
@@ -679,6 +682,78 @@ static void brighten(UIView *view, BOOL on, BOOL animated) {
         animations:^{ label.textColor = to; } completion:nil];
 }
 
+// The times' translation: lowered at rest, a little more while a finger scrubs (not under Reduce Motion).
+static CGAffineTransform timesDrop(BOOL scrubbing) {
+    return CGAffineTransformMakeTranslation(0, kTimesDrop + (scrubbing && !SGRReduceMotion() ? kScrubTimeDrop : 0));
+}
+
+#pragma mark - the bar's colors
+
+// The Music app's bars are translucent (PlayerVolume.m takes the same colors): the fill a light white the background
+// shows through, the track dimmer, both more opaque under Increase Contrast; a scrub lights the fill whole.
+static const CGFloat kBarFillAlpha = 0.6, kBarTrackAlpha = 0.2, kBarFillContrastAlpha = 0.85, kBarTrackContrastAlpha = 0.35;
+
+UIColor *SGRPlayerBarFill(BOOL lit) {
+    return [UIColor colorWithWhite:1 alpha:lit ? 1 : SGRIncreaseContrast() ? kBarFillContrastAlpha : kBarFillAlpha];
+}
+
+UIColor *SGRPlayerBarTrack(void) {
+    return [UIColor colorWithWhite:1 alpha:SGRIncreaseContrast() ? kBarTrackContrastAlpha : kBarTrackAlpha];
+}
+
+// A track image in `color` at the size, scale and caps of Spotify's, a capsule as Spotify's is (its own color, opaque
+// or not, is not kept).
+static UIImage *recolored(UIImage *image, UIColor *color) {
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:image.size format:image.imageRendererFormat];
+    UIImage *drawn = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGRect rect = {CGPointZero, image.size};
+        [color setFill];
+        [[UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:MIN(rect.size.width, rect.size.height) / 2] fill];
+    }];
+    return [drawn resizableImageWithCapInsets:image.capInsets resizingMode:image.resizingMode];
+}
+
+static char kBarKey, kBarMinKey, kBarMaxKey;
+
+// What a track of the bar shows: Spotify's image (`spotify`), the one drawn from it (`drawn`) and its color.
+@interface SGRBarTrack : NSObject
+@property (nonatomic, strong) UIImage *spotify, *drawn;
+@property (nonatomic, strong) UIColor *color;
+@end
+@implementation SGRBarTrack
+@end
+
+// Spotify draws its bar with track images (01.txt:1907, 7x7 each); a new image of Spotify's is drawn again in the
+// bar's color, and one already drawn only when the color changes. A bar with no image takes the color as its tint.
+static void colorTrack(UISlider *slider, BOOL minimum, UIColor *color) {
+    const void *key = minimum ? &kBarMinKey : &kBarMaxKey;
+    UIImage *shown = minimum ? [slider minimumTrackImageForState:UIControlStateNormal] : [slider maximumTrackImageForState:UIControlStateNormal];
+    if (!shown) {
+        UIColor *tint = minimum ? slider.minimumTrackTintColor : slider.maximumTrackTintColor;
+        if ([tint isEqual:color]) return;
+        if (minimum) slider.minimumTrackTintColor = color;
+        else slider.maximumTrackTintColor = color;
+        return;
+    }
+    SGRBarTrack *track = objc_getAssociatedObject(slider, key);
+    if (!track) {
+        track = [SGRBarTrack new];
+        objc_setAssociatedObject(slider, key, track, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (shown == track.drawn && [track.color isEqual:color]) return;
+    if (shown != track.drawn) track.spotify = shown;
+    track.color = color;
+    track.drawn = recolored(track.spotify, color);
+    if (minimum) [slider setMinimumTrackImage:track.drawn forState:UIControlStateNormal];
+    else [slider setMaximumTrackImage:track.drawn forState:UIControlStateNormal];
+}
+
+static void colorBar(UISlider *slider) {
+    if (!objc_getAssociatedObject(slider, &kBarKey)) return;
+    colorTrack(slider, YES, SGRPlayerBarFill(slider == sg_scrubSlider));
+    colorTrack(slider, NO, SGRPlayerBarTrack());
+}
+
 static void brightenTimes(UIView *unit, BOOL on, BOOL animated) {
     brighten(SGRFindByIdentifier(unit, @"now-playing-time-take-label-internal", &kScrubTakeLabelKey), on, animated);
     brighten(SGRFindByIdentifier(unit, @"now-playing-time-remaning-label-internal", &kScrubRemainingLabelKey), on, animated);
@@ -696,12 +771,13 @@ static void scrubLook(UISlider *slider, BOOL on) {
         [slider setNeedsLayout];
         [slider layoutIfNeeded];
     }, nil);
+    colorBar(slider);
     UIView *unit = timesAround(slider);
     if (!unit) return;
     brightenTimes(unit, on, YES);
     UIView *take = SGRFindByIdentifier(unit, @"now-playing-time-take-label", &kScrubTakeKey);
     UIView *remaining = SGRFindByIdentifier(unit, @"now-playing-time-remaning-label", &kScrubRemainingKey);
-    CGAffineTransform drop = on && !SGRReduceMotion() ? CGAffineTransformMakeTranslation(0, kScrubTimeDrop) : CGAffineTransformIdentity;
+    CGAffineTransform drop = timesDrop(on);
     SGRAnimate(SGRMotionPress, ^{
         take.transform = drop;
         remaining.transform = drop;
@@ -759,8 +835,10 @@ static void keepScrubLook(UIView *host) {
     if (!((UIView *)self).window) scrubLook((UISlider *)self, NO);
 }
 
-// AutoMix's transition bands behind the knob (PlayerMix.x), on the player's own bar only.
+// The player's bar in its translucent colors, before it lays its tracks out; AutoMix's transition bands behind the knob
+// (PlayerMix.x), on the player's own bar only.
 - (void)layoutSubviews {
+    colorBar((UISlider *)self);
     %orig;
     UISlider *slider = (UISlider *)self;
     if ([slider.accessibilityIdentifier isEqualToString:kSliderID]) SGRPlayerMixSliderLaidOut(slider);
@@ -768,18 +846,33 @@ static void keepScrubLook(UIView *host) {
 %end
 
 // The ordinary player's duration unit and the AI DJ's (DJMDurationElementsUnit) hold the same progress bar and times.
+static char kDurationHostKey;
+
 static void durationLaidOut(UIViewController *unit) {
     UIView *host = unit.viewIfLoaded;
     if (!host) return;
+    if (!objc_getAssociatedObject(host, &kDurationHostKey)) objc_setAssociatedObject(host, &kDurationHostKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     // The bar's element, its times at its edges, inset to the player's margin.
     UIView *bar = SGRFindByIdentifier(host, kSliderID, &kSliderKey);
+    // The bar the player shows (the mini player's has the same identifier and no times), drawn translucent.
+    if ([bar isKindOfClass:UISlider.class] && !objc_getAssociatedObject(bar, &kBarKey)) {
+        objc_setAssociatedObject(bar, &kBarKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [bar setNeedsLayout];
+    }
     while (bar && bar.superview != host) bar = bar.superview;
     if (bar) SGRPlayerHoldMargin(bar, 0);
     watchSlider(host);
     UILabel *taken = monospaced(host, @"now-playing-time-take-label-internal", &kTakeKey);
     monospaced(host, @"now-playing-time-remaning-label-internal", &kRemainingKey);
     keepScrubLook(host);
-    SGAudioQualityPlaceBadge(host);
+    // The times lowered, by a scrub's step more while one goes on here.
+    UISlider *scrubbed = sg_scrubSlider;
+    CGAffineTransform drop = timesDrop(scrubbed && [scrubbed isDescendantOfView:host]);
+    for (UIView *time in @[SGRFindByIdentifier(host, @"now-playing-time-take-label", &kTakeTimeKey) ?: NSNull.null,
+                           SGRFindByIdentifier(host, @"now-playing-time-remaning-label", &kRemainingTimeKey) ?: NSNull.null]) {
+        if ([time isKindOfClass:UIView.class] && !CGAffineTransformEqualToTransform(time.transform, drop)) time.transform = drop;
+    }
+    SGAudioQualityPlaceRedesignedBadge(host, kTimesDrop);
     // Whether Spotify's font has digits of one width shows in the descriptor's feature settings.
     if (!taken) return;
     static dispatch_once_t once;
@@ -790,6 +883,21 @@ static void durationLaidOut(UIViewController *unit) {
 - (void)viewDidLayoutSubviews {
     %orig;
     durationLaidOut((UIViewController *)self);
+}
+%end
+
+// On a change of text size the unit is laid out before its times take their new size, and is not laid out again
+// (9.2.0 simulator, 2026-11-18): the elapsed time's own layout places the badge on its baseline again.
+%hook SPTEncoreLabel
+- (void)layoutSubviews {
+    %orig;
+    UIView *time = (UIView *)self;
+    if (![time.accessibilityIdentifier isEqualToString:@"now-playing-time-take-label"]) return;
+    for (UIView *view = time.superview; view; view = view.superview) {
+        if (!objc_getAssociatedObject(view, &kDurationHostKey)) continue;
+        SGAudioQualityPlaceRedesignedBadge(view, kTimesDrop);
+        return;
+    }
 }
 %end
 

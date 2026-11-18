@@ -24,6 +24,19 @@
 void SGAlbumQueueInstall(UIViewController *menu) {}
 
 void SGRPlayerMenuWatch(UIView *button);
+void SGRPlayerMenuInTitleRow(UIView *title);
+// The Kit around PlayerMenu.m: Star add button on, the title's white.
+BOOL SGRStarAddOn(void) { return YES; }
+UIColor *SGRPrimary(void) { return UIColor.whiteColor; }
+// SGRRestyle.m is not built: the view under `root` with that identifier, looked for afresh each time.
+UIView *SGRFindByIdentifier(UIView *root, NSString *identifier, const void *cacheKey) {
+    if ([root.accessibilityIdentifier isEqualToString:identifier]) return root;
+    for (UIView *child in root.subviews) {
+        UIView *found = SGRFindByIdentifier(child, identifier, cacheKey);
+        if (found) return found;
+    }
+    return nil;
+}
 // touch.m: a finger's touches, through UIKit's own recognizers.
 extern void SGHarnessTap(UIWindow *window, CGPoint point);
 
@@ -169,12 +182,22 @@ static UIMenu *recordMenu(id self, SEL _cmd, NSString *title, UIImage *image, NS
 // The rows of 9.1.78's player sheet, with their item numbers; Sleep timer last, below what the sheet shows.
 static NSArray<NSArray<NSString *> *> *spotifyRows(void) {
     if (is(@"podcast")) return @[@[@"text.badge.plus", @"Add to queue", @"11"], @[@"square.stack", @"Go to show", @"40"], @[@"square.and.arrow.up", @"Share", @"9"]];
+    // Spotify's own Like row (18), as 9.2.0's sheet has it beside Add to playlist.
     NSMutableArray *rows = [@[@[@"plus.circle", @"Add to playlist", @"19"], @[@"text.badge.plus", @"Add to queue", @"11"],
-                              @[@"square.and.arrow.up", @"Share", @"9"], @[@"square.stack", @"Go to album", @"1"],
-                              @[@"quote.bubble", @"Lyrics", @"28"]] mutableCopy];
-    for (int i = 0; i < 9; i++) [rows addObject:@[@"circle", [NSString stringWithFormat:@"Row %d", i + 1], [NSString stringWithFormat:@"%d", 60 + i]]];
+                              @[@"square.and.arrow.up", @"Share", @"9"], @[@"heart", @"Add to Liked Songs", @"18"],
+                              @[@"square.stack", @"Go to album", @"1"], @[@"quote.bubble", @"Lyrics", @"28"]] mutableCopy];
+    for (int i = 0; i < 8; i++) [rows addObject:@[@"circle", [NSString stringWithFormat:@"Row %d", i + 1], [NSString stringWithFormat:@"%d", 60 + i]]];
     [rows addObject:@[@"moon", @"Sleep timer", @"44"]];
     return rows;
+}
+
+// The titles of Spotify's rows the menu shows as rows (the quick row has the rest).
+static NSArray<NSString *> *spotifyRowTitles(void) {
+    NSMutableArray<NSString *> *titles = [NSMutableArray array];
+    for (NSArray<NSString *> *row in spotifyRows()) {
+        if (![@[@"Add to playlist", @"Add to queue", @"Share"] containsObject:row[1]]) [titles addObject:row[1]];
+    }
+    return titles;
 }
 
 static NSString *sg_selected;
@@ -227,13 +250,16 @@ static SGHarnessPlayer *sg_player;
 @end
 
 @interface SGHarnessPlayer : UIViewController
-@property (nonatomic, strong) UIButton *more, *arrow;
-@property (nonatomic, strong) UIView *header;
-@property (nonatomic) NSUInteger arrowTaps, frontDowns, frontUps, frontCancels;
+@property (nonatomic, strong) UIButton *more, *arrow, *add;
+@property (nonatomic, strong) UIControl *ban;
+@property (nonatomic, strong) UIView *header, *titleElement, *addElement, *banElement;
+@property (nonatomic, strong) UIStackView *titleRow;
+@property (nonatomic) NSUInteger arrowTaps, addTaps, banTaps, frontDowns, frontUps, frontCancels;
 @property (nonatomic, weak) UINavigationController *sheet;
 @property (nonatomic, weak) UIViewController *sleepSheet;
 - (void)presentSleepOptions;
 - (void)presentMenuSheet;
+- (UIButton *)front;
 @end
 
 @implementation _TtC24ContextMenu_InternalImpl25ContextMenuViewController
@@ -369,10 +395,28 @@ static UIView *openMenu(void) {
     return nil;
 }
 
-// Whether a label in the open menu reads exactly `title`.
+// Whether `element`, or an item laid out in it (not one in a submenu), has `title` or that subtitle.
+static BOOL laidOut(UIMenuElement *element, NSString *title) {
+    if ([element.title isEqualToString:title] || [element.subtitle isEqualToString:title]) return YES;
+    if (![element isKindOfClass:UIMenu.class]) return NO;
+    UIMenu *menu = (UIMenu *)element;
+    if (menu.title.length && !(menu.options & UIMenuOptionsDisplayInline)) return NO;
+    for (UIMenuElement *child in menu.children) if (laidOut(child, title)) return YES;
+    return NO;
+}
+
+// Whether the open menu has an item reading exactly `title`: a label on screen, or an item of the menu laid out
+// below the screen's fold (the player's menu, Spotify's rows in place, is taller than the screen).
 static BOOL menuShows(NSString *title) {
     __block BOOL found = NO;
     UIView *menu = openMenu();
+    if (menu) {
+        [sg_player.front.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
+            found = laidOut(visible, title);
+            return visible;
+        }];
+        if (found) return YES;
+    }
     void (^walk)(UIView *);
     __block __weak void (^weakWalk)(UIView *);
     weakWalk = walk = ^(UIView *view) {
@@ -393,6 +437,47 @@ static BOOL menuShowsAny(NSArray<NSString *> *titles) {
     return NO;
 }
 
+// The open menu's first level in order, whether on screen or scrolled past: actions by title, a submenu by its title in
+// brackets, an inline group's children in place, Spotify's rows not in yet as <loading>.
+static void flatten(UIMenuElement *element, NSMutableArray<NSString *> *titles) {
+    if ([element isKindOfClass:UIDeferredMenuElement.class]) {
+        [titles addObject:@"<loading>"];
+        return;
+    }
+    if ([element isKindOfClass:UIMenu.class]) {
+        UIMenu *menu = (UIMenu *)element;
+        if (menu.title.length && !(menu.options & UIMenuOptionsDisplayInline)) {
+            [titles addObject:[NSString stringWithFormat:@"[%@]", menu.title]];
+            return;
+        }
+        for (UIMenuElement *child in menu.children) flatten(child, titles);
+        return;
+    }
+    [titles addObject:element.title ?: @""];
+}
+
+static NSArray<NSString *> *shownOrder(UIButton *front) {
+    __block UIMenu *visible = nil;
+    [front.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *menu) {
+        visible = menu;
+        return menu;
+    }];
+    NSMutableArray<NSString *> *titles = [NSMutableArray array];
+    if (visible) flatten(visible, titles);
+    return titles;
+}
+
+// Whether `titles` holds each of `want`, in that order.
+static BOOL inOrder(NSArray<NSString *> *titles, NSArray<NSString *> *want) {
+    NSUInteger from = 0;
+    for (NSString *title in want) {
+        NSUInteger at = from < titles.count ? [titles indexOfObject:title inRange:NSMakeRange(from, titles.count - from)] : NSNotFound;
+        if (at == NSNotFound) return NO;
+        from = at + 1;
+    }
+    return YES;
+}
+
 static void pick(NSString *title) {
     UIView *menu = openMenu();
     UIMenuElement *element = sg_elements[title];
@@ -406,26 +491,48 @@ static void pick(NSString *title) {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor colorWithRed:0.25 green:0.1 blue:0.2 alpha:1];
     // Spotify's header row (trees/clean/player/01.txt: HeaderElementsUnit's view is a 402x48 row holding the
-    // down arrow, 48x48 at x 12, and the ⋯, 48x48 at the trailing edge), each button with the redesign's 44pt
-    // glass circle first among its subviews, taking no touches (PlayerHeader.x, SGRGlassInside).
+    // down arrow, 48x48 at x 12, and the ⋯, 48x48 at the trailing edge). PlayerHeader.x puts both away and hands
+    // the ⋯ over, whose action brings the sheet up.
     self.header = [[UIView alloc] initWithFrame:CGRectMake(0, 70, 402, 48)];
     [self.view addSubview:self.header];
     self.arrow = [self headerButton:@"chevron.down" at:12 identifier:@"now-playing-minimize-button" label:@"Minimize"];
-    [self.arrow addTarget:self action:@selector(arrowTapped) forControlEvents:UIControlEventTouchUpInside];
     self.more = [self headerButton:@"ellipsis" at:342 identifier:@"Context menu" label:@"More options"];
     [self.more addTarget:self action:@selector(moreTapped) forControlEvents:UIControlEventTouchUpInside];
-    SGRPlayerMenuWatch(self.more);
-    // The press PlayerHeader.x's circle listens to: down, and up or drag out (not the cancel UIKit sends as the
-    // menu comes up, which the mod's button turns into a touch up outside once the menu ends).
+    // Spotify's title row (trees/clean, player-off-full-tree.txt:1886-1896): the title's element, then the X's (24pt
+    // wide, hidden unless Spotify offers it) and the add button's (48x48), arranged in a stack 24pt in from the sides.
+    self.titleRow = [[UIStackView alloc] initWithFrame:CGRectMake(24, 560, 354, 48)];
+    self.titleRow.alignment = UIStackViewAlignmentCenter;
+    [self.view addSubview:self.titleRow];
+    self.titleElement = [UIView new];
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 200, 25)];
+    title.text = @"Paradise City";
+    title.accessibilityIdentifier = @"now-playing-title-label";
+    [self.titleElement addSubview:title];
+    [self.titleElement.heightAnchor constraintEqualToConstant:44].active = YES;
+    [self.titleElement setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    // The X is an Encore button, a UIControl that is no UIButton (9.2.0's tree: Encore.Button.Tertiary).
+    self.banElement = [self titleButton:nil width:24 identifier:@"feedback_headunit_right_ban_button_accessibility_identifier" label:@"Don't play this"];
+    self.ban = self.banElement.subviews.firstObject;
+    [self.ban addTarget:self action:@selector(banTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.banElement.hidden = YES;
+    // Spotify's words for its add button (9.2.0's tree), which say nothing of what a tap on a saved song's does.
+    self.addElement = [self titleButton:@"plus.circle" width:48 identifier:@"Components.UI.AddToButton" label:@"Add to playlist"];
+    self.add = self.addElement.subviews.firstObject;
+    [self.add addTarget:self action:@selector(addTapped) forControlEvents:UIControlEventTouchUpInside];
+    for (UIView *element in @[self.titleElement, self.banElement, self.addElement]) [self.titleRow addArrangedSubview:element];
+    [self.view layoutIfNeeded];
+    // The press the ⋯'s targets listen to: down, and up or drag out (not the cancel UIKit sends as the menu comes up,
+    // which the mod's button turns into a touch up outside once the menu ends).
     [self.front addTarget:self action:@selector(frontDown) forControlEvents:UIControlEventTouchDown];
     [self.front addTarget:self action:@selector(frontUp) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchDragExit];
     [self.front addTarget:self action:@selector(frontCancel) forControlEvents:UIControlEventTouchCancel];
 }
 
-// As PlayerHeader.x does on every layout of Spotify's header unit.
+// As PlayerHeader.x does on every layout of Spotify's header unit, and PlayerLyrics.x on every one of its title row.
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     SGRPlayerMenuWatch(self.more);
+    SGRPlayerMenuInTitleRow(self.titleElement);
 }
 
 - (UIButton *)headerButton:(NSString *)symbol at:(CGFloat)x identifier:(NSString *)identifier label:(NSString *)label {
@@ -434,19 +541,35 @@ static void pick(NSString *title) {
     button.frame = CGRectMake(x, 0, 48, 48);
     button.accessibilityIdentifier = identifier;
     button.accessibilityLabel = label;
-    UIVisualEffectView *circle = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
-    circle.frame = CGRectMake(2, 2, 44, 44);
-    circle.layer.cornerRadius = 22;
-    circle.clipsToBounds = YES;
-    circle.userInteractionEnabled = NO;
-    [button insertSubview:circle atIndex:0];
+    button.alpha = 0;
     [self.header addSubview:button];
     return button;
 }
 
-- (void)arrowTapped {
-    self.arrowTaps++;
-    NSLog(@"[harness] Spotify's down arrow action ran");
+// A button of the title row in an element of its own, as Spotify's ElementView holds each: a UIButton drawing
+// `symbol`, or with none a plain UIControl.
+- (UIView *)titleButton:(NSString *)symbol width:(CGFloat)width identifier:(NSString *)identifier label:(NSString *)label {
+    UIView *element = [UIView new];
+    [element.widthAnchor constraintEqualToConstant:width].active = YES;
+    [element.heightAnchor constraintEqualToConstant:48].active = YES;
+    UIControl *button = symbol ? [UIButton buttonWithType:UIButtonTypeSystem] : [UIControl new];
+    if (symbol) [(UIButton *)button setImage:[UIImage systemImageNamed:symbol] forState:UIControlStateNormal];
+    button.frame = CGRectMake(0, 0, width, 48);
+    button.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    button.accessibilityIdentifier = identifier;
+    button.accessibilityLabel = label;
+    [element addSubview:button];
+    return element;
+}
+
+- (void)addTapped {
+    self.addTaps++;
+    NSLog(@"[harness] Spotify's add button action ran");
+}
+
+- (void)banTapped {
+    self.banTaps++;
+    NSLog(@"[harness] Spotify's X action ran");
 }
 
 - (void)frontDown {
@@ -498,16 +621,17 @@ static void pick(NSString *title) {
     [self presentViewController:navigation animated:YES completion:nil];
 }
 
+// The ⋯ beside the title: the mod's button in the title row.
 - (UIButton *)front {
-    for (UIView *view in self.more.subviews) if ([NSStringFromClass(view.class) isEqualToString:@"SGRMenuFront"]) return (UIButton *)view;
+    for (UIView *view in self.titleRow.subviews) if ([NSStringFromClass(view.class) isEqualToString:@"SGRMenuFront"]) return (UIButton *)view;
     return nil;
 }
 
-// A finger's tap on the ⋯, which the mod's button over it takes and opens its menu on, as UIKit opens any
-// button's menu. The time from the touch down to the menu on screen, looked at every 10 ms.
+// A finger's tap on the ⋯, which opens its menu on the touch down, as UIKit opens any button's menu. The time from
+// the touch down to the menu on screen, looked at every 10 ms.
 - (void)tap:(void (^)(CFTimeInterval took))up {
     CFTimeInterval tapped = CACurrentMediaTime();
-    [self touch:self.more];
+    [self touch:self.front];
     waitFor(^BOOL { return openMenu() != nil; }, 3, ^{
         CFTimeInterval took = CACurrentMediaTime() - tapped;
         NSLog(@"[harness] the menu view is on screen %.0f ms after the touch down", took * 1000);
@@ -717,7 +841,6 @@ static NSArray<NSString *> *quickTitles(void) {
                                                forKey:@"spotifyglass.redesign.player.menuRows.track"];
         [self tap:^(CFTimeInterval took) {
             check(took >= 0, @"menu opened with stored actions");
-            pick(@"More");
             waitFor(^BOOL { return menuShows(@"Lyrics") && self.mockSheet != nil; }, 2, ^{
                 check(menuShows(@"Lyrics"), @"the previously enabled Lyrics action is offered");
                 pick(@"Lyrics");
@@ -732,23 +855,28 @@ static NSArray<NSString *> *quickTitles(void) {
         }];
         return;
     }
-    if ([run isEqualToString:@"arrow"]) {
-        // The header's other button keeps its own touches: a finger on the down arrow runs Spotify's action and
-        // opens no menu; one on the ⋯ then reaches the mod's button, whose touch down opens the menu.
+    if ([run isEqualToString:@"beside"]) {
+        // The ⋯ beside the title, where the Music app has it: in the add button's slot of the title row, the add button
+        // and the X drawn by nothing and read by nothing, VoiceOver reading it with Spotify's ⋯'s words; a finger there
+        // reaches it, and its touch down opens the menu.
         UIView *front = self.front;
-        CGRect over = [front convertRect:front.bounds toView:nil], under = [self.more convertRect:self.more.bounds toView:nil];
-        check(CGRectEqualToRect(over, under), [NSString stringWithFormat:@"the mod's ⋯ sits over Spotify's exactly (%@ over %@)", NSStringFromCGRect(over), NSStringFromCGRect(under)]);
-        check(self.more.subviews.lastObject == front && self.more.subviews.firstObject != front, @"it is over the ⋯'s glass circle and glyph");
-        check(!front.isAccessibilityElement || front.accessibilityLabel.length > 0, @"VoiceOver reaches it with the ⋯'s own label");
-        check([self.arrow.window hitTest:CGPointMake(CGRectGetMidX([self.arrow convertRect:self.arrow.bounds toView:nil]), 94) withEvent:nil] != front, @"a touch on the arrow does not reach the mod's ⋯");
-        [self touch:self.arrow];
-        after(0.5, ^{
-            check(self.arrowTaps == 1, [NSString stringWithFormat:@"Spotify's down arrow action ran (%lu)", (unsigned long)self.arrowTaps]);
-            check(self.frontDowns == 0 && !openMenu() && sg_spotifyTaps == 0, @"the mod's ⋯ saw no touch, no menu came, Spotify's ⋯ action did not run");
+        check(front.superview == self.titleRow && CGRectEqualToRect(front.frame, self.addElement.frame),
+              [NSString stringWithFormat:@"the ⋯ in the add button's slot (%@, the slot %@)", NSStringFromCGRect(front.frame), NSStringFromCGRect(self.addElement.frame)]);
+        // Spotify gives the add button its alpha back as it redraws its state; it stays put away.
+        self.add.alpha = 1;
+        [self.view layoutIfNeeded];
+        check(self.addElement.alpha == 0 && self.addElement.accessibilityElementsHidden && self.banElement.alpha == 0 && self.banElement.accessibilityElementsHidden,
+              @"the add button and the X are put away, their slots not drawn and not read, whatever alpha Spotify gives the button");
+        check(front.isAccessibilityElement && [front.accessibilityLabel isEqualToString:@"More options"], [NSString stringWithFormat:@"VoiceOver reads it as Spotify's ⋯ (%@)", front.accessibilityLabel]);
+        UIImage *glyph = [(UIButton *)front imageForState:UIControlStateNormal];
+        check([glyph.description containsString:@"ellipsis"], @"it draws the ⋯");
+        CGPoint slot = [self.titleRow convertPoint:CGPointMake(CGRectGetMidX(self.addElement.frame), CGRectGetMidY(self.addElement.frame)) toView:nil];
+        check([self.view.window hitTest:slot withEvent:nil] == front, @"a touch in the slot reaches the ⋯");
+        after(0.3, ^{
+            check(self.frontDowns == 0 && !openMenu() && sg_spotifyTaps == 0, @"nothing opened before the finger");
             [self tap:^(CFTimeInterval took) {
                 check(took >= 0, @"a finger on the ⋯ opens the menu");
                 check(self.frontDowns == 1, [NSString stringWithFormat:@"the mod's ⋯ sent its touch down (%lu)", (unsigned long)self.frontDowns]);
-                check(self.arrowTaps == 1, @"the arrow's action did not run again");
                 // The finger lifted 0.08 s after the touch down; the press holds while the menu is up.
                 after(0.5, ^{
                     check(self.frontUps == 0, [NSString stringWithFormat:@"with the menu up the press holds: no touch up yet (canceled %lu)", (unsigned long)self.frontCancels]);
@@ -761,6 +889,14 @@ static NSArray<NSString *> *quickTitles(void) {
             }];
         });
         return;
+    }
+
+    if ([run isEqualToString:@"titleitems"]) {
+        // A saved song, Spotify offering its X.
+        self.add.selected = YES;
+        self.add.accessibilityLabel = @"Added to playlist";
+        self.banElement.hidden = NO;
+        [self.view layoutIfNeeded];
     }
 
     if ([run isEqualToString:@"timing"]) {
@@ -782,9 +918,17 @@ static NSArray<NSString *> *quickTitles(void) {
         // The simulator's first menu of a launch is slow (UIKit loading its menu classes); `timing` measures the rest.
         check(took >= 0 && took < 1, [NSString stringWithFormat:@"the menu is on screen %.0f ms after the tap", took * 1000]);
         check(self.front.userInteractionEnabled, @"the mod's ⋯ takes touches");
-        check(menuShowsAll(@[@"Speed, Pitch & Reverb", @"Show Animated Artwork", @"More"]), @"the player's own items and More are in it");
         check(menuShowsAll(quickTitles()), @"the quick row has Share, Add to Playlist and Add to Queue");
-        check(!menuShowsAny(@[@"Go to album", @"Lyrics", @"Sleep timer"]), @"Spotify's other rows are not at the top level");
+        // The song's actions first, laid out (no More), the player's own after them.
+        NSArray<NSString *> *order = shownOrder(self.front);
+        NSUInteger rows = [order indexOfObjectPassingTest:^BOOL(NSString *title, NSUInteger index, BOOL *stop) {
+            return [title isEqualToString:@"<loading>"] || [spotifyRowTitles() containsObject:title];
+        }];
+        // The add button named for what its tap does: titleitems' song is saved.
+        NSString *add = [run isEqualToString:@"titleitems"] ? @"Change Where It's Saved" : @"Save to Your Library";
+        check(rows != NSNotFound && inOrder(order, @[@"Share", @"Add to Playlist", @"Add to Queue", add, order[MIN(rows, order.count - 1)],
+                                                     @"Speed, Pitch & Reverb", @"Show Animated Artwork"]) && ![order containsObject:@"[More]"],
+              [NSString stringWithFormat:@"the quick row, the add button, Spotify's rows, then the player's own: %@", [order componentsJoinedByString:@" | "]]);
         // Spotify's sheet is asked for once the menu is up, into the mod's window, under the app's.
         waitFor(^BOOL { return self.sheetWindow != nil; }, 2, ^{
             check(sg_spotifyTaps == 1, [NSString stringWithFormat:@"Spotify's ⋯ action ran once, from code (%lu)", (unsigned long)sg_spotifyTaps]);
@@ -811,11 +955,10 @@ static NSArray<NSString *> *quickTitles(void) {
 - (void)run:(NSString *)run finish:(dispatch_block_t)finish {
     if ([run isEqualToString:@"rows"] || [run isEqualToString:@"sort"] || [run isEqualToString:@"wrapped"]) {
         after(0.3, ^{
-            pick(@"More");
             waitFor(^BOOL { return menuShows(@"Go to album"); }, 3, ^{
-                check(menuShowsAll(@[@"Go to album", @"Lyrics", @"Sleep timer"]), @"More holds the rest of Spotify's rows, Sleep timer below the sheet's fold too");
-                check(!menuShowsAny(@[@"Add to playlist", @"Add to queue"]), @"More leaves out the rows the quick row has");
-                if ([run isEqualToString:@"sort"]) check(menuShows(@"Sort"), @"the mod's row in the sheet's header is in More");
+                check(menuShowsAll(@[@"Go to album", @"Lyrics", @"Sleep timer"]), @"the menu lays out the rest of Spotify's rows, Sleep timer below the sheet's fold too");
+                check(!menuShowsAny(@[@"Add to playlist", @"Add to queue"]), @"it leaves out the rows the quick row has");
+                if ([run isEqualToString:@"sort"]) check(menuShows(@"Sort"), @"the mod's row in the sheet's header is among them");
                 after(0.3, ^{
                     NSString *title = [run isEqualToString:@"sort"] ? @"Sort" : @"Go to album";
                     pick(title);
@@ -826,12 +969,11 @@ static NSArray<NSString *> *quickTitles(void) {
         return;
     }
     if ([run isEqualToString:@"loading"]) {
-        // The first menu ever: More shows the system's loading row until the rows come, 1.5 s after the sheet.
-        pick(@"More");
+        // The first menu ever: the system's loading row in place of Spotify's rows until they come, 1.5 s after the sheet.
         after(0.3, ^{
-            check(openMenu() && !menuShows(@"Go to album"), @"More has no rows before the sheet has them");
+            check(openMenu() && !menuShows(@"Go to album"), @"no rows before the sheet has them");
             waitFor(^BOOL { return menuShows(@"Go to album"); }, 4, ^{
-                check(menuShows(@"Go to album"), @"Spotify's rows came into the open More");
+                check(menuShows(@"Go to album"), @"Spotify's rows came into the open menu");
                 after(0.3, ^{
                     pick(@"Go to album");
                     [self gone:@"picked Go to album" selected:@"Go to album" from:CACurrentMediaTime() finish:finish];
@@ -841,11 +983,10 @@ static NSArray<NSString *> *quickTitles(void) {
         return;
     }
     if ([run isEqualToString:@"stored"]) {
-        // A second menu, its sheet's rows held back: More shows the first one's rows at once, and a pick on them
+        // A second menu, its sheet's rows held back: it shows the first one's rows at once, and a pick on them
         // waits for the live ones.
-        pick(@"More");
         after(0.6, ^{
-            check(!menuShows(@"Go to album"), @"the first menu has no stored rows: More waits for the live ones");
+            check(!menuShows(@"Go to album"), @"the first menu has no stored rows: it waits for the live ones");
             [self.mockSheet giveRows];
             waitFor(^BOOL { return menuShows(@"Go to album"); }, 3, ^{
                 [self.front.contextMenuInteraction dismissMenu];
@@ -854,9 +995,8 @@ static NSArray<NSString *> *quickTitles(void) {
                     after(1, ^{
                         [self tap:^(CFTimeInterval took) {
                             check(took >= 0 && took < 0.5, [NSString stringWithFormat:@"the second menu is on screen %.0f ms after the tap", took * 1000]);
-                            pick(@"More");
                             after(0.15, ^{
-                                check(menuShowsAll(@[@"Go to album", @"Sleep timer"]), @"More shows the stored rows at once, the live ones not in yet");
+                                check(menuShowsAll(@[@"Go to album", @"Sleep timer"]), @"the menu shows the stored rows at once, the live ones not in yet");
                                 check(!self.mockSheet.loaded, @"(the live rows are not in)");
                                 pick(@"Go to album");
                                 after(0.8, ^{
@@ -891,10 +1031,9 @@ static NSArray<NSString *> *quickTitles(void) {
     if ([run isEqualToString:@"podcast"]) {
         waitFor(^BOOL { return !menuShows(@"Add to Playlist"); }, 4, ^{
             check(!menuShows(@"Add to Playlist"), @"once the rows are in, the quick item this sheet has no row for is gone");
-            check(menuShowsAll(@[@"Share", @"Add to Queue", @"More"]), @"the other quick items and More are still there");
-            pick(@"More");
+            check(menuShowsAll(@[@"Share", @"Add to Queue"]), @"the other quick items are still there");
             waitFor(^BOOL { return menuShows(@"Go to show"); }, 3, ^{
-                check(menuShows(@"Go to show"), @"More holds the podcast's other rows");
+                check(menuShows(@"Go to show"), @"the menu lays out the podcast's other rows");
                 after(0.3, ^{
                     pick(@"Go to show");
                     [self gone:@"picked Go to show" selected:@"Go to show" from:CACurrentMediaTime() finish:finish];
@@ -923,7 +1062,6 @@ static NSArray<NSString *> *quickTitles(void) {
     if ([run isEqualToString:@"subpage"] || [run isEqualToString:@"sleep"]) {
         BOOL sleep = [run isEqualToString:@"sleep"];
         after(0.3, ^{
-            if (sleep) pick(@"More");
             waitFor(^BOOL { return !sleep || menuShows(@"Sleep timer"); }, 3, ^{
                 pick(sleep ? @"Sleep timer" : @"Share");
                 waitFor(^BOOL { return self.sheetShown && [self.sheet.topViewController.title hasSuffix:@"page"]; }, 4, ^{
@@ -949,7 +1087,6 @@ static NSArray<NSString *> *quickTitles(void) {
     }
     if ([run isEqualToString:@"sleeppresent"]) {
         after(0.3, ^{
-            pick(@"More");
             waitFor(^BOOL { return menuShows(@"Sleep timer"); }, 3, ^{
                 pick(@"Sleep timer");
                 waitFor(^BOOL { return self.sleepSheet.viewIfLoaded.window && !self.sleepSheet.isBeingPresented; }, 4, ^{
@@ -972,6 +1109,22 @@ static NSArray<NSString *> *quickTitles(void) {
         });
         return;
     }
+    if ([run isEqualToString:@"titleitems"]) {
+        // The title row's buttons as items, after the quick row: a saved song's add button named for what its tap does
+        // (not Spotify's "Added to playlist", nor a Liked Songs checkmark), its star filled, beside the quick row's
+        // playlist picker and Spotify's own Like row; and Spotify's X while Spotify shows it; a pick fires the button.
+        UIMenuElement *add = sg_elements[@"Change Where It's Saved"], *ban = sg_elements[@"Don't play this"];
+        check(menuShowsAll(@[@"Change Where It's Saved", @"Don't play this"]) && !menuShows(@"Added to playlist") && !menuShows(@"Save to Your Library"),
+              @"the saved song's add button and the X are in the menu");
+        check([add isKindOfClass:UIAction.class] && ((UIAction *)add).state == UIMenuElementStateOff && [((UIAction *)add).image.description containsString:@"star.fill"],
+              [NSString stringWithFormat:@"the saved song's add button: not checked, a filled star (%@)", ((UIAction *)add).image]);
+        check(menuShowsAll(@[@"Add to Playlist", @"Add to Liked Songs"]), @"the quick row's playlist picker and Spotify's Like row stay their own");
+        check([ban isKindOfClass:UIAction.class] && ((UIAction *)ban).state == UIMenuElementStateOff, @"the X is a plain item");
+        pick(@"Don't play this");
+        check(self.banTaps == 1 && self.addTaps == 0, [NSString stringWithFormat:@"picking the X fired Spotify's X (%lu, add %lu)", (unsigned long)self.banTaps, (unsigned long)self.addTaps]);
+        [self gone:@"picked the X" selected:nil from:CACurrentMediaTime() finish:finish];
+        return;
+    }
     if ([run isEqualToString:@"animated"]) {
         pick(@"Show Animated Artwork");
         check(sg_animated, @"Show Animated Artwork switched it on");
@@ -981,7 +1134,7 @@ static NSArray<NSString *> *quickTitles(void) {
     if ([run isEqualToString:@"effects"]) {
         check(menuShowsAll(@[@"Audio effects", @"2 effects"]), @"Audio effects is in the menu with the effects' summary under it");
         pick(@"Audio effects");
-        check(sg_effectsSheets == 1 && sg_effectsFrom == self.more, @"Audio effects asks for the page's sheet once, from the player's ⋯");
+        check(sg_effectsSheets == 1 && sg_effectsFrom == self.front, @"Audio effects asks for the page's sheet once, from the player's ⋯");
         [self gone:@"picked Audio effects" selected:nil from:CACurrentMediaTime() finish:finish];
         return;
     }

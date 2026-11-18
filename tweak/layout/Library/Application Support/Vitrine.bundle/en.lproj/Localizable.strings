@@ -22,7 +22,14 @@
 
 "common.save" = "Save";
 
+"player.audio_quality.about_kbps" = "About %ld kbps";
 "player.audio_quality.accessibility" = "Audio quality, %@";
+"player.audio_quality.badge.high" = "High Quality";
+"player.audio_quality.badge.low" = "Low Quality";
+"player.audio_quality.badge.normal" = "Normal Quality";
+"player.audio_quality.badge.very_high" = "Highest Quality";
+"player.audio_quality.bits_rate" = "%ld-bit/%@";
+"player.audio_quality.footnote" = "Playing now · Spotify %@";
 "player.audio_quality.hardware_rate" = "Output";
 "player.audio_quality.hint" = "Shows the details";
 "player.audio_quality.khz" = "%@ kHz";
@@ -35,6 +42,12 @@
 "player.audio_quality.source.downloaded" = "Downloaded";
 "player.audio_quality.source.local_file" = "Local file";
 "player.audio_quality.source.streamed" = "Streamed";
+"player.audio_quality.summary.high" = "A higher bitrate that brings out more of the detail.";
+"player.audio_quality.summary.lossless" = "CD quality, with nothing lost to compression.";
+"player.audio_quality.summary.lossless_24" = "24-bit studio sound, with nothing lost to compression.";
+"player.audio_quality.summary.low" = "The lightest stream, made to save data.";
+"player.audio_quality.summary.normal" = "A balance of sound and data for everyday listening.";
+"player.audio_quality.summary.very_high" = "Spotify's best compressed sound, with nearly all of the detail kept.";
 "player.audio_quality.tier.high" = "High";
 "player.audio_quality.tier.lossless" = "Lossless";
 "player.audio_quality.tier.lossless_24" = "Lossless 24-bit";
@@ -43,6 +56,11 @@
 "player.audio_quality.tier.very_high" = "Very high";
 "player.audio_quality.title" = "Audio Quality";
 "player.audio_quality.yes" = "Yes";
+
+"player.grabber.close" = "Close Player";
+
+"player.menu.add.save" = "Save to Your Library";
+"player.menu.add.saved" = "Change Where It's Saved";
 
 "player.speed_pitch.animated_artwork" = "Animated artwork";
 "player.speed_pitch.collapsed" = "Collapsed";
@@ -2560,7 +2578,7 @@
 "settings.player.gestures.title" = "Gestures";
 "settings.player.glass_header_buttons.title" = "Glass header buttons";
 "settings.player.glass_lyrics.title" = "Glass lyrics";
-"settings.player.header_glass.subtitle" = "Glass circles behind the close and ⋯ buttons at the top of the player.";
+"settings.player.header_glass.subtitle" = "Glass circles behind the close and ⋯ buttons at the top of the AI DJ's player. The player itself has only a grabber there.";
 "settings.player.header_glass.title" = "Header glass";
 "settings.player.hide.about_artist.title" = "About the artist";
 "settings.player.hide.add_to_playlist.title" = "Add to playlist";
@@ -2649,7 +2667,7 @@
 "settings.player.sleep_fade.subtitle" = "While Labs' Fade out is forced on, Spotify's own timer fades its own way.";
 "settings.player.song_card.menu" = "Share Song Card";
 "settings.player.sound_menu" = "Speed, Pitch & Reverb";
-"settings.player.star_add.subtitle" = "The add button as a star, filled in the accent once the song is saved. In the player it takes the place of Plain checkmark.";
+"settings.player.star_add.subtitle" = "The add button as a star, filled in the accent once the song is saved. In the player's ⋯ menu it takes the place of Plain checkmark.";
 "settings.player.star_add.title" = "Star add button";
 "settings.player.title" = "Player";
 "settings.player.visualizer_heat.subtitle" = "Keeps the Visualizer moving while the iPhone is hot. Uses more battery.";

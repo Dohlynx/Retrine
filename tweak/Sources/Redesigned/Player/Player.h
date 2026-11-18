@@ -7,7 +7,8 @@
 //
 //     PlayerField.x      the switch's flags and rows, the field in the background plane, the cover it reads
 //     PlayerArtwork.x    the cover's corners, shadow and paused shrink; the lyric preview as Spotify's setting has it
-//     PlayerHeader.x     glass behind the close and more buttons
+//     PlayerHeader.x     the header's close and more buttons put away for the Music app's grabber (the AI DJ's keep
+//                        their glass)
 //     PlayerControls.x   previous, play and next as bare glyphs, shuffle and repeat hidden on request, monospaced times
 //     PlayerFooter.x     share gone, lyrics, Connect and queue as one row of three glyphs
 //     DJPlayer.x         the AI DJ's player (its own units): skip glyphs, a four glyph footer row, over the shared
@@ -22,9 +23,9 @@
 //     PlayerVisualiser.m the Visualizer background: a calm spectrum of the song in the cover's colors, read
 //                        through SGRSpectrum.m from the audio effects' tap on Spotify's output
 //     PlayerLyricStages.m the Visualizer's Poster and Cut lyric styles and their parameters
-//     PlayerMenu.m       the more button's system menu: Share, Add to playlist and Add to queue on top, then
-//                        speed, pitch and reverb, the backgrounds it can switch to, and Spotify's other rows
-//                        under More (Redesigned/ContextMenu)
+//     PlayerMenu.m       the ⋯ beside the title and its system menu: Share, Add to playlist and Add to queue on top,
+//                        the title row's add button and X, Spotify's other rows, then speed, pitch and reverb, the
+//                        backgrounds it can switch to and the rest of the player's own (Redesigned/ContextMenu)
 //     PlayerSettings.m   the Player page in Mod Settings, led by a showcase of the player
 //     PlayerFree.x       a Spotify Free account given the player mode these units belong to
 //     PlayerTitle.x      the title and the artist shown simplified or translated, over Spotify's own labels
@@ -219,6 +220,11 @@ SGModRow *SGRLyricsHideRow(void);
 // halfway between the play button and the footer's glyphs.
 #define SGRKeyPlayerVolume @"spotifyglass.redesign.player.volume"
 BOOL SGRPlayerVolumeOn(void);
+// The colors of the progress bar (PlayerControls.x) and the volume row, translucent as the Music app's: the fill a light
+// white the background shows through, whole white while `lit` (a finger scrubs), and the track dimmer; both more opaque
+// under Increase Contrast.
+UIColor *SGRPlayerBarFill(BOOL lit);
+UIColor *SGRPlayerBarTrack(void);
 // YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
 BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin, BOOL rhythm);
 
@@ -230,9 +236,9 @@ BOOL SGRPlayerFollowsCover(void);
 void SGRPlayerSetCoverAccent(UIColor *cover);
 void SGRPlayerPaintCover(UIView *stack);
 
-// Glass circles behind the header's down arrow and ⋯ (PlayerHeader.x), in the ordinary player and the AI DJ's. On until
-// switched off; off, the buttons are Spotify's as drawn, with their actions, touches and accessibility, and the grabber
-// stays. Followed at once (SGRPlayerLookChanged).
+// Glass circles behind the AI DJ's header down arrow and ⋯ (PlayerHeader.x; the ordinary player's header has only the
+// grabber). On until switched off; off, the buttons are Spotify's as drawn, with their actions, touches and
+// accessibility, and the grabber stays. Followed at once (SGRPlayerLookChanged).
 #define SGRKeyPlayerHeaderGlass @"spotifyglass.redesign.player.headerGlass"
 #define SGRKeyPlayerHideContext @"spotifyglass.redesign.player.hideContext"
 // The Music app's glyphs in the footer row (PlayerFooter.x) and the AI DJ's (DJPlayer.x): AirPlay audio for Connect and a
@@ -438,6 +444,12 @@ UIColor *SGRPlayerImageInk(UIImage *image);
 BOOL SGRSeekTapLands(UIView *unit, UISlider *slider, CGPoint point);
 CGFloat SGRSeekShareAt(UISlider *slider, CGPoint point);
 
-// The more button's menu opens as the system menu with the player's own items (PlayerMenu.m). Called from
-// PlayerHeader.x with Spotify's more button on every pass; watching it again changes nothing.
+// The player's ⋯ (PlayerMenu.m): a button of the mod's beside the title, where the Music app has it, opening the system
+// menu: the song's actions first (the title row's add button and Spotify's X among them), the player's own items after.
+// PlayerHeader.x hands over Spotify's own ⋯, which it hides, on every pass of the header: its action brings up the
+// sheet whose rows the menu shows. Watching it again changes nothing.
 void SGRPlayerMenuWatch(UIView *button);
+// Called on every pass of the ordinary player's title row (PlayerLyrics.x) with the title's arranged view: the add
+// button and Spotify's X go (alpha, and out of VoiceOver's reach) and the ⋯ takes the add button's slot, or the row's
+// trailing one where there is none.
+void SGRPlayerMenuInTitleRow(UIView *title);

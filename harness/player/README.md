@@ -11,7 +11,8 @@ values, track filtering, URI forms (including empty strings), ordering, duplicat
 
 The same script then compiles `Shared/Player/AudioQualityRules.m` as it ships with
 `audio-quality-check.m`: each bitrateLevel's badge text (Low to Lossless 24-bit, nothing for 0, 7
-and unknown levels), the lossless glyph for 5 and 6 only, nothing with the switch off, while another
+and unknown levels), the redesign's words for each (Low Quality to Highest Quality, Lossless, with the
+rate, a sentence and the footnote naming Spotify's tier), the lossless glyph for 5 and 6 only, nothing with the switch off, while another
 device plays or for a podcast, an ad, a local file or no track, the source named for each strategy,
 the sample rates as written, the details dismissed on a skip, on no tier or when the badge goes, and
 a badge taking taps only while neither it nor a view above it is hidden or faded out.
@@ -214,12 +215,26 @@ come late, out of order, or not at all.
   30, settle and stop with the reader off on a pause, come back on play, and go and come back through the ⋯
   menu's switch to Fluid and back. The log ends with `visualizer checks: n of 7 right -- PASS` or `FAIL`.
 
-- `header` is the glass circles' press (`PlayerHeader.x`): a finger (`../tabbar/touch.m`) held half a second on
-  the down arrow and then on the ⋯, each a `UIControl` under Spotify's identifier. It checks each has a 44pt glass
-  circle first among its subviews, that a touch at its middle lands on the button, that the circle is pressed
-  in (scale 0.92) while the finger is down and whole again once it lifts. The log ends with
-  `header checks: n of 9 right -- PASS` or `FAIL`. The ⋯'s press on the phone comes through the mod's button
-  over it, which this harness does not build; `harness/system-menu`'s `arrow` run covers that button's events.
+- `header` is the header as the Music app's (`PlayerHeader.x`): Spotify's down arrow and ⋯, each a `UIControl` under
+  Spotify's identifier, are put away (alpha 0, hidden from VoiceOver, a touch at their middle reaching neither) and
+  the ⋯ is handed to the menu; the grabber is the Music app's 60x4 pill 7pt under the safe area's top, centered, a
+  button VoiceOver reads with the arrow's words, whose whole touch area of at least 44x44 takes touches (each corner
+  and its middle hit-tested in the window), and its activation, its escape and a finger's tap at the area's top edge
+  (`../tabbar/touch.m`) each close the player by the arrow's action. The log ends with
+  `header checks: n of 8 right -- PASS` or `FAIL`, and the app exits with it. The ⋯ beside the title is the menu's
+  button, which this harness does not build; `harness/system-menu`'s `beside` run covers it.
+- `header-noroute` is the same header with an arrow that has no action to close by: the arrow stays drawn, read by
+  VoiceOver and touched, the ⋯ is still put away, and the grabber is only drawn (not read, not touched, its
+  activation and escape answering NO). `header checks: n of 5 right`.
+
+- `timerow` is the time row under the progress bar (`PlayerControls.x`, `Shared/Player/AudioQuality.x`) on a mock
+  of Spotify's bar (trees/clean: a 17pt slider, 11pt digits in 15.33pt Encore labels), Spotify reporting High. It
+  checks the digits at least 12pt under the bar and the badge at least 8pt under it with its text on the times'
+  baseline (the Music app's player: 14pt and 9.5pt), the badge's words (High Quality), the bar's fill and track
+  translucent (opacity 0.5–0.7 and 0.15–0.25), the fill lit whole and the times a step lower while a finger scrubs
+  (the badge staying put) and back after, the details (glyph, tier, About 160 kbps, a sentence, the footnote naming
+  Spotify's High), and the native look's badge as it was (Spotify's word, centered on the times). The log ends with
+  `timerow checks: n of 10 right -- PASS` or `FAIL`; on the sources before the change it read 3 of 10.
 
 - `seek` is the tap around the progress bar (`PlayerControls.x`): a mock slider with Spotify's identifier and
   the two times beside it. It checks that a tap counts below the bar and up to 12 pt past its ends, not on the
@@ -232,7 +247,8 @@ come late, out of order, or not at all.
   `PlayerSettings.m`, `SGRFluid.m`, `SGRFluidGPU.m`). It builds a mock of the AI DJ's header and footer units too (their
   mangled `Endless_DJMusicImpl` names) and the queue's `SPTEncoreIconView`, starts with Fluid drawn Smooth and every
   switch at its standard, and leaves layout to UIKit (no once-a-second pass), so a switch has to reach the open player
-  by itself. It checks the glass circles in both headers, the Music app's Connect and queue glyphs over Spotify's, the
+  by itself. It checks the glass circles in the AI DJ's header (the ordinary player's arrow and ⋯ put away, its
+  header the grabber's alone, in either state), the Music app's Connect and queue glyphs over Spotify's, the
   quote bubble on Lyrics in both footers, the list on the AI DJ's Queue and the DJ button as a waveform over its masked
   disc; then, with the Player page over the player, flips Header glass and Music app icons off through their switches
   and checks the circles gone with the buttons' touches, grabber and accessibility kept, Spotify's own Connect glyphs and

@@ -35,8 +35,8 @@ static const CGFloat kGlyphsHalf = 14;
         for (UISlider *slider in self.subviews) {
             if (![slider isKindOfClass:UISlider.class] || slider.sliderStyle == UISliderStyleThumbless) continue;
             slider.sliderStyle = UISliderStyleThumbless;
-            slider.minimumTrackTintColor = UIColor.whiteColor;
-            slider.maximumTrackTintColor = [UIColor colorWithWhite:1 alpha:0.22];
+            slider.minimumTrackTintColor = SGRPlayerBarFill(NO);
+            slider.maximumTrackTintColor = SGRPlayerBarTrack();
         }
     }
     // The row's glyphs follow the slider, which this layout may have made or moved.
@@ -91,8 +91,8 @@ static UIImageView *glyph(NSString *symbol) {
 #pragma clang diagnostic pop
     if (@available(iOS 26.0, *)) {
     } else {
-        [_volume setMinimumVolumeSliderImage:trackImage(UIColor.whiteColor) forState:UIControlStateNormal];
-        [_volume setMaximumVolumeSliderImage:trackImage([UIColor colorWithWhite:1 alpha:0.22]) forState:UIControlStateNormal];
+        [_volume setMinimumVolumeSliderImage:trackImage(SGRPlayerBarFill(NO)) forState:UIControlStateNormal];
+        [_volume setMaximumVolumeSliderImage:trackImage(SGRPlayerBarTrack()) forState:UIControlStateNormal];
         [_volume setVolumeThumbImage:thumbImage() forState:UIControlStateNormal];
     }
     _quiet = glyph(@"speaker.fill");
@@ -101,12 +101,12 @@ static UIImageView *glyph(NSString *symbol) {
     [self addSubview:_volume];
     [self addSubview:_loud];
     _remote = [UISlider new];
-    _remote.minimumTrackTintColor = UIColor.whiteColor;
-    _remote.maximumTrackTintColor = [UIColor colorWithWhite:1 alpha:0.22];
+    _remote.minimumTrackTintColor = SGRPlayerBarFill(NO);
+    _remote.maximumTrackTintColor = SGRPlayerBarTrack();
     if (@available(iOS 26.0, *)) _remote.sliderStyle = UISliderStyleThumbless;
     else {
-        [_remote setMinimumTrackImage:trackImage(UIColor.whiteColor) forState:UIControlStateNormal];
-        [_remote setMaximumTrackImage:trackImage([UIColor colorWithWhite:1 alpha:0.22]) forState:UIControlStateNormal];
+        [_remote setMinimumTrackImage:trackImage(SGRPlayerBarFill(NO)) forState:UIControlStateNormal];
+        [_remote setMaximumTrackImage:trackImage(SGRPlayerBarTrack()) forState:UIControlStateNormal];
         [_remote setThumbImage:thumbImage() forState:UIControlStateNormal];
     }
     _remote.accessibilityLabel = SGL(@"player.volume", @"Volume");

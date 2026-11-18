@@ -96,7 +96,14 @@
 "settings.translation.prompt.limit" = "%lu / %lu자";
 "settings.translation.prompt.footer" = "Gemini, Claude, OpenAI 호환 서비스가 함께 사용합니다. 저장된 번역을 바꾸려면 가사 메뉴에서 다시 번역을 선택하세요.";
 
+"player.audio_quality.about_kbps" = "약 %ldkbps";
 "player.audio_quality.accessibility" = "오디오 품질, %@";
+"player.audio_quality.badge.high" = "높은 음질";
+"player.audio_quality.badge.low" = "낮은 음질";
+"player.audio_quality.badge.normal" = "보통 음질";
+"player.audio_quality.badge.very_high" = "최고 음질";
+"player.audio_quality.bits_rate" = "%ld비트/%@";
+"player.audio_quality.footnote" = "지금 재생 중인 곡 · Spotify %@";
 "player.audio_quality.hardware_rate" = "출력";
 "player.audio_quality.hint" = "자세한 정보를 표시합니다";
 "player.audio_quality.khz" = "%@kHz";
@@ -109,6 +116,12 @@
 "player.audio_quality.source.downloaded" = "다운로드됨";
 "player.audio_quality.source.local_file" = "로컬 파일";
 "player.audio_quality.source.streamed" = "스트리밍";
+"player.audio_quality.summary.high" = "더 높은 비트레이트로 디테일을 살려 들려줍니다.";
+"player.audio_quality.summary.lossless" = "CD 음질 그대로, 압축으로 잃는 소리 없이 들려줍니다.";
+"player.audio_quality.summary.lossless_24" = "24비트 스튜디오 음질을 압축 손실 없이 들려줍니다.";
+"player.audio_quality.summary.low" = "데이터를 아끼는 가장 가벼운 음질입니다.";
+"player.audio_quality.summary.normal" = "일상적인 감상에 맞춰 음질과 데이터 사용량의 균형을 잡습니다.";
+"player.audio_quality.summary.very_high" = "Spotify에서 가장 좋은 압축 음질로, 디테일을 거의 그대로 들려줍니다.";
 "player.audio_quality.tier.high" = "높음";
 "player.audio_quality.tier.lossless" = "무손실";
 "player.audio_quality.tier.lossless_24" = "무손실 24비트";
@@ -117,6 +130,9 @@
 "player.audio_quality.tier.very_high" = "매우 높음";
 "player.audio_quality.title" = "오디오 품질";
 "player.audio_quality.yes" = "예";
+"player.grabber.close" = "플레이어 닫기";
+"player.menu.add.save" = "내 라이브러리에 저장하기";
+"player.menu.add.saved" = "저장 위치 변경하기";
 "player.speed_pitch.animated_artwork" = "움직이는 아트워크";
 "player.speed_pitch.collapsed" = "접힘";
 "player.speed_pitch.expanded" = "펼쳐짐";
@@ -2540,7 +2556,7 @@
 "settings.player.gestures.title" = "제스처";
 "settings.player.glass_header_buttons.title" = "글래스 헤더 버튼";
 "settings.player.glass_lyrics.title" = "글래스 가사";
-"settings.player.header_glass.subtitle" = "플레이어 상단의 닫기 및 ⋯ 버튼 뒤에 글래스 원형 배경을 표시합니다.";
+"settings.player.header_glass.subtitle" = "AI DJ 플레이어 상단의 닫기 및 ⋯ 버튼 뒤에 글래스 원형 배경을 표시합니다. 일반 플레이어 상단에는 그래버만 있습니다.";
 "settings.player.header_glass.title" = "헤더 글래스";
 "settings.player.hide_context.title" = "재생 출처 숨기기";
 "settings.player.hide_context.subtitle" = "플레이어 상단의 아티스트, 앨범 또는 플레이리스트 이름을 숨깁니다.";
@@ -2624,7 +2640,7 @@
 "settings.player.sleep_fade.subtitle" = "실험실의 페이드 아웃을 강제로 켜 두면 Spotify 자체 타이머는 Spotify 방식으로 페이드됩니다.";
 "settings.player.song_card.menu" = "곡 카드 공유";
 "settings.player.sound_menu" = "속도, 음정 및 리버브";
-"settings.player.star_add.subtitle" = "별 모양 추가 버튼으로, 곡이 저장되면 강조 색상으로 채워집니다. 플레이어에서는 단순 체크표시를 대신합니다.";
+"settings.player.star_add.subtitle" = "별 모양 추가 버튼으로, 곡이 저장되면 강조 색상으로 채워집니다. 플레이어의 ⋯ 메뉴에서는 단순 체크표시를 대신합니다.";
 "settings.player.star_add.title" = "별 모양 추가 버튼";
 "settings.player.title" = "플레이어";
 "settings.player.visualizer_heat.subtitle" = "iPhone이 뜨거울 때도 비주얼라이저를 계속 움직입니다. 배터리를 더 사용합니다.";

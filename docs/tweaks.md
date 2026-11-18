@@ -883,7 +883,15 @@ Shared:
                   Audio quality (the Player page, under either look, spotifyglass.player.audioQuality, off until
                   switched on, followed at once) shows the quality of the song playing the way the Music app shows
                   Lossless: a small capsule in semibold caption type and the secondary label color, centered under the
-                  progress bar between the two times and on their middle (AudioQuality.x, AudioQualityRules.m). It reads
+                  progress bar between the two times and on their middle (AudioQuality.x, AudioQualityRules.m). The
+                  redesigned player draws it as the Music app does: the times 8 pt further from the bar
+                  (PlayerControls.x kTimesDrop), the badge's text on the times' baseline (placed again from the elapsed
+                  time's own layout, since a change of text size resizes the times without a pass of the unit), a
+                  template waveform glyph before every tier, and the Music app's words: Low, Normal, High and Highest
+                  Quality (낮은, 보통, 높은, 최고 음질; Very high is lossy 320 kbps, so not Lossless), Lossless and
+                  Lossless 24-bit as Spotify's. Its tap opens a summary in place of the rows below: the glyph, the tier,
+                  "About N kbps" (Spotify's published 24/96/160/320) or the bit depth and sample rate, one sentence on
+                  the tier, and a tertiary footnote "Playing now · Spotify High". It reads
                   Spotify's own report for the file it plays, SPTPlayerState's playbackQuality, on every player report
                   (playerStateDidReport:, since a quality that changes within a song does not change the track), and
                   only its bitrateLevel: 5 is Lossless and 6 Lossless 24-bit, with a waveform glyph before them, and
@@ -905,7 +913,7 @@ Shared:
                   the units accepts only touches on a badge that draws (shown, and neither it nor a view above it hidden
                   or under UIKit's 0.01 alpha floor; 4 pt around it), cancels no touches of the views under it, and
                   the redesign's tap to seek leaves that spot alone only while the badge draws. The tap opens a
-                  popover (SGPresentPopover) with the tier, the playing and output sample rates, whether it is
+                  popover (SGPresentPopover), under the native look with the tier, the playing and output sample rates, whether it is
                   resampled (only once both rates are reported) and the source by strategy (best_matching and
                   backend_advised streamed, offlined_file downloaded, cached_file cached, local_file a local file).
                   The popover is held weakly with the track it was opened for: it follows that track's later reports
@@ -1366,15 +1374,20 @@ Redesigned:
                   the card drops its device and add buttons, faded out as it heads there and back in as it leaves. Only the title stays in the row. In a Jam the
                   glass stays on the track and Spotify's Jam strip gets a pane of its own above it (harness/tabbar/, jam)
     ContextMenu/  the ⋯ of the player and the ⋯ pinned over the playlist, album and artist pages open the system menu,
-                  always (ContextMenu.h). The player's ⋯ is a pull-down button of the mod's over Spotify's: the menu
-                  opens on touch down with the quick row (Spotify's items 9, 19 and 11), the player's items and More,
-                  waiting on nothing of Spotify's (the button holds a stand-in menu from the start, since UIKit opens
+                  always (ContextMenu.h). The player's ⋯ is a pull-down button of the mod's beside the title, Spotify's
+                  own hidden in the header: the menu opens on touch down with the quick row (Spotify's items 9, 19 and
+                  11), the title row's add button, named for what its tap does (Save to Your Library, or Change Where
+                  It's Saved for a saved song, which opens Spotify's sheet of where it is saved; never read as Liked
+                  Songs, Spotify's own Like row staying in the menu), drawn as the player drew it (Star add button's
+                  star), and Spotify's X where the
+                  row has one, the rest of Spotify's rows laid out in the menu, then the player's own items, waiting on
+                  nothing of Spotify's (the button holds a stand-in menu from the start, since UIKit opens
                   a button's menu on touch down only while it holds one, and the session's replaces it as the touch
                   asks); Spotify's ⋯ action is then run from code and its sheet presented
                   in a window of the mod's under the app's (the menu, a presentation of UIKit's from the player,
-                  leaves no room for another there), read, and used to run a pick. More shows the last complete set
-                  of rows stored for that kind of track (spotifyglass.redesign.player.menuRows.<kind>), or the
-                  system's loading row the first time, and is put right in place as the live rows come. A page's ⋯
+                  leaves no room for another there), read, and used to run a pick. Spotify's rows show the last
+                  complete set stored for that kind of track (spotifyglass.redesign.player.menuRows.<kind>), or the
+                  system's loading row the first time, and are put right in place as the live rows come. A page's ⋯
                   works the other way round: its tap opens Spotify's sheet, presented unanimated in a container hidden
                   from the presented controller's viewWillAppear: on, and the menu comes from an invisible button
                   inside the ⋯ that takes touches only while it is up, opened with -performPrimaryAction (else
@@ -1403,8 +1416,18 @@ Redesigned:
                   Compact windows and Spotify's narrow side panel retain the existing single-column layout.
                   `harness/player/ipad-check.py --screenshots <directory>` checks disposable iPad/iPhone clones,
                   including compact width, RTL and accessibility text size, and captures the layouts.
-                  Its more button opens the system
-                  menu (ContextMenu/), Spotify's rows and then Speed, Pitch & Reverb, which opens the sliders, Pitch
+                  The header has only the Music app's grabber, a 60 × 4 pill 7 pt under the screen's safe area in a
+                  44 pt touch area that lies wholly inside the header row: Spotify's ⋯ is put away (alpha, out of
+                  VoiceOver's reach), and its down arrow too once the arrow has a tap's action to close by
+                  (SGRControlActionEvents); the grabber then closes the player by that action on a tap, VoiceOver
+                  activation or the escape gesture, answering whether it was sent, and reads the arrow's words. An
+                  arrow with no such action stays as Spotify's, on glass as Header glass says, and the grabber is only
+                  drawn. A swipe down still closes the player (PlayerHeader.x). The progress bar
+                  and the volume row are translucent as the Music app's: the fill a light white the background shows
+                  through, whole white while scrubbing, the track dimmer, both more opaque under Increase Contrast
+                  (SGRPlayerBarFill, SGRPlayerBarTrack). Its ⋯, beside the title and artist where the add button was
+                  (PlayerMenu.m), opens the system
+                  menu (ContextMenu/), Spotify's rows with the add button and X first and then Speed, Pitch & Reverb, which opens the sliders, Pitch
                   follows speed and Keep for This Song in a popover from the ⋯ (SpeedPitchMenu.x, Shared/Player), then Audio effects, which
                   opens the Audio effects page in a sheet with its summary under the name (SGDSPShowSettingsSheet, Shared/AudioEffects), and the backgrounds it can switch
                   to (PlayerMenu.m), and a hold on either side of the
@@ -1438,7 +1461,7 @@ Redesigned:
                   timestamps under the slider are metered (SGRMonospacedDigits) and, with Rolling time digits on (the
                   Player page, on until switched off), their changed characters roll into place (SGRRefinements.h,
                   described under Redesigned/Kit/), checked on the Mac by harness/player-refinements/. Star add button (off until switched on, also the
-                  Player page) draws the player's add button as a star — outlined in the primary color until the song
+                  Player page) draws the player's add button, now an item of its ⋯ menu, as a star — outlined in the primary color until the song
                   is saved, filled in the accent once it is — and in the player it wins over Plain checkmark, which
                   keeps every other add button; a disabled player button goes back to Spotify's own glyph, which shows
                   it disabled, and gets the star again once enabled (SGRPlainCheck.x, which owns the add button's glyph
@@ -1446,7 +1469,7 @@ Redesigned:
                   the hooks reach, declines while the redesign runs, so the track falls to Spotify's other Free mode,
                   built from the units the redesign styles (PlayerFree.x, read from the binary, not yet seen on a Free
                   account). Header glass (spotifyglass.redesign.player.headerGlass, on until switched off) keeps the glass circles
-                  behind the header's down arrow and ⋯, in the ordinary player and the AI DJ's (PlayerHeader.x); off, only
+                  behind the AI DJ's header down arrow and ⋯ (PlayerHeader.x; the ordinary player's has only the grabber); off, only
                   the circles go, and the buttons draw as Spotify's own with their actions, touches and accessibility, the
                   grabber staying. Hide where it plays from (spotifyglass.redesign.player.hideContext, on until switched off, as the Music app's header has only the grabber)
                   hides the header's artist, album or playlist context and its VoiceOver announcement without moving

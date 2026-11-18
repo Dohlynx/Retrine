@@ -1,11 +1,28 @@
 #import "tests.h"
 #import "../../tweak/Sources/Redesigned/Player/PlayerMenu.m"
 
+// ContextMenu.x's button beside the title, kept with the items it was handed; the title row's buttons are not under test.
+// The button stands in the player's window, as Spotify's ⋯ (the test source) does. It is not put in the row: UIKit
+// would take the source's stand-in window for a real one as it adds it.
+@interface TestMenuButton : UIButton
+@property (nonatomic, weak) UIView *spotify;
+@end
+@implementation TestMenuButton
+- (UIWindow *)window { return self.spotify.window; }
+@end
 static SGRMenuItems menuItems;
 static SGRMenuKind menuKind;
-void SGRSystemMenuWatch(UIView *button, SGRMenuItems items, SGRMenuKind kind) {
+UIButton *SGRSystemMenuButtonIn(UIView *host, UIView *spotify, SGRMenuItems lead, SGRMenuItems items, SGRMenuKind kind) {
+    static TestMenuButton *button;
+    if (!button) button = [TestMenuButton buttonWithType:UIButtonTypeSystem];
+    button.spotify = spotify;
     menuItems = [items copy]; menuKind = [kind copy];
+    return button;
 }
+NSString *SGRFireControl(UIControl *control) { return @"not fired"; }
+UIView *SGRFindByIdentifier(UIView *root, NSString *identifier, const void *key) { return nil; }
+UIColor *SGRPrimary(void) { return UIColor.labelColor; }
+BOOL SGRStarAddOn(void) { return NO; }
 UIAction *SGRLyricsSearchAction(NSString *track) {
     return [UIAction actionWithTitle:@"Search Lyrics" image:nil identifier:nil handler:^(UIAction *action) {}];
 }
@@ -41,6 +58,12 @@ static void tap(UIAction *action) {
 void SGTestRedesignMenu(void) {
     UIView *source = SGTestSourceView();
     SGRPlayerMenuWatch(source);
+    // The title row the ⋯ is put in, as PlayerLyrics.x hands it over, before the menu's items are asked for.
+    UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 48)];
+    UIView *title = [UIView new];
+    [row addSubview:title];
+    SGRPlayerMenuInTitleRow(title);
+    SGTestAssert(menuItems != nil, @"redesign ⋯ is put in the title row with the player's items");
     SGTestPiPState(NO, NO, NO);
     NSArray *items = menuItems();
     // Sound, Audio effects, the song's card and block, PiP, Playing Next, Search Lyrics, Lyrics Style, then the two backgrounds the
