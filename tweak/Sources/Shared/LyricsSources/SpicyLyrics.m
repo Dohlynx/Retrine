@@ -26,7 +26,7 @@ static NSString *const kAgent = @"Vitrine/" SG_VERSION " (Spotify for iOS lyrics
 // A reply for this many tracks is kept; a rate limit is waited out for at most an hour, 60 s when the
 // reply does not say; a refused key is tried again after ten minutes.
 static const NSUInteger kKeptTracks = 100;
-static const NSTimeInterval kMostWait = 3600, kDefaultWait = 60, kRefusedWait = 600;
+static const NSTimeInterval kMostWait = 3600, kDefaultWait = 60, kRefusedWait = SGLyricsCredentialPauseSeconds;
 static NSString *const kService = @"Vitrine.SpicyLyrics", *const kAccount = @"api-key";
 static NSUInteger sg_keyGeneration;
 static NSString *sg_key;
@@ -389,12 +389,14 @@ void SGSpicyLyricsAskWith(NSString *key, SGLyricsQuery *query, void (^done)(SGLy
 void SGSpicyLyricsAskWith(NSString *key, SGLyricsQuery *query, void (^done)(SGLyricsResult *result)) {
     NSString *trackID = query.trackID;
     if (!key.length || !isTrackID(trackID)) {
+        if (!key.length) [query.requestContext noteFailure:YES];
         done(nil);
         return;
     }
     if (deliverCached(trackID, done)) return;
     NSTimeInterval now = uptime();
     if (sg_refused && now < sg_refusedUntil) {
+        [query.requestContext noteFailure:YES];
         done(nil);
         return;
     }
@@ -432,6 +434,7 @@ void SGSpicyLyricsAskWith(NSString *key, SGLyricsQuery *query, void (^done)(SGLy
         }
         if (status == 200 || status == 404) sg_refused = nil;
         SGLyricsResult *result = status == 200 ? SGSpicyLyricsResult(root) : nil;
+        if (status == 200 && !result) [query.requestContext noteFailure:YES];
         if (!query.requestContext.failed && (status == 200 || status == 404 || status == 400)) keepAnswer(trackID, result ?: NSNull.null);
         SGLog(@"spicy lyrics: %@ %@", trackID, result
               ? [NSString stringWithFormat:@"has %lu %@ lines, credited to %@", (unsigned long)result.karaokeLines.count,

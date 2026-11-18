@@ -156,6 +156,19 @@ int main(void) {
         mode = TooLongHeader; ask(get, nil, 4);
         mode = TooLongStream; ask(get, nil, 4);
         mode = AtLimit; check(ask(get, nil, 0).length == 2097152, @"exactly 2 MiB remains accepted");
+        mode = Good;
+        __block BOOL cancelled = NO;
+        dispatch_block_t cancel = SGSpotifyMetadataRequest(get, nil, ^(NSData *data, NSInteger status, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                check(!data && error.code == NSURLErrorCancelled, @"cancelled metadata exposes cancellation, not a missing record");
+                cancelled = YES;
+            });
+        });
+        cancel();
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
+        while (!cancelled && deadline.timeIntervalSinceNow > 0)
+            [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.001]];
+        check(cancelled, @"metadata cancellation reaches the active transfer");
         puts("metadata transport: endpoint, response origin, redirects and streaming bounds passed");
     }
     return 0;

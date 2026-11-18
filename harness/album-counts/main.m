@@ -46,8 +46,9 @@ static NSData *reply(void) {
                        entry(two, [NSData dataWithBytes:wrapped length:sizeof(wrapped)], 200)], 185);
 }
 // The live transport must not run in a fixture-only check.
-void SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done) {
+dispatch_block_t SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done) {
     check(NO, @"no live transport");
+    return ^{};
 }
 static NSDictionary *load(SGRAlbumCountsStore *store, NSString *uri) {
     __block BOOL ready = NO;

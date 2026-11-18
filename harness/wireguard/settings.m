@@ -66,6 +66,9 @@ static BOOL enabled;
 static BOOL recoveryFixture, readyFixture;
 BOOL SGWGSettingEnabled(void) { return enabled; }
 void SGWGSetSettingEnabled(BOOL value) { enabled = value; }
+static SGWGLyricsRoute lyricsRoute;
+SGWGLyricsRoute SGWGSettingLyricsRoute(void) { return lyricsRoute; }
+void SGWGSetSettingLyricsRoute(SGWGLyricsRoute value) { lyricsRoute = value; }
 NSString *SGWGSettingKind(void) { return @"wireguard"; }
 NSDictionary *SGWGSettingExternalProxy(void) { return @{}; }
 BOOL SGWGHasStoredProxyPassword(void) { return NO; }
@@ -146,7 +149,11 @@ static void checkPendingRecovery(void) {
         return YES;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        HARNESS_CHECK([page numberOfSectionsInTableView:page.tableView] == 5);
+        HARNESS_CHECK([page numberOfSectionsInTableView:page.tableView] == 6);
+        HARNESS_CHECK([page tableView:page.tableView numberOfRowsInSection:3] == 3);
+        [page tableView:page.tableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:3]];
+        HARNESS_CHECK(lyricsRoute == SGWGLyricsBlockedDirect);
+        HARNESS_CHECK([page tableView:page.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:3]].accessoryType == UITableViewCellAccessoryCheckmark);
         HARNESS_CHECK([page tableView:page.tableView numberOfRowsInSection:2] == 2);
         HARNESS_CHECK(((UITextField *)[page valueForKey:@"passField"]).secureTextEntry);
         HARNESS_CHECK(page.overrideUserInterfaceStyle == UIUserInterfaceStyleDark);

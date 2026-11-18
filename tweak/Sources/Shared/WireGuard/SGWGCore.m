@@ -1,6 +1,7 @@
 #import "SGWGCore.h"
 #import "SGWGBridge.h"
 #import "SGWGABI.h"
+#import "Shared/LyricsSources/LyricsHosts.h"
 #import <Network/Network.h>
 #import <Security/Security.h>
 #import <objc/message.h>
@@ -100,6 +101,24 @@ BOOL SGWGSettingEnabled(void) {
 }
 void SGWGSetSettingEnabled(BOOL enabled) { SetSetting(@"enabled", @(enabled)); }
 
+SGWGLyricsRoute SGWGSettingLyricsRoute(void) {
+    NSInteger value = [SettingsDict()[@"lyricsRoute"] integerValue];
+    return value == SGWGLyricsBlockedDirect || value == SGWGLyricsAllDirect ? value : SGWGLyricsThroughTunnel;
+}
+void SGWGSetSettingLyricsRoute(SGWGLyricsRoute route) { SetSetting(@"lyricsRoute", @(route)); }
+
+BOOL SGWGLyricsRequestIsDirect(NSURLRequest *request) {
+    if (!gActive || !SGLyricsRequestIsMarked(request)) return NO;
+    NSURL *url = request.URL;
+    NSSet *hosts;
+    switch (SGWGSettingLyricsRoute()) {
+        case SGWGLyricsBlockedDirect: hosts = SGLyricsBlockedProviderHosts(); break;
+        case SGWGLyricsAllDirect: hosts = SGLyricsProviderHosts(); break;
+        default: return NO;
+    }
+    return url.host && [hosts containsObject:url.host.lowercaseString];
+}
+
 
 NSString *SGWGSettingKind(void) {
 #ifdef SGWG_TESTING
@@ -181,14 +200,14 @@ BOOL SGWGIsSupportedOS(void) {
 
 #pragma mark - Fail-closed protocol
 
-// Used only if a configuration cannot be given the tunnel proxy. Every web
-// request on that configuration fails instead of being sent directly.
+// Used only if a configuration cannot be given the tunnel proxy. Non-exempt
+// web requests fail instead of being sent directly.
 @interface SGWGBlockedURLProtocol : NSURLProtocol
 @end
 @implementation SGWGBlockedURLProtocol
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
     NSString *scheme = request.URL.scheme.lowercaseString;
-    return [@[@"http", @"https", @"ws", @"wss"] containsObject:scheme ?: @""];
+    return !SGWGLyricsRequestIsDirect(request) && [@[@"http", @"https", @"ws", @"wss"] containsObject:scheme ?: @""];
 }
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
 - (void)startLoading {
@@ -210,6 +229,94 @@ BOOL SGWGIsSupportedOS(void) {
     struct in_addr v4; struct in6_addr v6;
     return [host isEqualToString:@"localhost"] || [host hasSuffix:@".localhost"] || [host hasSuffix:@".local"] ||
         inet_pton(AF_INET, address.UTF8String, &v4) == 1 || inet_pton(AF_INET6, address.UTF8String, &v6) == 1;
+}
+@end
+
+// Only construction of this protocol's private one-hop session skips the
+// configuration hooks. No app configuration/request property can opt out.
+static char kLyricsDirectConfiguration;
+static NSURLSessionConfiguration *CopyRoutingConfiguration(NSURLSessionConfiguration *configuration) {
+    NSURLSessionConfiguration *copy = [configuration copy];
+    if (objc_getAssociatedObject(configuration, &kLyricsDirectConfiguration))
+        objc_setAssociatedObject(copy, &kLyricsDirectConfiguration, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return copy;
+}
+
+@interface SGWGLyricsDirectProtocol : NSURLProtocol <NSURLSessionDataDelegate>
+@property (nonatomic, strong) NSURLSession *session;
+@property (nonatomic, strong) NSURLSessionDataTask *task;
+@property (nonatomic) BOOL stopped;
+@end
+@implementation SGWGLyricsDirectProtocol
++ (BOOL)canInitWithRequest:(NSURLRequest *)request { return SGWGLyricsRequestIsDirect(request); }
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request { return request; }
+- (void)startLoading {
+    @synchronized (self) {
+        if (self.stopped) return;
+        // A preference change between selection and start may revoke permission.
+        if (!SGWGLyricsRequestIsDirect(self.request)) {
+            [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]];
+            return;
+        }
+            NSURLSessionConfiguration *config = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+            objc_setAssociatedObject(config, &kLyricsDirectConfiguration, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            config.connectionProxyDictionary = @{};
+            config.HTTPCookieStorage = nil;
+            config.URLCredentialStorage = nil;
+            config.URLCache = nil;
+            config.HTTPShouldSetCookies = NO;
+            config.timeoutIntervalForRequest = self.request.timeoutInterval;
+            config.timeoutIntervalForResource = self.request.timeoutInterval;
+            if (sSetProxyConfigurations)
+                ((void (*)(id, SEL, id))objc_msgSend)(config, sSetProxyConfigurations, @[]);
+            config.protocolClasses = @[];
+            self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
+        self.task = [self.session dataTaskWithRequest:self.request];
+        [self.task resume];
+    }
+}
+- (void)stopLoading {
+    @synchronized (self) {
+        self.stopped = YES;
+        [self.task cancel];
+        [self.session invalidateAndCancel];
+        self.task = nil;
+        self.session = nil;
+    }
+}
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task
+ didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))completion {
+    @synchronized (self) {
+        if (!self.stopped) [self.client URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+        completion(self.stopped ? NSURLSessionResponseCancel : NSURLSessionResponseAllow);
+    }
+}
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+    @synchronized (self) {
+        if (!self.stopped) [self.client URLProtocol:self didLoadData:data];
+    }
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
+ willPerformHTTPRedirection:(NSHTTPURLResponse *)response newRequest:(NSURLRequest *)request
+ completionHandler:(void (^)(NSURLRequest *))completion {
+    @synchronized (self) {
+        // Never follow a redirect in the direct session: the original session
+        // and its delegate must decide, then guards classify the new URL again.
+        completion(nil);
+        NSMutableURLRequest *redirect = [request mutableCopy];
+        SGLyricsMarkRequest(redirect);
+        if (!self.stopped) [self.client URLProtocol:self wasRedirectedToRequest:redirect redirectResponse:response];
+        [self stopLoading];
+    }
+}
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    @synchronized (self) {
+        if (!self.stopped) {
+            if (error) [self.client URLProtocol:self didFailWithError:error];
+            else [self.client URLProtocolDidFinishLoading:self];
+        }
+        [self stopLoading];
+    }
 }
 @end
 
@@ -266,8 +373,10 @@ id SGWGCreateNativeProxyConfig(void) {
 @end
 
 static void ApplyProxy(NSURLSessionConfiguration *config) {
-    if (!gActive || ![config isKindOfClass:NSURLSessionConfiguration.class]) return;
+    if (objc_getAssociatedObject(config, &kLyricsDirectConfiguration) || !gActive || ![config isKindOfClass:NSURLSessionConfiguration.class]) return;
     NSArray *classes = config.protocolClasses ?: @[];
+    if (![classes containsObject:SGWGLyricsDirectProtocol.class])
+        classes = [@[SGWGLyricsDirectProtocol.class] arrayByAddingObjectsFromArray:classes];
     if (![classes containsObject:SGWGUnavailableProtocol.class])
         classes = [@[SGWGUnavailableProtocol.class] arrayByAddingObjectsFromArray:classes];
     config.protocolClasses = classes;
@@ -331,13 +440,13 @@ static id HookBackground(id self, SEL _cmd, id identifier) {
 // The session constructors re-apply the proxy to a copy, so later changes to a
 // configuration object by the app cannot remove it.
 static id HookSession(id self, SEL _cmd, NSURLSessionConfiguration *config) {
-    NSURLSessionConfiguration *copy = [config copy];
+    NSURLSessionConfiguration *copy = CopyRoutingConfiguration(config);
     ApplyProxy(copy);
     atomic_fetch_add(&gSessionsProxied, 1);
     return origSession(self, _cmd, copy);
 }
 static id HookSessionDelegate(id self, SEL _cmd, NSURLSessionConfiguration *config, id delegate, id queue) {
-    NSURLSessionConfiguration *copy = [config copy];
+    NSURLSessionConfiguration *copy = CopyRoutingConfiguration(config);
     ApplyProxy(copy);
     atomic_fetch_add(&gSessionsProxied, 1);
     return origSessionDelegate(self, _cmd, copy, delegate, queue);
@@ -440,7 +549,7 @@ static BOOL InstallInitializers(void) {
         void *(*original)(void *, SEL, id, id, id, id) = (void *)method_getImplementation(method);
         IMP replacement = imp_implementationWithBlock(^void *(void *receiver, NSURLSessionConfiguration *configuration,
                                                              id delegate, id queue, id dispatchQueue) {
-            NSURLSessionConfiguration *copy = [configuration copy];
+            NSURLSessionConfiguration *copy = CopyRoutingConfiguration(configuration);
             ApplyProxy(copy);
             return original(receiver, sessionInit, copy, delegate, queue, dispatchQueue);
         });

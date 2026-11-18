@@ -52,6 +52,7 @@ static NSMutableDictionary<NSString *, NSObject *> *sg_storeRequests;
 static NSMutableDictionary<NSString *, SGLyricsLease *> *sg_storeWrites;
 static NSMutableSet<NSString *> *sg_looking;   // asked of the sources or spclient right now (SGKaraokeLooking)
 static NSDictionary<NSString *, NSString *> *sg_spclientHeaders;
+static NSString *sg_refusedAuthorization;
 static NSMutableArray<void (^)(NSDictionary<NSString *, NSString *> *)> *sg_headersWaiting;   // SGSpclientHeaders
 static __weak id sg_player;
 // Every track the player has reported, by id, so a source can name a track that is not the one
@@ -420,6 +421,11 @@ NSArray<SGKaraokeLine *> *SGKaraokeLinesForTrack(NSString *trackID) {
 static void askAgainLater(NSString *trackID, BOOL automatic) {
     NSObject *request = sg_requests[trackID];
     NSUInteger losses = sg_losses[trackID].unsignedIntegerValue;
+    if (losses >= kSourceRetries) {
+        [sg_asking removeObject:trackID];
+        [sg_requests removeObjectForKey:trackID];
+        return;
+    }
     sg_losses[trackID] = @(losses + 1);
     NSTimeInterval pause = MIN(kRetryPause * pow(2, losses), kRetryPauseMost);
     SGLog(@"karaoke: lyrics for %@ not answered, may ask again in %.0fs", trackID, pause);
@@ -519,6 +525,10 @@ BOOL SGEeveeLyricsOn(void) {
 static BOOL requestFromSpotify(NSString *trackID) {
     NSDictionary<NSString *, NSString *> *headers = sg_spclientHeaders;
     if (!headers || SGLyricsStandAsideForEevee()) return NO;
+    if ([headers[@"authorization"] isEqual:sg_refusedAuthorization]) {
+        SGLyricsNoteSpotifyLoadFailure(trackID, YES);
+        return NO;
+    }
     if (!sg_requests) sg_requests = [NSMutableDictionary dictionary];
     NSObject *token = [NSObject new];
     sg_requests[trackID] = token;
@@ -527,6 +537,7 @@ static BOOL requestFromSpotify(NSString *trackID) {
     [sg_looking addObject:trackID];
     NSString *address = [NSString stringWithFormat:@"https://spclient.wg.spotify.com/color-lyrics/v2/track/%@?format=json&vocalRemoval=false&market=from_token", trackID];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:address]];
+    request.timeoutInterval = SGLyricsRequestTimeoutSeconds;
     [headers enumerateKeysAndObjectsUsingBlock:^(NSString *name, NSString *value, BOOL *stop) {
         [request setValue:value forHTTPHeaderField:name];
     }];
@@ -542,13 +553,20 @@ static BOOL requestFromSpotify(NSString *trackID) {
         // A refused authorization is lost too: the captured one may have expired, and Spotify's next
         // spclient request brings a fresh one.
         BOOL lost = SGLyricsReplyFailed(response, error) || status == 401 || status == 403;
+        lost = lost || (status == 200 && !lines);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (sg_requests[trackID] != token) return;
             [sg_looking removeObject:trackID];
+            SGLyricsNoteSpotifyLoadFailure(trackID, lost);
             // The walk deliberately did not keep a failed/unfinished empty answer. Spotify's own
             // absence must not turn that into a permanent requested mark either.
             BOOL retrySources = !lines && (sg_ownSources || SGLyricsPinnedID(trackID)) && !SGLyricsKeptAnswer(trackID);
-            if (lost) {
+            if (status == 401) {
+                sg_refusedAuthorization = headers[@"authorization"];
+                [sg_requests removeObjectForKey:trackID];
+                [sg_requested removeObject:trackID];
+                [sg_asking removeObject:trackID];
+            } else if (lost) {
                 askAgainLater(trackID, NO);
             } else if (retrySources) {
                 retrySourcesLater(trackID);

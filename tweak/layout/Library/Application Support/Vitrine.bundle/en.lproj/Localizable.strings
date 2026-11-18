@@ -1311,6 +1311,9 @@
 "settings.lyrics.language_rules.none" = "None saved";
 "settings.lyrics.language_rules.subtitle" = "Rules are made from the lyrics menu.";
 "settings.lyrics.language_rules.title" = "Clear language rules…";
+"settings.lyrics.load_failed" = "Couldn't load lyrics · Retry";
+"settings.lyrics.retry" = "Retry";
+"settings.lyrics.pip.open_retry" = "Open Spotify to retry";
 "settings.lyrics.lockscreen_lyrics.subtitle" = "Current line in place of the artist";
 "settings.lyrics.lockscreen_lyrics.title" = "Lock screen lyrics";
 "settings.lyrics.meaning.by_community" = "Genius community";
@@ -3431,6 +3434,14 @@
 "settings.whatsnew.version" = "Version %s";
 
 "settings.wireguard.address" = "Address";
+"settings.wireguard.lyrics" = "Lyrics requests";
+"settings.wireguard.lyrics_tunnel" = "Through the tunnel";
+"settings.wireguard.lyrics_blocked" = "Direct for blocked sources only";
+"settings.wireguard.lyrics_all" = "All lyrics sources direct";
+"settings.wireguard.lyrics_tunnel_footer" = "Vitrine's own lyrics requests use the tunnel and fail when it is not ready; blocked sources can fall back. Direct connections would reveal your real IP and the song you look up to those sites. Spotify's own traffic keeps the tunnel's existing protection. Applies to new requests immediately.";
+"settings.wireguard.lyrics_blocked_footer" = "Only Vitrine's own lyrics requests to Genius connect directly, even when the tunnel is not ready. Genius sees your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.";
+"settings.wireguard.lyrics_all_footer" = "Only Vitrine's own lyrics requests to listed HTTPS provider hosts connect directly, even when the tunnel is not ready. Those sites see your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.";
+"settings.search.wireguard.keywords" = "lyrics requests Genius direct blocked sources tunnel proxy VPN";
 "settings.wireguard.cancel" = "Cancel";
 "settings.wireguard.check_connection" = "Run connection diagnostics (DNS · HTTPS · 206)";
 "settings.wireguard.check_copy" = "Copy diagnostics";
@@ -3455,7 +3466,7 @@
 "settings.wireguard.footer_checks" = "A successful country check does not mean music will play. Also test playback, next track and lock-screen playback, then copy the diagnostics right after any playback error.";
 "settings.wireguard.footer_profile" = "Standard WireGuard .conf with one [Peer] and AllowedIPs 0.0.0.0/0. The private key is stored only in this device's Keychain and is never shown or copied into diagnostics.";
 "settings.wireguard.footer_server" = "HTTP and HTTPS use CONNECT. HTTP sends proxy credentials without encryption; prefer HTTPS. HTTPS verifies the proxy certificate. Credentials are bound to the connection type, server, port and user, and cleared when these change.";
-"settings.wireguard.footer_tunnel" = "Routes inspected Spotify paths through the tunnel or proxy and blocks guarded paths when unavailable. Not a leak-proof or device-wide VPN. Background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions are outside coverage. Builds without WireGuard drop enforcement even if enabled previously. Restart after changes.";
+"settings.wireguard.footer_tunnel" = "Routes inspected Spotify paths through the tunnel or proxy and blocks guarded paths when unavailable. Not a leak-proof or device-wide VPN. Background sessions, web sign-in, AVURLAsset, pre-initializer traffic and local-network exemptions are outside coverage. Builds without WireGuard drop enforcement even if enabled previously. Restart after connection or enable changes; lyrics routing changes apply immediately.";
 "settings.wireguard.guards_incomplete" = "Guard installation incomplete — protection unavailable";
 "settings.wireguard.guards_installed" = "Inspected-path guards installed";
 "settings.wireguard.handshake_ago" = "handshake %lld s ago";

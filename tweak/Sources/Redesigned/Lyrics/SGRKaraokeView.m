@@ -1830,7 +1830,6 @@ typedef struct {
     BOOL _languageReady;
     NSUInteger _languageRequest;
     NSString *_detectedLanguage;
-    NSArray<SGKaraokeLine *> *_passedOver;   // lines kept for the song that changed nothing here, not looked at again
     UIView *_extrasBox;   // the Kit's glass and _extras over it, which holds none, so its alpha can fade
     UIButton *_extras;
     NSString *_extrasGlyph;   // the glyph _extras shows: translate while it has languages to offer, else ellipsis
@@ -1838,6 +1837,7 @@ typedef struct {
     SGRSingButton *_sing;   // across from _extras
     UIView *_statusBox;     // between the two: automatic translation's note, faded with the extras
     SGRTranslationStatusView *_status;
+    UIButton *_loadFailure;
     CGFloat _builtWidth, _placedHeight;
     BOOL _showing;
     CAGradientLayer *_fade;
@@ -1914,6 +1914,16 @@ typedef struct {
     _status.retry = ^(NSString *track, NSString *language) { [weakStatusOwner retryTranslationOf:track language:language]; };
     [_statusBox addSubview:_status];
     [self addSubview:_statusBox];
+    _loadFailure = [UIButton buttonWithType:UIButtonTypeSystem];
+    [_loadFailure setTitle:SGL(@"settings.lyrics.load_failed", @"Couldn't load lyrics · Retry") forState:UIControlStateNormal];
+    _loadFailure.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    _loadFailure.titleLabel.adjustsFontForContentSizeCategory = YES;
+    _loadFailure.titleLabel.numberOfLines = 0;
+    _loadFailure.titleLabel.textAlignment = NSTextAlignmentCenter;
+    _loadFailure.tintColor = UIColor.whiteColor;
+    _loadFailure.hidden = YES;
+    [_loadFailure addTarget:self action:@selector(retryLyrics) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:_loadFailure];
     // A snapshot changed: the note is drawn again, and nothing is asked of any translator from here.
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(translationProgressChanged:) name:SGRAutoTranslationProgressDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(wordTimingChanged) name:SGLyricsWordTimingDidChangeNotification object:nil];
@@ -2476,6 +2486,9 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 - (void)layoutSubviews {
     [super layoutSubviews];
     [self alignFade];
+    CGFloat failureWidth = MAX(0, self.bounds.size.width - 2 * _margin);
+    CGFloat failureHeight = MAX(44, [_loadFailure sizeThatFits:CGSizeMake(failureWidth, CGFLOAT_MAX)].height + 24);
+    _loadFailure.frame = CGRectMake(_margin, (self.bounds.size.height - failureHeight) / 2, failureWidth, failureHeight);
     _scroll.contentSize = self.bounds.size;
     _sing.frame = CGRectMake(self.bounds.size.width - _margin - kExtrasSide, self.bounds.size.height - kExtrasSide - kExtrasBottom, kExtrasSide, kExtrasSide);
     if (_extrasBox && !_extrasBox.hidden) {
@@ -3303,7 +3316,6 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
 
 - (void)dropLines {
     _lines = nil;
-    _passedOver = nil;
     _builtWidth = 0;
     [self creditTo:nil];
     [self dropLineViews];
@@ -3665,7 +3677,7 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
         [self dropLines];
     }
     NSArray<SGKaraokeLine *> *kept = _lines && track ? [self linesFor:track] : nil;
-    if (kept && kept != _lines && kept != _passedOver) {
+    if (kept && kept != _lines) {
         if (kept.count == _lines.count && SGKaraokeLinesTiming(kept) == SGKaraokeLinesTiming(_lines)
             && translationsDiffer(_lines, kept)) {
             // The keeper replaces provider translations on a target change. Adopt removals and
@@ -3682,16 +3694,13 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
                 _builtWidth = 0;
                 [self dropLineViews];
             }
-        } else if (_plain || SGKaraokeLinesTiming(kept) < SGKaraokeLinesTiming(_lines)) {
-            // Plain text is shown while Spotify is asked whether it has the song timed, and lines timed by the line
-            // while Type first looks on for words: a finer answer replaces what is shown, built as a new song's are.
-            SGLog(@"karaoke: finer lines of %@ came in over what was shown", track);
+        } else {
+            // Selection and deferred replacements belong to the keeper, not the view.
+            SGLog(@"karaoke: authoritative lines of %@ replaced what was shown", track);
             _lines = nil;
             _builtWidth = 0;
             [self creditTo:nil];
             [self dropLineViews];
-        } else {
-            _passedOver = kept;
         }
     }
     if (!_lines && track && (_lines = [self linesFor:track])) {
@@ -3699,10 +3708,13 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
         [self timeLines];
         [self setNeedsLayout];
     }
-    [self setShowing:_tops != nil];
+    BOOL failed = !_sample && !_lines.count && SGLyricsLoadFailed(track);
+    _loadFailure.hidden = !failed;
+    _loadFailure.enabled = failed && !SGKaraokeLooking(track);
+    [self setShowing:_tops != nil || failed];
     // Keep screen on: held while lines are shown and the song moves, let go a few seconds into a pause.
     if (!_sample && SGRLyricsKeepAwakeOn())
-        SGRLyricsHoldAwake(self, _showing && !(_stillSince && [self frameTime] - _stillSince > kAwakeAfterPause));
+        SGRLyricsHoldAwake(self, !failed && _showing && !(_stillSince && [self frameTime] - _stillSince > kAwakeAfterPause));
     // The source is settled a moment after the lines are, so it is asked for until it answers.
     if (!_sample && _lines && !_creditSource) [self creditTo:SGLyricsCreditFor(track)];
     if (!_tops) return;
@@ -3719,6 +3731,12 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     for (NSUInteger i = 0; i < _sungCount; i++) [_shown[@(_sung[i])] showTime:now];
     CFTimeInterval frame = [self frameTime];
     if (_dots.superview) [_dots showTime:now running:!_stillSince || frame - _stillSince < kStillFor at:frame];
+}
+
+// The keeper retires stale requests; retry never creates a separate UI-only lookup.
+- (void)retryLyrics {
+    SGLyricsRetry(_track);
+    [self tick];
 }
 
 // What is sung at `now` lit and the stack arranged around it; a jump of more than a couple of lines is

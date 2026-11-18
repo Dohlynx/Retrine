@@ -248,6 +248,7 @@ def main():
         sh(["xcrun", "clang", "-fobjc-arc", "-fmodules", "-DSGWG_TESTING", "-mmacosx-version-min=14.0", "-Wall",
             "-I", str(ROOT / "tweak/Sources"),
             str(ROOT / "tweak/Sources/Shared/WireGuard/SGWGCore.m"), str(ROOT / "tweak/Sources/Shared/WireGuard/SGWGTransport.m"),
+            str(ROOT / "tweak/Sources/Shared/LyricsSources/LyricsHosts.m"),
             str(ROOT / "tweak/Sources/Shared/WireGuard/SGWGNative.m"),
             str(ROOT / "tweak/Sources/Shared/WireGuard/SGWGAdmission.m"),
             str(ROOT / "harness/wireguard/harness.m"), str(tmp / "libsgwg-macos.a"),

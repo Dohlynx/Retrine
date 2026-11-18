@@ -78,11 +78,11 @@ static NSURL *metadataURL(NSString *path, BOOL post) {
 }
 @end
 
-void SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done) {
-    if (!NSThread.isMainThread) {
-        dispatch_async(dispatch_get_main_queue(), ^{ SGSpotifyMetadataRequest(path, body, done); });
-        return;
-    }
+dispatch_block_t SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done) {
+    __block BOOL cancelled = NO;
+    __block NSURLSessionDataTask *task;
+    void (^start)(void) = ^{
+    if (cancelled) return;
     NSURL *url = metadataURL(path, body != nil);
     if (!url) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
@@ -91,6 +91,7 @@ void SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataRep
         return;
     }
     SGSpclientHeaders(^(NSDictionary<NSString *, NSString *> *headers) {
+        if (cancelled) return;
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
         request.allHTTPHeaderFields = headers;
         if (body) {
@@ -106,6 +107,19 @@ void SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataRep
         SGSpotifyMetadataTransfer *transfer = [SGSpotifyMetadataTransfer new];
         transfer.done = done;
         transfer.session = [NSURLSession sessionWithConfiguration:configuration delegate:transfer delegateQueue:nil];
-        [[transfer.session dataTaskWithRequest:request] resume];
+        task = [transfer.session dataTaskWithRequest:request];
+        [task resume];
     });
+    };
+    if (NSThread.isMainThread) start();
+    else dispatch_async(dispatch_get_main_queue(), start);
+    return ^{
+        void (^cancel)(void) = ^{
+            cancelled = YES;
+            [task cancel];
+            task = nil;
+        };
+        if (NSThread.isMainThread) cancel();
+        else dispatch_async(dispatch_get_main_queue(), cancel);
+    };
 }

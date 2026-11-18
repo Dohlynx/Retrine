@@ -21,7 +21,7 @@ void SGAlbumQueueMarkSource(UIView *view) {}
 void SGRAlbumPlaysMarkMenu(NSString *album, NSString *title) {}
 #import "Redesigned/Album/AlbumSpotifyCounts.h"
 void SGRAlbumPlaysMarkSpotifyMenu(NSString *trackURI, SGRAlbumCountPage *page) {}
-void SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done) {
+dispatch_block_t SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done) {
     NSLog(@"[harness] unexpected Spotify network request");
     exit(1);
 }

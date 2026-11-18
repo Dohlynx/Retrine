@@ -216,6 +216,11 @@ NSString *SGHarnessPlayingTrack;
 NSString *SGKaraokePlayingTrack(void) { return SGHarnessPlayingTrack ?: @"harness"; }
 NSArray<SGKaraokeLine *> *SGKaraokeLinesForTrack(NSString *trackID) { return sg_lines; }
 void SGKaraokeKeepLines(NSString *trackID, NSArray<SGKaraokeLine *> *lines) { sg_lines = lines; }
+BOOL SGHarnessLoadFailed;
+void (^SGHarnessRetryLyrics)(NSString *);
+BOOL SGLyricsLoadFailed(NSString *trackID) { return SGHarnessLoadFailed; }
+BOOL SGKaraokeLooking(NSString *trackID) { return NO; }
+void SGLyricsRetry(NSString *trackID) { if (SGHarnessRetryLyrics) SGHarnessRetryLyrics(trackID); }
 
 void SGAddPlayerStateObserver(id observer) {}
 NSInteger SGKaraokeDelayMs(void) { return [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLyricsDelay]; }

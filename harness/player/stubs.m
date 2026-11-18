@@ -336,6 +336,8 @@ void SGLyricsSetRouteOffsetMs(NSInteger ms) {}
 void SGLyricsReload(NSString *trackID) {
     [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsDidReloadNotification object:nil userInfo:trackID ? @{@"track": trackID} : nil];
 }
+BOOL SGLyricsLoadFailed(NSString *trackID) { return NO; }
+void SGLyricsRetry(NSString *trackID) { SGLyricsReload(trackID); }
 
 // PlayerTitle.x's engine: the title as the metadata has it.
 #import "Redesigned/Player/Player.h"

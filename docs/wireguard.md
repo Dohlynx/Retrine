@@ -63,9 +63,10 @@ All hooks below are omitted when runtime opt-in is off.
 | Core: `+[NSURLSessionConfiguration defaultSessionConfiguration]`, `ephemeralSessionConfiguration`, `backgroundSessionConfigurationWithIdentifier:` | Apply proxy with failover disabled and local-address/availability URL protocols. Missing proxy APIs or unavailable readiness blocks covered web loads. Background transfers run outside URLProtocol and are **not covered**. |
 | Core: `+[NSURLSession sessionWithConfiguration:]`, `sessionWithConfiguration:delegate:delegateQueue:`, `sharedSession` | Copy/reapply configuration at creation; shared session is a guarded replacement. |
 | Core: `-[NSURLSession initWithConfiguration:delegate:delegateQueue:delegateDispatchQueue:]` and its actual local-session implementation | Reapply to the designated initializer's copied configuration, preserving delegates/queues and raw init ownership. Full return/argument encodings must match. |
-| Core: `+[NSData dataWithContentsOfURL:]`, `dataWithContentsOfURL:options:error:`, applicable real class-cluster `initWithContentsOfURL:` / `initWithContentsOfURL:options:error:` implementations | HTTP(S) uses a guarded session. Non-web URLs preserve original behavior. Preserve mutable results, init ownership and errors. Main-thread or armed-unavailable loads fail immediately. Background synchronous loads have one eight-second deadline, independent completion queue, synchronized terminal state and cancellation on timeout. Do not call synchronous loading APIs from a render thread. |
+| Core: `+[NSData dataWithContentsOfURL:]`, `dataWithContentsOfURL:options:error:`, applicable real class-cluster `initWithContentsOfURL:` / `initWithContentsOfURL:options:error:` implementations | HTTP(S) uses a guarded session without lyrics provenance. Non-web URLs preserve original behavior. Preserve mutable results, init ownership and errors. Main-thread and armed-unavailable loads fail immediately. Background synchronous loads have one eight-second deadline, independent completion queue, synchronized terminal state and cancellation on timeout. Do not call synchronous loading APIs from a render thread. |
 | Core: `-[NSMutableURLRequest setAssumesHTTP3Capable:]`, `-[NSURLRequest assumesHTTP3Capable]` | Force false only with matching full ABI, including BOOL argument/return. TCP proxying does not carry QUIC. |
 | Core: local-address URL protocol | Reject HTTP(S) literal IPs, localhost/`.localhost`/`.local` names that CFNetwork might exempt. This lexical check is **not an SSRF boundary**. |
+| Core: lyrics direct URL protocol | Intentional, user-chosen uncovered path for marked Vitrine lyrics requests only: default is no exception; “Direct for blocked sources only” allows HTTPS `genius.com` (search and embeds); “All lyrics sources direct” allows only the exact provider hosts in `Shared/LyricsSources/LyricsHosts.m`. Unmarked requests remain guarded. No subdomain inheritance, trailing-dot aliases, HTTP, userinfo, non-443 ports, Spotify or arbitrary response-provided URLs. Exempt requests use a private direct session and are not denied by tunnel readiness. |
 | Native: imported `nw_connection_create` in Spotify and SpotifyShared | Copy TCP parameters, attach non-failover proxy context, preserve original endpoint and TLS identity. Unready, non-TCP or missing APIs use a denied loopback endpoint, not the requested remote address. Local discovery is exempt. |
 | Native: imported `getaddrinfo` | Remote names use tunnel DNS only when usable; otherwise fail. Numeric/local names retain the original resolver. External-proxy mode has no engine DNS and denies remote-name lookup. |
 | Native: imported `connect` | **Deny all remote BSD TCP/UDP**, including while the tunnel is healthy. No caller-fd SOCKS handshake, flag mutation or relay remains. Invalid sockaddr lengths return `EINVAL`. Local destinations retain original behavior. |
@@ -79,6 +80,26 @@ Local native exemptions include loopback, link-local and multicast, not
 arbitrary RFC1918 addresses. WebSocket behavior is not certified by URLProtocol.
 There is no system VPN, Network Extension, TUN, route change or VPN entitlement.
 The engine's UDP socket and Apple's framework sockets are not rebound.
+
+**Lyrics requests** is read for each new request, including on existing sessions;
+no restart is required. Requests already started keep their route. Direct sites
+see the user's real IP and the song being looked up. This choice never exempts
+Spotify's own hosts; the existing coverage limitations above still apply.
+`SGWGCore.m` retains ownership of routing and guards. Its direct URLProtocol
+requires both lyrics-request provenance bound to the exact URL and an allowed
+HTTPS host, without userinfo or a non-443 port. Unmarked traffic to these same
+hosts remains guarded. BiniLyrics response-provided files must be on `lrc.red`.
+The one-hop ephemeral session has no cookie, credential or URL cache stores and
+uses the owned request's deadline. Only its exact private configuration and
+copies made by the routing hooks are exempt, not unrelated reentrant construction.
+Every redirect is marked only after fresh URL validation and handed back
+to the original session/delegate and classified afresh; it is never followed by
+the direct session. Revoked permission between selection and start cancels the
+request. Non-exempt requests keep the existing non-failover proxy and readiness
+denial. The synchronous NSData path has no provenance and retains readiness denial
+and rejection of main-thread I/O. The host list
+includes adapter search, auth and download hosts, not referer-only domains or
+developer dashboards; new remote-supplied file hosts stay tunneled until reviewed.
 
 BSD denial may prevent Spotify playback. Do not add a transparent relay merely
 to make a playback test pass; record the limitation until a separately reviewed
@@ -183,6 +204,7 @@ SHA-256 verified when Go is not installed; remove its caches afterwards.
 (cd WireGuard && go mod verify && go test ./...)
 python3 -B harness/wireguard/test_transport_scan.py
 bash harness/wireguard/check-admission.sh
+bash harness/wireguard/check-readiness.sh
 python3 -B scripts/spotify-transport-scan.py ipa/Spotify-9.1.90.ipa --wireguard-compatible
 python3 -B scripts/spotify-transport-scan.py ipa/Spotify-9.2.0.ipa --wireguard-compatible
 python3 -B harness/wireguard/run_macos.py --live-profile /path/to/private.conf --expect-country US

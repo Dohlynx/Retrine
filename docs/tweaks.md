@@ -412,6 +412,32 @@ Shared:
                   Automatic answers remain provisional while outstanding work or a failed eligible source
                   could change the selection. Each provider invocation carries its own failure outcome,
                   including search/fetch subrequests; a normal missing-lyrics reply is not a failure.
+                  Each adapter (including a pinned LRCLIB lookup) has one five-second deadline across
+                  its subrequests. Expiry cancels tracked tasks, falls through and ignores late delivery.
+                  Sequential modes hedge an unanswered source after two seconds, showing a usable later
+                  answer provisionally while earlier requests can still win under the selected priority/type
+                  policy. Fast failures advance immediately. An eight-second initial-walk budget bounds
+                  starting new work and releases the current answer; no usable answer means the retry state,
+                  not a catalog miss. Already-started requests keep their own five-second deadlines: a usable
+                  late reply replaces the retry state, and an eligible higher-priority reply replaces provisional lyrics.
+                  These timing constants live together in LyricsSources.h: paired direct/Proton probes
+                  measured 0.9–1.65 seconds per tunnel hop and about 2.5–3 seconds for multi-hop adapters.
+                  All at once retains its arrival-based winner policy.
+                  HTTP refusals (except explicit catalog 404 misses), empty transport bodies and malformed
+                  JSON are failures, not permanent missing-track entries. Genius is skipped only when
+                  usable lyrics exist, never merely because Spotify metadata promises lyrics.
+                  LyricsPlus reads upstream RTO/BAD statuses even in a 404; Musixmatch's nested matcher
+                  errors, QQ's search errors and Deezer's GraphQL errors/null track are failures too.
+                  Healthy misses and missing timing capabilities still continue without marking the service
+                  broken. Credential refusal uses the provider's existing one-time refresh where available,
+                  then pauses it for ten minutes (credential changes clear Deezer/Spicy's pause); Spotify
+                  waits for a different captured authorization rather than retrying the refused one.
+                  When no usable answer exists and any source failed, the lyrics page offers
+                  “Couldn't load lyrics · Retry” (“가사를 불러오지 못했어요 · 다시 시도”), separate from
+                  genuine absence. Retry uses the shared keeper, so karaoke, PiP and lock-screen consumers
+                  receive the same recovered sheet. Existing good sheets remain usable after a failure.
+                  Both source and Spotify-loss retries stop after four backoff attempts; explicit retry
+                  retires stale work rather than starting a recurring UI timer. WireGuard routing is unchanged.
                   Provisional sheets are shown but never saved offline. Only the relevant failed sources
                   are retried, after 10, 20, 40 and 60 seconds; an exhausted answer stays memory-only.
                   A recovered or confirmed winner is saved with its own credit for the next playback.

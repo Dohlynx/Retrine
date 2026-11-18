@@ -1,5 +1,9 @@
 /* Vitrine's Korean. Follow existing terminology and tone. */
 
+"settings.lyrics.load_failed" = "가사를 불러오지 못했어요 · 다시 시도";
+"settings.lyrics.retry" = "다시 시도";
+"settings.lyrics.pip.open_retry" = "Spotify를 열어 다시 시도";
+
 "settings.sponsorblock.enabled" = "팟캐스트 구간 건너뛰기";
 "settings.sponsorblock.subtitle" = "SponsorBlock 커뮤니티가 표시한 구간을 건너뜁니다. 음악에는 영향을 주지 않습니다.";
 "settings.sponsorblock.title" = "SponsorBlock";
@@ -3363,6 +3367,14 @@
 "settings.visualizer.subtitle.title" = "전체 줄";
 
 "settings.wireguard.address" = "주소";
+"settings.wireguard.lyrics" = "가사 요청";
+"settings.wireguard.lyrics_tunnel" = "터널로 보내기";
+"settings.wireguard.lyrics_blocked" = "차단되는 곳만 직접";
+"settings.wireguard.lyrics_all" = "가사 소스 모두 직접";
+"settings.wireguard.lyrics_tunnel_footer" = "Vitrine 자체 가사 요청을 터널로 보내며 준비되지 않으면 실패합니다. 차단된 소스 대신 다른 소스를 시도할 수 있습니다. 직접 연결하면 해당 사이트에 실제 IP와 찾는 곡이 드러납니다. Spotify 자체 트래픽은 기존 터널 보호를 유지합니다. 새 요청부터 즉시 적용됩니다.";
+"settings.wireguard.lyrics_blocked_footer" = "Vitrine이 Genius로 보내는 자체 가사 요청만 직접 연결하며 터널이 준비되지 않아도 연결합니다. Genius에 실제 IP와 찾는 곡이 드러납니다. Spotify 자체 트래픽을 포함한 다른 요청은 기존 터널 보호를 유지합니다. 새 요청부터 즉시 적용됩니다.";
+"settings.wireguard.lyrics_all_footer" = "Vitrine이 등록된 HTTPS 가사 제공자 호스트로 보내는 자체 가사 요청만 직접 연결하며 터널이 준비되지 않아도 연결합니다. 해당 사이트에 실제 IP와 찾는 곡이 드러납니다. Spotify 자체 트래픽을 포함한 다른 요청은 기존 터널 보호를 유지합니다. 새 요청부터 즉시 적용됩니다.";
+"settings.search.wireguard.keywords" = "가사 요청 Genius 지니어스 직접 차단 소스 터널 프록시 VPN";
 "settings.wireguard.cancel" = "취소";
 "settings.wireguard.check_connection" = "연결 진단 실행 (DNS · HTTPS · 206)";
 "settings.wireguard.check_copy" = "진단 결과 복사";
@@ -3387,7 +3399,7 @@
 "settings.wireguard.footer_checks" = "국가 확인에 성공해도 음악 재생을 보장하지 않습니다. 곡 재생, 다음 곡 전환, 잠금 화면 재생도 테스트하고, 재생 오류 직후 진단 결과를 복사하세요.";
 "settings.wireguard.footer_profile" = "[Peer] 하나와 AllowedIPs 0.0.0.0/0을 사용하는 표준 WireGuard .conf 파일입니다. 개인 키는 이 기기의 키체인에만 저장되며 진단 결과에 표시되거나 복사되지 않습니다.";
 "settings.wireguard.footer_server" = "HTTP와 HTTPS는 CONNECT를 사용합니다. HTTP는 프록시 인증 정보를 암호화하지 않고 보내므로 HTTPS를 사용하세요. HTTPS는 프록시 인증서를 검증합니다. 인증 정보는 연결 유형, 서버, 포트, 사용자에 연결되며 이 항목을 변경하면 삭제됩니다.";
-"settings.wireguard.footer_tunnel" = "검사한 Spotify 경로를 터널 또는 프록시로 보내며, 사용할 수 없으면 보호 장치가 설치된 경로를 차단합니다. 모든 유출을 막거나 기기 전체를 보호하는 VPN이 아닙니다. 백그라운드 세션, 웹 로그인, AVURLAsset, 초기화 전 통신, 로컬 네트워크 예외는 보호하지 않습니다. WireGuard 없이 빌드하면 이전에 켰더라도 보호가 해제됩니다. 변경 후 앱을 다시 시작하세요.";
+"settings.wireguard.footer_tunnel" = "검사한 Spotify 경로를 터널 또는 프록시로 보내며, 사용할 수 없으면 보호 장치가 설치된 경로를 차단합니다. 모든 유출을 막거나 기기 전체를 보호하는 VPN이 아닙니다. 백그라운드 세션, 웹 로그인, AVURLAsset, 초기화 전 통신, 로컬 네트워크 예외는 보호하지 않습니다. WireGuard 없이 빌드하면 이전에 켰더라도 보호가 해제됩니다. 연결 또는 사용 여부를 바꾸면 앱을 다시 시작하세요. 가사 경로 변경은 즉시 적용됩니다.";
 "settings.wireguard.guards_installed" = "검사한 경로의 보호 장치 설치됨";
 "settings.wireguard.guards_incomplete" = "보호 장치 설치 미완료 — 보호 사용 불가";
 "settings.wireguard.handshake_ago" = "%lld초 전 핸드셰이크";

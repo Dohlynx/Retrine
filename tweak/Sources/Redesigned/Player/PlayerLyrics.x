@@ -33,6 +33,7 @@
 // the landscape screen of PlayerLandscape.x never goes up (iPhone only), so a turn only lays the columns out again.
 #import <UIKit/UIGestureRecognizerSubclass.h>
 #import "Core/SGCore.h"
+#import "Shared/LyricsSources/LyricsSources.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Redesigned/Lyrics/SGRKaraokeView.h"
 #import "Redesigned/Lyrics/SGRSingButton.h"
@@ -474,7 +475,7 @@ static void placeTitleRow(SGRLyricsLayout l) {
 
 BOOL SGRPlayerLyricsAvailable(void) {
     NSString *track = SGKaraokePlayingTrack();
-    return track != nil && SGKaraokeLinesForTrack(track) != nil;
+    return track != nil && (SGKaraokeLinesForTrack(track) != nil || SGLyricsLoadFailed(track));
 }
 
 BOOL SGRPlayerLyricsOpen(void) {

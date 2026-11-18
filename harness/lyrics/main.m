@@ -26,6 +26,7 @@
 //   -seekLag S     the player reports a seek S seconds after it is asked for (stubs.m)
 //   -check 1       checks the view's fixes (see runChecks), prints PASS and FAIL lines and exits nonzero
 //                  if any failed; run it with -song duet -at 20000 -gemini 1 -geminiDelay 1 -seekLag 0.4
+//   -failureCheck 1 checks absence, the retry action and rendered recovery with a stubbed source
 //   -translationCheck 1 asserts the menu's translations (translation-check.m) and quits with the number of failures
 // and the lyrics' own settings by their keys: -spotifyglass.lyricsSimulateWords 1 (sweep line timed
 // lines on the estimate), -spotifyglass.redesign.lyricsPronunciation 1,
@@ -265,7 +266,21 @@ static int sg_failures;
 static void expect(BOOL ok, NSString *what) {
     printf("%s %s\n", ok ? "PASS" : "FAIL", what.UTF8String);
     fflush(stdout);
-    if (!ok) sg_failures++;
+    if (!ok) {
+        sg_failures++;
+        HARNESS_FAIL(@"%@", what);
+    }
+}
+
+static UIAction *findAction(UIMenu *menu, NSString *title) {
+    for (UIMenuElement *item in menu.children) {
+        if ([item isKindOfClass:UIAction.class] && [item.title isEqual:title]) return (UIAction *)item;
+        if ([item isKindOfClass:UIMenu.class]) {
+            UIAction *found = findAction((UIMenu *)item, title);
+            if (found) return found;
+        }
+    }
+    return nil;
 }
 
 static id findView(UIView *root, Class cls) {
@@ -508,15 +523,11 @@ static void runChecks(SGRKaraokeView *karaoke, UIView *host) {
     expect(micGlass.effect && extrasGlass.effect && extras.alpha == 1 && mic.userInteractionEnabled, @"shown again, all of it is back");
 
     // Gemini: the item says where the lyrics go, a spinner while it works and no second request.
-    UIAction *gemini = nil;
-    for (UIMenuElement *item in extras.menu.children) {
-        if ([item.title isEqualToString:@"Translate with Gemini"]) gemini = (UIAction *)item;
-    }
+    UIAction *gemini = findAction(extras.menu, @"Translate with Gemini");
     expect(gemini.subtitle.length > 0, [NSString stringWithFormat:@"the Gemini item says: %@", gemini.subtitle]);
     // The item's own handler, as a tap runs it: UIAction has no public way to run one.
     ((UIActionHandler)[gemini valueForKey:@"handler"])(gemini);
-    BOOL offered = NO;
-    for (UIMenuElement *item in extras.menu.children) offered |= [item.title isEqualToString:@"Translate with Gemini"];
+    BOOL offered = findAction(extras.menu, @"Translate with Gemini") != nil;
     expect(extras.configuration.showsActivityIndicator && !offered, @"while Gemini works the button spins and the item is gone");
     after([NSUserDefaults.standardUserDefaults doubleForKey:@"geminiDelay"] + 0.5, ^{
         expect(!extras.configuration.showsActivityIndicator, @"once it answers the spinner is gone");
@@ -536,6 +547,67 @@ static void runChecks(SGRKaraokeView *karaoke, UIView *host) {
 }
 
 #pragma mark - the app
+
+static NSArray *failureCheckLines(NSString *text) {
+    SGKaraokeWord *word = [SGKaraokeWord new];
+    word.text = text; word.start = 0; word.end = 60000;
+    SGKaraokeLine *line = [SGKaraokeLine new];
+    line.start = 0; line.end = 60000; line.words = @[word]; line.timing = SGKaraokeTimingWords;
+    return @[line];
+}
+
+static void checkFailureUI(SGRKaraokeView *view) {
+    extern BOOL SGHarnessLoadFailed;
+    extern void (^SGHarnessRetryLyrics)(NSString *);
+    SGKaraokeKeepLines(@"harness", nil);
+    __block NSUInteger phase = 0;
+    __block BOOL retried = NO;
+    SGHarnessRetryLyrics = ^(NSString *track) {
+        expect([track isEqual:@"harness"], @"retry uses the displayed track");
+        retried = YES;
+        SGHarnessLoadFailed = NO;
+        SGKaraokeKeepLines(track, failureCheckLines(@"Recovered"));
+    };
+    NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + 5;
+    [NSTimer scheduledTimerWithTimeInterval:.05 repeats:YES block:^(NSTimer *timer) {
+        NSMutableArray<UIView *> *pending = [NSMutableArray arrayWithObject:view];
+        UIButton *retry = nil;
+        BOOL recovered = NO, replaced = NO;
+        while (pending.count) {
+            UIView *child = pending.lastObject;
+            [pending removeLastObject];
+            [pending addObjectsFromArray:child.subviews];
+            if ([child isKindOfClass:UIButton.class] &&
+                [[(UIButton *)child titleForState:UIControlStateNormal] isEqual:@"Couldn't load lyrics · Retry"])
+                retry = (UIButton *)child;
+            if (!child.hidden && [child.accessibilityLabel isEqual:@"Recovered"]) recovered = YES;
+            if (!child.hidden && [child.accessibilityLabel isEqual:@"Authoritative"]) replaced = YES;
+        }
+        if (phase == 0 && view.hidden) {
+            expect(retry.hidden, @"genuine absence has no failure action");
+            SGHarnessLoadFailed = YES;
+            phase = 1;
+        } else if (phase == 1 && !view.hidden && retry && !retry.hidden) {
+            expect(retry.enabled, @"failed lookup offers an enabled retry");
+            [retry sendActionsForControlEvents:UIControlEventTouchUpInside];
+            phase = 2;
+        } else if (phase == 2 && retried && retry.hidden && !view.hidden && recovered) {
+            SGKaraokeKeepLines(@"harness", failureCheckLines(@"Authoritative"));
+            phase = 3;
+        } else if (phase == 3 && replaced) {
+            [timer invalidate];
+            SGHarnessRetryLyrics = nil;
+            if (sg_failures) HARNESS_FAIL(@"%d lyrics failure UI checks failed", sg_failures);
+            puts("lyrics failure UI: absence, retry action, recovery and same-timing authoritative replacement passed");
+            fflush(stdout);
+            exit(0);
+        }
+        if (NSProcessInfo.processInfo.systemUptime >= deadline) {
+            [timer invalidate];
+            HARNESS_FAIL(@"lyrics failure UI did not reach rendered recovery (phase %lu)", (unsigned long)phase);
+        }
+    }];
+}
 
 @interface SGHarnessDelegate : UIResponder <UIApplicationDelegate>
 @property (nonatomic, strong) UIWindow *window;
@@ -599,6 +671,7 @@ static void runChecks(SGRKaraokeView *karaoke, UIView *host) {
     }];
     self.window.rootViewController = root;
     [self.window makeKeyAndVisible];
+    if ([args boolForKey:@"failureCheck"]) { checkFailureUI(karaoke); return YES; }
     if ([args boolForKey:@"check"]) after(2, ^{ runChecks(karaoke, host); });
     if ([args objectForKey:@"translateIn"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)([args doubleForKey:@"translateIn"] * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{

@@ -62,11 +62,15 @@ static NSCache<NSString *, id> *sg_isrcs;
 
 // `done` gets the ISRC, or nil, on the main queue. The headers are read again for every try: a refused one
 // may have expired, and Spotify's next request of its own brings a fresh one. They are never logged.
-static void askSpotify(NSString *uri, NSUInteger triesLeft, BOOL failed, void (^done)(NSString *isrc, BOOL failed)) {
-    SGSpotifyMetadataRequest(SGSpotifyExtendedMetadataPath, SGHapticTrackRequest(uri), ^(NSData *data, NSInteger status, NSError *error) {
+static dispatch_block_t askSpotify(NSString *uri, NSUInteger triesLeft, BOOL failed, void (^done)(NSString *isrc, BOOL failed)) {
+    __block BOOL cancelled = NO;
+    __block dispatch_block_t cancelChild;
+    cancelChild = SGSpotifyMetadataRequest(SGSpotifyExtendedMetadataPath, SGHapticTrackRequest(uri), ^(NSData *data, NSInteger status, NSError *error) {
             BOOL answered = NO;
             NSString *isrc = status == 200 ? SGHapticISRCInReply(data, uri, &answered) : nil;
             dispatch_async(dispatch_get_main_queue(), ^{
+                cancelChild = nil;
+                if (cancelled) return;
                 if (answered) {
                     [sg_isrcs setObject:isrc ?: (id)NSNull.null forKey:uri];
                     done(isrc, failed);
@@ -79,23 +83,33 @@ static void askSpotify(NSString *uri, NSUInteger triesLeft, BOOL failed, void (^
                     return;
                 }
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kSpotifyRetryAfter * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    askSpotify(uri, triesLeft - 1, failed || error != nil || status == 429 || status >= 500, done);
+                    if (!cancelled) cancelChild = askSpotify(uri, triesLeft - 1,
+                        failed || error != nil || status == 429 || status >= 500, done);
                 });
             });
     });
+    return ^{
+        void (^cancel)(void) = ^{
+            cancelled = YES;
+            if (cancelChild) cancelChild();
+            cancelChild = nil;
+        };
+        if (NSThread.isMainThread) cancel();
+        else dispatch_async(dispatch_get_main_queue(), cancel);
+    };
 }
 
 void SGSpotifyISRC(NSString *uri, NSUInteger tries, void (^done)(NSString *isrc)) {
     SGSpotifyISRCWithOutcome(uri, tries, ^(NSString *isrc, BOOL failed) { done(isrc); });
 }
 
-void SGSpotifyISRCWithOutcome(NSString *uri, NSUInteger tries, void (^done)(NSString *isrc, BOOL failed)) {
+dispatch_block_t SGSpotifyISRCWithOutcome(NSString *uri, NSUInteger tries, void (^done)(NSString *isrc, BOOL failed)) {
     id kept = [sg_isrcs objectForKey:uri];
     if (kept) {
         done(kept == NSNull.null ? nil : kept, NO);
-        return;
+        return ^{};
     }
-    askSpotify(uri, MAX(tries, 1), NO, done);
+    return askSpotify(uri, MAX(tries, 1), NO, done);
 }
 
 #pragma mark - iOS

@@ -195,8 +195,9 @@ static UIViewController *modSettingsPage(void) {
                 SGL(@"settings.search.listening_stats.keywords", @"statistics history top songs streaks charts")),
     ]];
 #if SG_WIREGUARD
-    [features addObject:pageRow(SGL(@"settings.wireguard.title", @"In-app WireGuard / Proxy"), @"network", UIColor.systemTealColor,
-                               ^UIViewController *{ return [SGWGSettingsController new]; })];
+    [features addObject:foundBy(pageRow(SGL(@"settings.wireguard.title", @"In-app WireGuard / Proxy"), @"network", UIColor.systemTealColor,
+                               ^UIViewController *{ return [SGWGSettingsController new]; }), @"wireguard",
+                               SGL(@"settings.search.wireguard.keywords", @"lyrics requests Genius direct blocked sources tunnel proxy VPN"))];
 #endif
     [sections addObject:SGSection(nil, features)];
 
