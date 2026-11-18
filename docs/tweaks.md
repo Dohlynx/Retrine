@@ -1423,9 +1423,15 @@ Redesigned:
                   activation or the escape gesture, answering whether it was sent, and reads the arrow's words. An
                   arrow with no such action stays as Spotify's, on glass as Header glass says, and the grabber is only
                   drawn. A swipe down still closes the player (PlayerHeader.x). The progress bar
-                  and the volume row are translucent as the Music app's: the fill a light white the background shows
-                  through, whole white while scrubbing, the track dimmer, both more opaque under Increase Contrast
-                  (SGRPlayerBarFill, SGRPlayerBarTrack). Its ⋯, beside the title and artist where the add button was
+                  and the volume row are drawn the one way, the Music app's, on every iOS: default-style sliders with an
+                  empty thumb whose tracks are 7 pt capsule images (SGRPlayerBarImage, Spotify's track height), so the
+                  fill ends square inside the round track. They are translucent: the fill a light white the background
+                  shows through, the track dimmer, both more opaque under Increase Contrast (SGRPlayerBarFill,
+                  SGRPlayerBarTrack). A finger dragging either thickens its track 1.75 times, to 12 pt, about its middle
+                  (SGRPlayerBarDragHeight) and lights the fill whole white: the progress bar's through its track rect,
+                  the volume's through taller images (PlayerVolume.m). The volume's slider tracks a drag from its fill's
+                  end; a sideways drag starting anywhere else on its row moves the volume by the finger's distance, as
+                  iOS 26's thumbless slider did, and a tap there moves nothing. Its ⋯, beside the title and artist where the add button was
                   (PlayerMenu.m), opens the system
                   menu (ContextMenu/), Spotify's rows with the add button and X first and then Speed, Pitch & Reverb, which opens the sliders, Pitch
                   follows speed and Keep for This Song in a popover from the ⋯ (SpeedPitchMenu.x, Shared/Player), then Audio effects, which

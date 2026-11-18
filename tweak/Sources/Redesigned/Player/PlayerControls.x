@@ -646,7 +646,7 @@ static void watchSlider(UIView *host) {
 // white and step down with it, and all of it goes back when the finger lifts. The track grows through the slider's
 // own track rect, about its middle, so the thumb and the place a tap seeks to stay where they were; only a real drag
 // does it, never the drag a tap to seek plays to the slider (seekTo sends events, it does not track).
-static const CGFloat kScrubTrackGrow = 1.75, kScrubTimeDrop = 3;
+static const CGFloat kScrubTimeDrop = 3;
 // The Music app keeps its time row clear of the bar: the times, and the audio quality badge between them, stand this
 // much lower than Spotify lays them out, by a translation of theirs, so Spotify's layout stays underneath.
 static const CGFloat kTimesDrop = 8;
@@ -701,16 +701,21 @@ UIColor *SGRPlayerBarTrack(void) {
     return [UIColor colorWithWhite:1 alpha:SGRIncreaseContrast() ? kBarTrackContrastAlpha : kBarTrackAlpha];
 }
 
-// A track image in `color` at the size, scale and caps of Spotify's, a capsule as Spotify's is (its own color, opaque
-// or not, is not kept).
-static UIImage *recolored(UIImage *image, UIColor *color) {
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:image.size format:image.imageRendererFormat];
+// How much a finger dragging a bar thickens its track; the stretched middle the caps leave a track image.
+static const CGFloat kBarDragGrow = 1.75, kBarStretch = 1;
+
+UIImage *SGRPlayerBarImage(UIColor *color, CGFloat height) {
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(height, height)];
     UIImage *drawn = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        CGRect rect = {CGPointZero, image.size};
         [color setFill];
-        [[UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:MIN(rect.size.width, rect.size.height) / 2] fill];
+        [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, height, height) cornerRadius:height / 2] fill];
     }];
-    return [drawn resizableImageWithCapInsets:image.capInsets resizingMode:image.resizingMode];
+    CGFloat cap = floor((height - kBarStretch) / 2);
+    return [drawn resizableImageWithCapInsets:UIEdgeInsetsMake(0, cap, 0, cap)];
+}
+
+CGFloat SGRPlayerBarDragHeight(CGFloat height) {
+    return round(height * kBarDragGrow);
 }
 
 static char kBarKey, kBarMinKey, kBarMaxKey;
@@ -743,7 +748,7 @@ static void colorTrack(UISlider *slider, BOOL minimum, UIColor *color) {
     if (shown == track.drawn && [track.color isEqual:color]) return;
     if (shown != track.drawn) track.spotify = shown;
     track.color = color;
-    track.drawn = recolored(track.spotify, color);
+    track.drawn = SGRPlayerBarImage(color, track.spotify.size.height);
     if (minimum) [slider setMinimumTrackImage:track.drawn forState:UIControlStateNormal];
     else [slider setMaximumTrackImage:track.drawn forState:UIControlStateNormal];
 }
@@ -802,7 +807,7 @@ static void keepScrubLook(UIView *host) {
 - (CGRect)trackRectForBounds:(CGRect)bounds {
     CGRect track = %orig;
     if ((UISlider *)self != sg_scrubSlider || track.size.height <= 0) return track;
-    CGFloat height = round(track.size.height * kScrubTrackGrow);
+    CGFloat height = SGRPlayerBarDragHeight(track.size.height);
     return CGRectMake(track.origin.x, CGRectGetMidY(track) - height / 2, track.size.width, height);
 }
 

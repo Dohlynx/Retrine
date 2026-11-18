@@ -131,8 +131,18 @@ void SGInstallVolumeFeedback(UISlider *slider) {}
 #pragma mark - Redesigned/Player/PlayerConnectVolume.x
 
 NSNotificationName const SGRConnectVolumeChangedNotification = @"harness.connectVolumeChanged";
-BOOL SGRConnectReadVolume(double *value) { return NO; }
-BOOL SGRConnectSetVolume(double value) { return NO; }
+// The volume row shows its Connect slider while a scenario sets this (main.m's volumebar), and the device takes what
+// the slider sends it; it starts at half.
+BOOL SGRHarnessConnectVolume;
+double SGRHarnessConnectLevel = 0.5;
+BOOL SGRConnectReadVolume(double *value) {
+    if (SGRHarnessConnectVolume && value) *value = SGRHarnessConnectLevel;
+    return SGRHarnessConnectVolume;
+}
+BOOL SGRConnectSetVolume(double value) {
+    if (SGRHarnessConnectVolume) SGRHarnessConnectLevel = value;
+    return SGRHarnessConnectVolume;
+}
 
 #pragma mark - Shared/LyricsSources
 

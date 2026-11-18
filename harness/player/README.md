@@ -236,6 +236,20 @@ come late, out of order, or not at all.
   Spotify's High), and the native look's badge as it was (Spotify's word, centered on the times). The log ends with
   `timerow checks: n of 10 right -- PASS` or `FAIL`; on the sources before the change it read 3 of 10.
 
+- `volumebar` is the volume row (`PlayerVolume.m`) beside the progress bar as the redesign draws it (the `timerow`
+  mock), the Music app's two bars alike. On the row's Connect slider at half (the simulator does not draw
+  MPVolumeView's) it checks the track 7pt as the progress bar's, the same fill and track colors, the fill's end square
+  (its last columns as tall as its middle, drawn at 2x) inside round track ends, left to right and right to left, and
+  a finger held on the fill's end (`../tabbar/touch.m`) thickening the track to 12pt with the fill lit, as a scrub does
+  the progress bar's, and back after; MPVolumeView must hold the same track images and an empty thumb. Drags
+  (`../tabbar/touch.m`) from the track's far end, left to right and right to left, move the volume by the finger's
+  distance over the track (half to a quarter, and back), thickening it too; a tap there moves nothing, and a drag of
+  the fill's end moves it once, with the finger. Halfway through a drag, a level from elsewhere (the Connect device's
+  report; a hardware button's, on a stand-in for MPVolumeView's slider) stays, the drag going on from it, while a late
+  report of the drag's own starting level changes nothing; and the Connect device going mid-drag leaves this iPhone's
+  volume where it was and ends the drag's look. Run it with `python3 harness/player/ui-check.py volumebar`; the log ends
+  with `volumebar checks: n of 17 right -- PASS` or `FAIL`.
+
 - `seek` is the tap around the progress bar (`PlayerControls.x`): a mock slider with Spotify's identifier and
   the two times beside it. It checks that a tap counts below the bar and up to 12 pt past its ends, not on the
   thumb or the times, that the ends of the thumb's travel are the song's start and end, that a tap is played

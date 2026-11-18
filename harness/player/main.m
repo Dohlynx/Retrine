@@ -57,6 +57,7 @@
 // HARNESS_VOLUME=0 leaves out the volume row the phone has (trees/clean/player/01.txt has none).
 #import <AVFoundation/AVFoundation.h>
 #import <CoreImage/CoreImage.h>
+#import <MediaPlayer/MediaPlayer.h>
 #import <UIKit/UIKit.h>
 #import "../harness-fail.h"
 #import <objc/runtime.h>
@@ -64,6 +65,7 @@
 #import <stdlib.h>
 #import "Shared/Lyrics/Lyrics.h"
 #import "Redesigned/Player/Player.h"
+#import "Redesigned/Player/PlayerConnectVolume.h"
 #import "Redesigned/Kit/SGRGlyph.h"
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
 #import "Redesigned/Kit/SGRBridges.h"
@@ -104,6 +106,7 @@ void SGRHarnessClearTrack(void);
 // ../tabbar/touch.m: a finger's touches, through UIKit's own recognizers.
 extern void SGHarnessHold(UIWindow *window, CGPoint point, NSTimeInterval seconds);
 extern void SGHarnessTap(UIWindow *window, CGPoint point);
+extern void SGHarnessDrag(UIWindow *window, CGPoint from, CGPoint to, NSTimeInterval seconds);
 // stubs.m: the commands sent to the player.
 NSUInteger SGRHarnessPlayerCommands(void);
 // stubs.m: the last spotify: URI the mod asked Spotify's link dispatcher to open.
@@ -952,6 +955,7 @@ static void loadLyrics(void) {
     else if ([scenario() isEqualToString:@"preview"]) [self runPreviewChecks];
     else if ([scenario() isEqualToString:@"seek"]) [self runSeekChecks];
     else if ([scenario() isEqualToString:@"timerow"]) [self performSelector:@selector(runTimeRowChecks) withObject:nil afterDelay:1];
+    else if ([scenario() isEqualToString:@"volumebar"]) [self performSelector:@selector(runVolumeBarChecks) withObject:nil afterDelay:1];
     else if ([scenario() isEqualToString:@"visualiser"]) [self runVisualiserChecks];
     else if ([scenario() isEqualToString:@"autoviz"]) [self runAutoVisualiserChecks];
     else if ([scenario() isEqualToString:@"shuffle"]) [self runShuffleChecks];
@@ -3609,6 +3613,288 @@ static UISlider *spotifyBar(UIView *unit, NSArray<UILabel *> **labels) {
               self->_failures ? @"FAIL" : @"PASS");
         exit(self->_failures ? 1 : 0);
     });
+}
+
+#pragma mark - the volume bar
+
+// How many pixel rows of each column of `view`, drawn at 2x, are more opaque than `alpha`.
+static NSArray<NSNumber *> *columnHeights(UIView *view, CGFloat alpha) {
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+    format.scale = 2;
+    format.opaque = NO;
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:view.bounds.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [view drawViewHierarchyInRect:view.bounds afterScreenUpdates:YES];
+    }];
+    size_t width = CGImageGetWidth(image.CGImage), height = CGImageGetHeight(image.CGImage);
+    uint8_t *pixels = calloc(width * height * 4, 1);
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels, width, height, 8, width * 4, space, kCGImageAlphaPremultipliedLast);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image.CGImage);
+    NSMutableArray<NSNumber *> *columns = [NSMutableArray arrayWithCapacity:width];
+    for (size_t x = 0; x < width; x++) {
+        NSUInteger rows = 0;
+        for (size_t y = 0; y < height; y++) rows += pixels[(y * width + x) * 4 + 3] > alpha * 255;
+        [columns addObject:@(rows)];
+    }
+    CGContextRelease(context);
+    CGColorSpaceRelease(space);
+    free(pixels);
+    return columns;
+}
+
+// The first and last columns with any rows.
+static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
+    NSUInteger first = NSNotFound, last = 0;
+    for (NSUInteger x = 0; x < columns.count; x++) {
+        if (!columns[x].unsignedIntegerValue) continue;
+        if (first == NSNotFound) first = x;
+        last = x;
+    }
+    return first == NSNotFound ? NSMakeRange(NSNotFound, 0) : NSMakeRange(first, last - first + 1);
+}
+
+// The volume row (PlayerVolume.m) beside the progress bar as the redesign draws it (a mock of Spotify's, as timerow's),
+// the Music app's two bars alike: the same track, 7pt as Spotify's images, the same colors, the fill's end square at
+// the value inside round track ends, also right to left, and a drag thickening it to 12pt (7 x 1.75) with the fill
+// lit, as a scrub does the progress bar, and back after; a drag from the track's far end moving the volume by the
+// finger's distance, also right to left, a tap there moving nothing, and a drag of the fill's end moving it once.
+// The Connect slider is the one the simulator draws (it does
+// not draw MPVolumeView's), so MPVolumeView is checked for the same images and empty thumb.
+- (void)runVolumeBarChecks {
+    UIViewController *durationUnit = _units[2];
+    UIView *unit = durationUnit.view;
+    NSArray<UILabel *> *labels;
+    UISlider *bar = spotifyBar(unit, &labels);
+    [durationUnit viewDidLayoutSubviews];
+    [unit layoutIfNeeded];
+    [bar layoutIfNeeded];
+
+    extern BOOL SGRHarnessConnectVolume;
+    SGRHarnessConnectVolume = YES;
+    UIView *row = [NSClassFromString(@"SGRVolumeRow") new];
+    UIView *host = self.window.rootViewController.view;
+    row.frame = CGRectMake(16, CGRectGetMaxY(host.bounds) - 160, host.bounds.size.width - 32, 34);
+    [host addSubview:row];
+    [row layoutIfNeeded];
+    UISlider *remote = [row valueForKey:@"remote"];
+    MPVolumeView *volume = [row valueForKey:@"volume"];
+    [remote layoutIfNeeded];
+
+    CGFloat barTrack = [bar trackRectForBounds:bar.bounds].size.height, volumeTrack = [remote trackRectForBounds:remote.bounds].size.height;
+    [self expect:!remote.hidden && remote.value == 0.5f step:@"the Connect slider shows at half" detail:[NSString stringWithFormat:@"hidden %d, value %.2f", remote.hidden, remote.value]];
+    [self expect:barTrack == 7 && volumeTrack == 7 step:@"the track as the progress bar's, 7pt"
+          detail:[NSString stringWithFormat:@"volume %.1f pt, progress bar %.1f pt", volumeTrack, barTrack]];
+    CGFloat fill = middleAlpha([remote minimumTrackImageForState:UIControlStateNormal]), rest = middleAlpha([remote maximumTrackImageForState:UIControlStateNormal]);
+    CGFloat barFill = middleAlpha([bar minimumTrackImageForState:UIControlStateNormal]), barRest = middleAlpha([bar maximumTrackImageForState:UIControlStateNormal]);
+    [self expect:fill == barFill && rest == barRest && fill > 0.5 && fill < 0.7 step:@"the colors as the progress bar's"
+          detail:[NSString stringWithFormat:@"volume fill %.2f track %.2f, progress bar fill %.2f track %.2f", fill, rest, barFill, barRest]];
+    UIImage *volumeFill = [volume minimumVolumeSliderImageForState:UIControlStateNormal], *volumeRest = [volume maximumVolumeSliderImageForState:UIControlStateNormal];
+    UIImage *thumb = [volume volumeThumbImageForState:UIControlStateNormal];
+    [self expect:volumeFill.size.height == 7 && volumeRest.size.height == 7 && middleAlpha(volumeFill) == barFill && middleAlpha(volumeRest) == barRest
+                 && UIEdgeInsetsEqualToEdgeInsets(volumeFill.capInsets, [remote minimumTrackImageForState:UIControlStateNormal].capInsets)
+                 && thumb && CGSizeEqualToSize(thumb.size, CGSizeZero)
+            step:@"MPVolumeView given the same tracks and an empty thumb"
+          detail:[NSString stringWithFormat:@"fill %@ caps %@, track %@, thumb %@", volumeFill ? NSStringFromCGSize(volumeFill.size) : @"none",
+                  NSStringFromUIEdgeInsets(volumeFill.capInsets), volumeRest ? NSStringFromCGSize(volumeRest.size) : @"none",
+                  thumb ? NSStringFromCGSize(thumb.size) : @"none"]];
+
+    // The fill's end (its last three columns) as tall as its middle, 14 rows at 2x; the track's outermost columns well
+    // shorter than its middle. `rtl` puts the fill's end at its left.
+    void (^shape)(NSString *, BOOL) = ^(NSString *name, BOOL rtl) {
+        NSArray<NSNumber *> *lit = columnHeights(remote, 0.45), *all = columnHeights(remote, 0.04);
+        NSRange fillColumns = drawnColumns(lit), trackColumns = drawnColumns(all);
+        if (fillColumns.location == NSNotFound || trackColumns.location == NSNotFound) {
+            [self expect:NO step:name detail:@"nothing drawn"];
+            return;
+        }
+        NSUInteger middle = lit[NSMaxRange(fillColumns) - fillColumns.length / 2 - 1].unsignedIntegerValue;
+        NSUInteger end = rtl ? fillColumns.location : NSMaxRange(fillColumns) - 1;
+        NSUInteger shortest = NSUIntegerMax;
+        for (NSInteger step = 0; step < 3; step++) shortest = MIN(shortest, lit[rtl ? end + step : end - step].unsignedIntegerValue);
+        NSUInteger trackMiddle = all[NSMaxRange(trackColumns) - trackColumns.length / 2 - 1].unsignedIntegerValue;
+        NSUInteger left = all[trackColumns.location].unsignedIntegerValue, right = all[NSMaxRange(trackColumns) - 1].unsignedIntegerValue;
+        [self expect:middle == 14 && shortest == middle && trackMiddle == 14 && left + 4 <= trackMiddle && right + 4 <= trackMiddle step:name
+              detail:[NSString stringWithFormat:@"fill middle %lu rows, its end's shortest of 3 columns %lu (want both 14); track middle %lu, ends %lu and %lu (want 4 or more under it)",
+                      (unsigned long)middle, (unsigned long)shortest, (unsigned long)trackMiddle, (unsigned long)left, (unsigned long)right]];
+    };
+    shape(@"the fill's end square, the track's ends round", NO);
+    remote.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
+    [remote setNeedsLayout];
+    [remote layoutIfNeeded];
+    shape(@"right to left too", YES);
+    remote.semanticContentAttribute = UISemanticContentAttributeUnspecified;
+    [remote setNeedsLayout];
+    [remote layoutIfNeeded];
+
+    // A finger held on the fill's end (the empty thumb), as a finger scrubs the progress bar.
+    [bar beginTrackingWithTouch:[UITouch new] withEvent:nil];
+    [bar setNeedsLayout];
+    [bar layoutIfNeeded];
+    CGFloat barScrub = [bar trackRectForBounds:bar.bounds].size.height;
+    [bar endTrackingWithTouch:[UITouch new] withEvent:nil];
+    CGRect thumbRect = [remote thumbRectForBounds:remote.bounds trackRect:[remote trackRectForBounds:remote.bounds] value:remote.value];
+    SGHarnessHold(self.window, [remote convertPoint:CGPointMake(CGRectGetMidX(thumbRect), CGRectGetMidY(remote.bounds)) toView:self.window], 0.8);
+    after(0.5, ^{
+        CGFloat grown = [remote trackRectForBounds:remote.bounds].size.height;
+        CGFloat litFill = middleAlpha([remote minimumTrackImageForState:UIControlStateNormal]);
+        [self expect:remote.tracking && grown == 12 && barScrub == 12 && litFill > 0.95 step:@"a drag thickens it and lights the fill as a scrub does"
+              detail:[NSString stringWithFormat:@"tracking %d, volume %.1f pt, progress bar scrubbing %.1f pt (want 12), fill %.2f", remote.tracking, grown, barScrub, litFill]];
+    });
+    after(1.6, ^{
+        CGFloat back = [remote trackRectForBounds:remote.bounds].size.height;
+        CGFloat backFill = middleAlpha([remote minimumTrackImageForState:UIControlStateNormal]);
+        // The finger lifted where it went down: the value where it was, to the hold's fraction of a point.
+        [self expect:back == 7 && backFill == barFill && fabs(remote.value - 0.5) < 0.005 step:@"the drag over"
+              detail:[NSString stringWithFormat:@"%.1f pt, fill %.2f, value %.2f", back, backFill, remote.value]];
+    });
+
+    // Drags that start away from the fill's end move the volume by the finger's distance over the track, never to the
+    // finger; a tap there moves nothing. `edge` is a point 4pt inside the track's left or right end.
+    extern double SGRHarnessConnectLevel;
+    CGRect track = [remote trackRectForBounds:remote.bounds];
+    CGFloat quarter = track.size.width / 4;
+    CGPoint (^edge)(BOOL) = ^CGPoint(BOOL right) {
+        return [remote convertPoint:CGPointMake(right ? CGRectGetMaxX(track) - 4 : CGRectGetMinX(track) + 4, CGRectGetMidY(remote.bounds)) toView:self.window];
+    };
+    CGPoint (^by)(CGPoint, CGFloat) = ^CGPoint(CGPoint point, CGFloat dx) { return CGPointMake(point.x + dx, point.y); };
+    __block float tapped = 0;
+    after(1.8, ^{
+        SGHarnessDrag(self.window, edge(YES), by(edge(YES), -quarter), 0.4);
+    });
+    after(2.0, ^{
+        CGFloat grown = [remote trackRectForBounds:remote.bounds].size.height;
+        [self expect:grown == 12 && middleAlpha([remote minimumTrackImageForState:UIControlStateNormal]) > 0.95 step:@"a drag from the far end thickens it too"
+              detail:[NSString stringWithFormat:@"%.1f pt (want 12)", grown]];
+    });
+    after(2.6, ^{
+        [self expect:fabs(remote.value - 0.25) < 0.02 && fabs(SGRHarnessConnectLevel - remote.value) < 0.001
+                     && [remote trackRectForBounds:remote.bounds].size.height == 7
+                step:@"a drag from the far end a quarter left moves half to a quarter, the device too"
+              detail:[NSString stringWithFormat:@"value %.3f (want 0.25), device %.3f, track %.1f pt", remote.value, SGRHarnessConnectLevel,
+                      [remote trackRectForBounds:remote.bounds].size.height]];
+        // From a quarter whatever the drag before did, so this one is judged alone.
+        remote.value = 0.25;
+        SGRHarnessConnectLevel = 0.25;
+        remote.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
+        [remote setNeedsLayout];
+        [remote layoutIfNeeded];
+        SGHarnessDrag(self.window, edge(NO), by(edge(NO), -quarter), 0.4);
+    });
+    after(3.4, ^{
+        [self expect:fabs(remote.value - 0.5) < 0.02 step:@"right to left, a drag a quarter left from the far end turns it up a quarter"
+              detail:[NSString stringWithFormat:@"value %.3f (want 0.5)", remote.value]];
+        remote.semanticContentAttribute = UISemanticContentAttributeUnspecified;
+        [remote setNeedsLayout];
+        [remote layoutIfNeeded];
+        tapped = remote.value;
+        SGHarnessTap(self.window, edge(YES));
+    });
+    after(4.0, ^{
+        [self expect:remote.value == tapped && SGRHarnessConnectLevel == tapped step:@"a tap at the far end moves nothing"
+              detail:[NSString stringWithFormat:@"value %.4f, device %.4f (want %.4f)", remote.value, SGRHarnessConnectLevel, tapped]];
+        CGRect thumb = [remote thumbRectForBounds:remote.bounds trackRect:[remote trackRectForBounds:remote.bounds] value:remote.value];
+        CGPoint end = [remote convertPoint:CGPointMake(CGRectGetMidX(thumb), CGRectGetMidY(remote.bounds)) toView:self.window];
+        SGHarnessDrag(self.window, end, by(end, quarter * 0.8), 0.4);
+    });
+    after(4.8, ^{
+        [self expect:fabs(remote.value - (tapped + 0.2)) < 0.02 step:@"a drag of the fill's end a fifth right moves it once, with the finger"
+              detail:[NSString stringWithFormat:@"value %.3f (want %.3f)", remote.value, tapped + 0.2]];
+        [self volumeChangesDuringDrags:row remote:remote volume:volume];
+    });
+}
+
+// Changes from elsewhere during a drag of the row, each timed from its drag's start (after()'s leeway grows with the
+// delay, so the steps are not timed from the scenario's start). A drag goes a quarter of the track left in 0.6 s, and
+// the change comes 0.3 s in.
+- (void)volumeChangesDuringDrags:(UIView *)row remote:(UISlider *)remote volume:(MPVolumeView *)volume {
+    extern BOOL SGRHarnessConnectVolume;
+    extern double SGRHarnessConnectLevel;
+    // MPVolumeView's slider, which the simulator does not make: a stand-in in its place, showing the system volume.
+    UISlider *local = [[UISlider alloc] initWithFrame:volume.bounds];
+    [local setThumbImage:[UIImage new] forState:UIControlStateNormal];
+    [volume addSubview:local];
+    CGPoint (^far)(UISlider *) = ^CGPoint(UISlider *slider) {
+        CGRect track = [slider trackRectForBounds:slider.bounds];
+        return [slider convertPoint:CGPointMake(CGRectGetMaxX(track) - 4, CGRectGetMidY(slider.bounds)) toView:self.window];
+    };
+    void (^drag)(UISlider *) = ^(UISlider *slider) {
+        CGPoint from = far(slider);
+        SGHarnessDrag(self.window, from, CGPointMake(from.x - [slider trackRectForBounds:slider.bounds].size.width / 4, from.y), 0.6);
+    };
+    void (^connect)(BOOL, double) = ^(BOOL on, double level) {
+        SGRHarnessConnectVolume = on;
+        SGRHarnessConnectLevel = level;
+        [NSNotificationCenter.defaultCenter postNotificationName:SGRConnectVolumeChangedNotification object:nil];
+        [row layoutIfNeeded];
+    };
+    __block float before = 0;
+    // The Connect device reports late the level the drag began at, one of the drag's own: not a change, the drag ends a
+    // quarter down.
+    connect(YES, 0.5);
+    drag(remote);
+    after(0.3, ^{
+        before = remote.value;
+        connect(YES, 0.5);
+    });
+    after(1.1, ^{
+        [self expect:before < 0.49f && fabs(remote.value - 0.25) < 0.02 step:@"a late report of the drag's own level is not a change"
+              detail:[NSString stringWithFormat:@"%.3f when it came, %.3f after the drag (want 0.25)", before, remote.value]];
+        [self volumeChangeDuringDrag:remote local:local drag:drag connect:connect];
+    });
+}
+
+- (void)volumeChangeDuringDrag:(UISlider *)remote local:(UISlider *)local drag:(void (^)(UISlider *))drag connect:(void (^)(BOOL, double))connect {
+    extern double SGRHarnessConnectLevel;
+    __block float before = 0;
+    // The Connect device reports 0.9 (another app turned it up): the drag goes on from 0.9 by the rest of the finger's
+    // way, a quarter less what it had gone.
+    connect(YES, 0.5);
+    drag(remote);
+    after(0.3, ^{
+        before = remote.value;
+        connect(YES, 0.9);
+    });
+    after(1.1, ^{
+        float want = 0.9f - 0.25f - (before - 0.5f);
+        [self expect:before < 0.49f && fabs(remote.value - want) < 0.02 && fabs(SGRHarnessConnectLevel - remote.value) < 0.001
+                step:@"a Connect level reported during a drag stays, the drag going on from it"
+              detail:[NSString stringWithFormat:@"%.3f before the report, %.3f after the drag (want %.3f), device %.3f", before, remote.value, want, SGRHarnessConnectLevel]];
+        // The hardware buttons turn this iPhone up to 0.9, which MPVolumeView shows on its slider.
+        connect(NO, 0);
+        local.value = 0.5;
+        drag(local);
+        after(0.3, ^{
+            before = local.value;
+            local.value = 0.9;
+        });
+        after(1.1, ^{
+            float want = 0.9f - 0.25f - (before - 0.5f);
+            [self expect:remote.hidden && before < 0.49f && fabs(local.value - want) < 0.02
+                    step:@"a hardware button's level during a drag of this iPhone's slider stays, the drag going on from it"
+                  detail:[NSString stringWithFormat:@"%.3f before the press, %.3f after the drag (want %.3f)", before, local.value, want]];
+            // Quiet here, loud on the Connect device, which shows; halfway through a drag of its slider the device goes.
+            local.value = 0.1;
+            connect(YES, 0.8);
+            drag(remote);
+            after(0.3, ^{
+                before = remote.value;
+                connect(NO, 0);
+            });
+            after(1.1, ^{
+                CGFloat look = [remote trackRectForBounds:remote.bounds].size.height;
+                [self expect:remote.hidden && before < 0.79f && local.value == 0.1f && look == 7
+                        step:@"the Connect device gone during a drag: this iPhone's volume untouched, the drag over"
+                      detail:[NSString stringWithFormat:@"Connect %.3f when it went, this iPhone %.3f (want 0.100), Connect slider's track %.1f pt (want 7)",
+                              before, local.value, look]];
+                [self finishVolumeBar];
+            });
+        });
+    });
+}
+
+- (void)finishVolumeBar {
+    NSLog(@"[harness] volumebar checks: %lu of %lu right -- %@", (unsigned long)(_checks - _failures), (unsigned long)_checks, _failures ? @"FAIL" : @"PASS");
+    exit(_failures ? 1 : 0);
 }
 
 #pragma mark - tap to seek

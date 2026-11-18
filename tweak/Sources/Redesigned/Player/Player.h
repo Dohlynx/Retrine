@@ -225,6 +225,14 @@ BOOL SGRPlayerVolumeOn(void);
 // under Increase Contrast.
 UIColor *SGRPlayerBarFill(BOOL lit);
 UIColor *SGRPlayerBarTrack(void);
+// Both bars are drawn the one way, the Music app's: default-style sliders with an empty thumb, as Spotify's progress bar
+// is, whose tracks are capsule images (SGRPlayerBarImage) `height` tall in the bar's colors. Such a slider draws its fill
+// up to the thumb's middle and cuts it there, so the fill ends square inside the round track. Spotify's track images are
+// SGRPlayerBarHeight tall (trees/clean 01.txt:1907), and a finger dragging a bar grows its track to
+// SGRPlayerBarDragHeight about its middle.
+static const CGFloat SGRPlayerBarHeight = 7;
+UIImage *SGRPlayerBarImage(UIColor *color, CGFloat height);
+CGFloat SGRPlayerBarDragHeight(CGFloat height);
 // YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
 BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin, BOOL rhythm);
 
