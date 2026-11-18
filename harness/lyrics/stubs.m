@@ -359,4 +359,7 @@ NSNotificationName const SGLyricsWordTimingDidChangeNotification = @"spotifyglas
 #import "Redesigned/Lyrics/LyricCardPicker.h"
 @implementation SGRLyricCardLine
 @end
-void SGRPresentLyricCardPicker(NSArray<SGRLyricCardLine *> *lines, NSUInteger picked, BOOL pronunciation, NSString *trackID) {}
+void (^SGHarnessLyricCardPresented)(NSArray<SGRLyricCardLine *> *, NSUInteger);
+void SGRPresentLyricCardPicker(NSArray<SGRLyricCardLine *> *lines, NSUInteger picked, BOOL pronunciation, NSString *trackID) {
+    if (SGHarnessLyricCardPresented) SGHarnessLyricCardPresented(lines, picked);
+}

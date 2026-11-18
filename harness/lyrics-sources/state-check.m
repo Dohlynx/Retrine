@@ -522,6 +522,11 @@ static void checkCompletedBounds(void) {
         else done(nil);
     };
     __block BOOL activeEnded = NO;
+    // Cache pressure, not elapsed time, owns this scenario; slow CI must not expire the held invocation.
+    NSMutableDictionary *previousTimers = sg_virtualTimers;
+    NSTimeInterval previousSeconds = sg_virtualSeconds;
+    sg_virtualTimers = [NSMutableDictionary dictionary];
+    sg_virtualSeconds = 0;
     SGLyricsFetch(active, ^(SGLyricsResult *result) { activeEnded = YES; });
     pumpUntil(^BOOL { return held != nil; });
     NSMutableArray<NSString *> *tracks = [NSMutableArray array];
@@ -540,6 +545,8 @@ static void checkCompletedBounds(void) {
     pumpUntil(^BOOL { return answer != nil; });
     CHECK([answer.provider isEqual:@"Asked again"]);
     held(nil); CHECK(activeEnded);
+    sg_virtualTimers = previousTimers;
+    sg_virtualSeconds = previousSeconds;
     provider.ask = saved;
 
     BOOL oldOwn = sg_ownSources; sg_ownSources = NO;

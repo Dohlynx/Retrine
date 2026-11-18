@@ -1039,6 +1039,27 @@ static BOOL translationsDiffer(NSArray<SGKaraokeLine *> *before, NSArray<SGKarao
     return NO;
 }
 
+static BOOL samePresentedLine(SGKaraokeLine *a, SGKaraokeLine *b) {
+    if (a == b) return YES;
+    if (!a || !b || a.start != b.start || a.end != b.end || a.timing != b.timing ||
+        a.align != b.align || a.translationMade != b.translationMade || a.pronunciationMade != b.pronunciationMade ||
+        ![(a.translation ?: @"") isEqualToString:b.translation ?: @""] ||
+        ![(a.translationLanguage ?: @"") isEqualToString:b.translationLanguage ?: @""] ||
+        ![(a.note ?: @"") isEqualToString:b.note ?: @""] || a.words.count != b.words.count) return NO;
+    for (NSUInteger i = 0; i < a.words.count; i++) {
+        SGKaraokeWord *left = a.words[i], *right = b.words[i];
+        if (left.start != right.start || left.end != right.end || left.joined != right.joined ||
+            ![(left.text ?: @"") isEqualToString:right.text ?: @""]) return NO;
+    }
+    return samePresentedLine(a.backing, b.backing) && samePresentedLine(a.pronunciation, b.pronunciation);
+}
+
+static BOOL samePresentedLines(NSArray<SGKaraokeLine *> *a, NSArray<SGKaraokeLine *> *b) {
+    if (a.count != b.count) return NO;
+    for (NSUInteger i = 0; i < a.count; i++) if (!samePresentedLine(a[i], b[i])) return NO;
+    return YES;
+}
+
 static NSArray<NSNumber *> *topsOf(NSArray<SGKaraokeLine *> *lines, CGFloat width, SGRKaraokeStyle *style, CGFloat gap) {
     NSMutableDictionary *extras = [NSMutableDictionary dictionary];
     for (SGKaraokeLine *line in lines) {
@@ -1797,6 +1818,8 @@ typedef struct {
     CFTimeInterval _stirredAt;   // when something last set the page moving
     NSString *_track;
     NSArray<SGKaraokeLine *> *_lines;
+    // The keeper's last snapshot found equivalent to _lines, so tick compares a snapshot once, not every frame.
+    NSArray<SGKaraokeLine *> *_reconciled;
     // The song is placed from its lines' heights alone; views exist for the lines in and near sight.
     NSArray<NSNumber *> *_tops;   // where each line starts in the stack
     CGFloat _stackEnd;            // where the last line's gap ends: the credit's place
@@ -3677,8 +3700,12 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
         [self dropLines];
     }
     NSArray<SGKaraokeLine *> *kept = _lines && track ? [self linesFor:track] : nil;
-    if (kept && kept != _lines) {
-        if (kept.count == _lines.count && SGKaraokeLinesTiming(kept) == SGKaraokeLinesTiming(_lines)
+    if (kept && kept != _lines && kept != _reconciled) {
+        if (samePresentedLines(_lines, kept)) {
+            // Pending analysis, prepared extras and row actions belong to this snapshot's object identities.
+            _reconciled = kept;
+            [self creditTo:SGLyricsCreditFor(track)];
+        } else if (kept.count == _lines.count && SGKaraokeLinesTiming(kept) == SGKaraokeLinesTiming(_lines)
             && translationsDiffer(_lines, kept)) {
             // The keeper replaces provider translations on a target change. Adopt removals and
             // replacements through the same in-place restyle as the first community reply.

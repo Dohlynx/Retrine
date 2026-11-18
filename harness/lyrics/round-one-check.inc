@@ -2,8 +2,10 @@
 #import <NaturalLanguage/NaturalLanguage.h>
 #import "Shared/Lyrics/LyricsLanguage.h"
 #import "Shared/LyricsSources/LyricsSources.h"
+#import "Redesigned/Lyrics/LyricCardPicker.h"
 extern void (^SGHarnessDeepL)(NSArray<SGKaraokeLine *> *, SGHarnessDone);
 extern void (^SGHarnessOnDevice)(NSArray<NSString *> *, SGHarnessDone);
+extern void (^SGHarnessLyricCardPresented)(NSArray<SGRLyricCardLine *> *, NSUInteger);
 
 static atomic_bool languageOnMain, languageHoldNext, languageHeld, languageHoldTimeout;
 static atomic_uint languageCalls;
@@ -115,8 +117,12 @@ static void languageSnapshotChecks(UIWindow *window) {
     [root.view addSubview:view]; autoTick(view);
     check(extrasWait(^BOOL { return atomic_load(&languageHeld); }) && ![[view valueForKey:@"shown"] count],
           @"cold first presentation does not draw a provisional lyric style");
+    SGKaraokeKeepLines(SGHarnessPlayingTrack,
+        @[sungLine(0, @"I remember walking through the garden with you on a beautiful summer evening.")]);
+    autoTick(view);
     dispatch_semaphore_signal(languageRelease);
-    check(extrasWait(^BOOL { return [[view valueForKey:@"shown"] count] != 0; }), @"common-case lyrics render after analysis");
+    check(extrasWait(^BOOL { return [[view valueForKey:@"shown"] count] != 0; }),
+          @"equivalent replacement during pending language analysis still presents lyrics");
     UIScrollView *scroll = [view valueForKey:@"scroll"];
     NSDictionary *shownLines = [[view valueForKey:@"shown"] copy];
     NSArray *tops = [view valueForKey:@"tops"];
@@ -273,6 +279,56 @@ static void providerRevisionChecks(UIWindow *window) {
     pump(); // Let any incorrectly scheduled replacement layout reach the presented rows.
     check(firstRow() == unchangedRow && CGPointEqualToPoint(offset, scroll.contentOffset),
           @"unchanged provider translations preserve presented rows without another restyle");
+    check([unchangedRow accessibilityActivate] && SGKaraokePositionMs() == SGKaraokeDelayMs(),
+          @"preserved lyric row VoiceOver activation seeks after an equivalent replacement");
+    __block BOOL cardPresented = NO;
+    __block NSUInteger selectedCard = NSNotFound;
+    __block NSString *selectedText = nil;
+    SGHarnessLyricCardPresented = ^(NSArray<SGRLyricCardLine *> *cards, NSUInteger picked) {
+        cardPresented = YES;
+        selectedCard = picked;
+        selectedText = picked < cards.count ? cards[picked].text : nil;
+    };
+    BOOL shared = NO;
+    for (UIAccessibilityCustomAction *action in unchangedRow.accessibilityCustomActions) {
+        if ([action.name isEqual:@"Share as card"]) shared = action.actionHandler(action);
+    }
+    check(shared && extrasWait(^BOOL { return cardPresented; }) && selectedCard == 0 &&
+          [selectedText isEqual:@"Bonjour le monde"],
+          @"preserved lyric row card action keeps the selected line after an equivalent replacement");
+    SGHarnessLyricCardPresented = nil;
+    NSMutableArray *renamedVoices = [NSMutableArray array];
+    for (SGKaraokeLine *line in unchanged) {
+        SGKaraokeLine *copy = [line copy];
+        copy.voice = @"another provider's vocalist";
+        [renamedVoices addObject:copy];
+    }
+    SGKaraokeKeepLines(SGHarnessPlayingTrack, renamedVoices);
+    autoTick(view);
+    pump();
+    check(firstRow() == unchangedRow,
+          @"different provider voice names with equal alignment preserve presented rows");
+    Method creditMethod = class_getInstanceMethod(SGRKaraokeView.class, NSSelectorFromString(@"creditTo:"));
+    IMP originalCredit = method_getImplementation(creditMethod);
+    __block BOOL refreshedReconciledCredit = NO;
+    IMP observedCredit = imp_implementationWithBlock(^(SGRKaraokeView *receiver, NSString *source) {
+        if (receiver == view) refreshedReconciledCredit = YES;
+        ((void (*)(id, SEL, id))originalCredit)(receiver, NSSelectorFromString(@"creditTo:"), source);
+    });
+    method_setImplementation(creditMethod, observedCredit);
+    for (NSUInteger frame = 0; frame < 3; frame++) autoTick(view);
+    method_setImplementation(creditMethod, originalCredit);
+    imp_removeBlock(observedCredit);
+    NSMutableArray<SGKaraokeLine *> *authoritative = [unchanged mutableCopy];
+    SGKaraokeLine *different = [unchanged.firstObject copy];
+    different.words = sungLine(different.start, @"Nouvelle source prioritaire").words;
+    authoritative[0] = different;
+    SGKaraokeKeepLines(SGHarnessPlayingTrack, authoritative);
+    autoTick(view);
+    check(extrasWait(^BOOL { return [firstRow().accessibilityLabel isEqual:@"Nouvelle source prioritaire"]; }),
+          @"different authoritative words replace same-timing rows even with unchanged translations");
+    check(!refreshedReconciledCredit && [firstRow().accessibilityLabel isEqual:@"Nouvelle source prioritaire"],
+          @"settled equivalent snapshots do no repeated credit work while a later different snapshot is adopted");
     [view removeFromSuperview];
     [defaults removeObjectForKey:@"translateTo"];
 }
