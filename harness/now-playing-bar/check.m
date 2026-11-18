@@ -524,6 +524,16 @@ static void run(void) {
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     self.window = [[UIWindow alloc] initWithFrame:getenv("HARNESS_CAPSULE") ? UIScreen.mainScreen.bounds : CGRectMake(0, 0, 390, 844)];
     self.window.rootViewController = [UIViewController new];
+    if (getenv("HARNESS_CAPSULE")) {
+        // The capsule follows the window's size class, which the window has only once SGRHarnessScene has put it in its
+        // scene and made it key; a loaded simulator connects the scene later than any fixed delay after launch.
+        __block id key = [NSNotificationCenter.defaultCenter addObserverForName:UIWindowDidBecomeKeyNotification
+            object:self.window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            [NSNotificationCenter.defaultCenter removeObserver:key];
+            run();
+        }];
+        return YES;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ run(); });
     return YES;
 }
