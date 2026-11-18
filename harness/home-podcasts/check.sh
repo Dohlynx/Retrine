@@ -38,3 +38,4 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 codesign -f -s - "$APP" >/dev/null 2>&1
 "$APP/Contents/MacOS/home-podcasts-check"
+sh "$HERE/shelves.sh"
