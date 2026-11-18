@@ -2335,10 +2335,15 @@ static void installSettingsWorkProbes(void) {
         lateImageB = serve(imageURI(@"bbbb"), solid(UIColor.blueColor), 0, NO);
         lateImageB.held = YES;
         [self playTrack:@"spotify:track:harnessB" image:imageURI(@"bbbb")];
+        // The player keeps A's clip only for its handover (kHandOver, PlayerMotion.x), timed from this track change, so
+        // the card is looked at in the main queue turn after its own re-read (queued by the change, PlayerSettings.m),
+        // ahead of the handover's end; B's held lookup is a download and may come after the handover is over.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self expect:!motionOn() && SGRPlayerMotionShowing() && [[card() valueForKey:@"_track"] isEqualToString:@"spotify:track:harnessB"]
+                    step:@"handover: no old preview clip while the real player keeps its clip" detail:cardState()];
+        });
     });
     when(^BOOL { return SGRHarnessLookupReady(@"spotify:track:harnessB") && pictureReady(lateImageB); }, ^{
-        [self expect:!motionOn() && SGRPlayerMotionShowing() && [[card() valueForKey:@"_track"] isEqualToString:@"spotify:track:harnessB"]
-                step:@"handover: no old preview clip while the real player keeps its clip" detail:cardState()];
         SGRHarnessHoldLookups(@"spotify:track:harnessC");
         setenv("HARNESS_CANVAS", [NSString stringWithFormat:@"https://canvas.harness/c-%d.mp4", getpid()].UTF8String, 1);
         serve(imageURI(@"cccc"), solid(UIColor.greenColor), 0.2, NO);
