@@ -426,7 +426,7 @@ void SGPresentPopover(UIViewController *panel, UIView *from) {
 }
 
 // The fork's repo. Its links stay hidden while this is nil.
-NSString *const SGRepoURL = @"https://github.com/My-Name-Is-Jeff/vitrine";
+NSString *const SGRepoURL = @"https://github.com/oneulddu/Retrine";
 
 void SGOpenURL(NSString *url) {
     NSURL *target = url ? [NSURL URLWithString:url] : nil;
