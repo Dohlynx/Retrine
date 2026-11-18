@@ -44,6 +44,8 @@ def scenario(udid, bundle, name, variables, marker):
                 raise RuntimeError(name + ": app reported FAIL")
             if marker in line:
                 passed = True
+                # The verdict is in; the screenshot and terminate after it are not the app's run.
+                watchdog.cancel()
                 run("xcrun", "simctl", "io", udid, "screenshot", str(args.screenshots / (name + ".png")))
                 run("xcrun", "simctl", "terminate", udid, bundle)
         process.wait()
