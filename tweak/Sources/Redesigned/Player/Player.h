@@ -158,7 +158,16 @@ static inline BOOL SGRPlayerIPadRegular(UIView *view) {
 // Both columns use the visible safe rectangle, in the player's coordinates, not just its own bounds.
 static inline CGRect SGRPlayerVisibleSafeArea(UIView *view) {
     UIWindow *window = view.window;
-    CGRect windowSafe = [view convertRect:window.safeAreaLayoutGuide.layoutFrame fromView:window];
+    CGRect safe = window.safeAreaLayoutGuide.layoutFrame;
+    if (@available(iOS 26.0, *)) {
+        if (window.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+            // The ordinary safe area excludes bars, not the window controls in a corner.
+            // Keep the columns below that system-owned region, including full-screen windows.
+            UIViewLayoutRegion *region = [UIViewLayoutRegion safeAreaLayoutRegionWithCornerAdaptation:UIViewLayoutRegionAdaptivityAxisVertical];
+            safe = UIEdgeInsetsInsetRect(window.bounds, [window edgeInsetsForLayoutRegion:region]);
+        }
+    }
+    CGRect windowSafe = [view convertRect:safe fromView:window];
     return CGRectIntersection(UIEdgeInsetsInsetRect(view.bounds, view.safeAreaInsets), windowSafe);
 }
 

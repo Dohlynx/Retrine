@@ -119,11 +119,13 @@ CGFloat SGRPlayerCoverScale(void) {
 CGRect SGRPlayerArtworkAreaIn(UIView *host) {
     UIView *tilt = showingTilt();
     if (!tilt || !host) return CGRectNull;
-    // The band is the first view over the cover as wide as the player: the cover sits inset inside it
-    // (01.txt:33-36, CoverArtCellImpl > UIView {0, 110, 402, 466.67} > UIView {24, 8, ...} > the tilt view).
+    UIView *content = ((UICollectionViewCell *)coverCellOf(tilt)).contentView;
+    // The band is the child of the cell's content view containing the tilt, not the first ancestor as wide
+    // as the host. During a resize the cell's width can lag behind the host's; width matching then
+    // selected the full-height collection view and placed the lyric thumbnail over the header.
     for (UIView *v = tilt.superview; v; v = v.superview) {
         if (v == host) break;
-        if (v.bounds.size.width >= host.bounds.size.width - 1) return [host convertRect:v.bounds fromView:v];
+        if (v.superview == content) return [host convertRect:v.bounds fromView:v];
     }
     return CGRectNull;
 }

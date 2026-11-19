@@ -93,6 +93,17 @@ static BOOL sg_wide;
 static SGRSidePick sg_sidePick;
 static CFTimeInterval sg_lyricsOnOpenUntil;
 static BOOL sg_orderedForVoiceOver;         // the player's accessibilityElements are this file's
+static __weak UIView *sg_replacedCoverList;
+
+// Restore the actual list we faded to full visibility, not a transient alpha captured during presentation.
+static void replaceCoverList(BOOL replaced) {
+    UIView *list = replaced ? SGRPlayerCoverList() : nil;
+    if (list != sg_replacedCoverList) {
+        sg_replacedCoverList.alpha = 1;
+        sg_replacedCoverList = list;
+    }
+    if (list) list.alpha = 0;
+}
 
 #pragma mark - the wide player's control column
 
@@ -367,10 +378,14 @@ static SGRLyricsLayout layoutIn(UIView *host, BOOL wide) {
     if (!host || host.bounds.size.height < kLivingHeight || !info || !duration) return l;
     CGRect area = SGRPlayerArtworkAreaIn(host), cover = SGRPlayerCoverFrameIn(host);
     if (CGRectIsNull(area) || CGRectIsNull(cover)) return l;
+    UIView *header = sg_header.viewIfLoaded;
+    CGFloat contentTop = CGRectGetMinY(area);
+    if ([header isDescendantOfView:host]) contentTop = MAX(contentTop, CGRectGetMaxY(SGFrameIn(header, host)));
+    if (host.window) contentTop = MAX(contentTop, CGRectGetMinY(SGRPlayerVisibleSafeArea(host)));
     CGRect row = untransformed(info, host), bar = untransformed(duration, host);
     if (wide) {
         CGRect safe = SGRPlayerVisibleSafeArea(host), column = wideColumn(host);
-        CGFloat top = MAX(CGRectGetMinY(area), CGRectGetMinY(safe)) + kThumbTop;
+        CGFloat top = contentTop + kThumbTop;
         // The cover ends over the chips (Switch to video), which stay over the title in the column.
         CGFloat bottom = CGRectGetMinY(row);
         UIView *floating = sg_floating.viewIfLoaded;
@@ -393,7 +408,7 @@ static SGRLyricsLayout layoutIn(UIView *host, BOOL wide) {
     // The thumbnail takes the title's own leading edge, so the two line up down the page.
     CGFloat leading = title ? CGRectGetMinX(untransformed(title, host)) : CGRectGetMinX(area) + SGRSideMargin;
     l.cover = cover;
-    l.thumb = CGRectMake(leading, CGRectGetMinY(area) + kThumbTop, kThumbSide, kThumbSide);
+    l.thumb = CGRectMake(leading, contentTop + kThumbTop, kThumbSide, kThumbSide);
     // Beside the thumbnail when the title can be moved clear of it, under it when it cannot be found.
     CGFloat top = title ? CGRectGetMidY(l.thumb) - row.size.height / 2 : CGRectGetMaxY(l.thumb) + SGRGrid;
     l.lift = top - CGRectGetMinY(row);
@@ -835,7 +850,7 @@ static void setOpen(BOOL open, BOOL animated) {
         // Spotify's cover goes the moment the redesign's own takes its place: the same picture at the
         // same size with the same corners, so there is nothing to see in the swap. Coming back it waits
         // for the thumbnail to land on it, or the two would be on screen at once, one of them half size.
-        SGRPlayerCoverList().alpha = 0;
+        replaceCoverList(YES);
     }
 
     // Moves and fades apart, as in setAlone: Reduce Motion takes the move and keeps the thumbnail's fade over
@@ -857,8 +872,10 @@ static void setOpen(BOOL open, BOOL animated) {
         if (generation != sg_openGeneration) return;
         sg_moving = NO;
         if (sg_open) return;   // opened again while it was going away
-        SGRPlayerCoverList().alpha = 1;
+        replaceCoverList(NO);
         [overlay removeFromSuperview];
+        // The window may have resized while the animation owned placement.
+        [host setNeedsLayout];
     };
 
     if (!animated) {
@@ -998,7 +1015,7 @@ static void leaveWide(UIView *host) {
     placeTitleRow((SGRLyricsLayout){0});
     if (sg_orderedForVoiceOver) host.accessibilityElements = nil;
     sg_orderedForVoiceOver = NO;
-    SGRPlayerCoverList().alpha = 1;
+    replaceCoverList(NO);
     sg_floating.viewIfLoaded.alpha = 1;
     SGRPlayerLyricsChanged();
     SGRPlayerLookChanged();
@@ -1032,7 +1049,7 @@ static void placeWide(UIView *host) {
     overlay.stage.transform = CGAffineTransformIdentity;
     placeTitleRow(l);
     sg_floating.viewIfLoaded.alpha = 1;
-    SGRPlayerCoverList().alpha = 0;
+    replaceCoverList(YES);
     showSide(overlay, sideWantsLyrics(), NO);
     orderForVoiceOver(host, overlay);
     if (!entering) return;
@@ -1106,7 +1123,7 @@ static void replace(void) {
     overlay.thumb.transform = thumbTransform(l);
     overlay.cover.layer.cornerRadius = thumbRadius(l, YES);
     overlay.lyrics.frame = overlay.stage.bounds;
-    SGRPlayerCoverList().alpha = 0;
+    replaceCoverList(YES);
 }
 
 #pragma mark - the units

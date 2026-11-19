@@ -728,8 +728,11 @@ static void loadLyrics(void) {
     covers.accessibilityIdentifier = @"nowplaying-contentlayer-collectionview";
     covers.backgroundColor = UIColor.clearColor;
     [layers addSubview:covers];
+    // The replacement can discover a pager Spotify has already faded out; compact must repair it.
+    if ([scenario() isEqualToString:@"adaptive"] && !getenv("HARNESS_OPENING") && SGRPlayerIPadRegular(host))
+        covers.alpha = 0;
     UIView *cell = box(covers, _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl.class, covers.bounds, @"nowplaying-contentlayer-cell-0");
-    UIView *band = box(cell, UIView.class, CGRectMake(0, bandTop, W, bandHeight), nil);
+    UIView *band = box(((UICollectionViewCell *)cell).contentView, UIView.class, CGRectMake(0, bandTop, W, bandHeight), nil);
     UIView *inner = box(band, UIView.class, CGRectMake(24, 8, W - 48, bandHeight - 16), nil);
     UIView *tilt = box(inner, _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView.class,
                        CGRectMake(0, round((inner.bounds.size.height - coverSide) / 2), coverSide, coverSide), nil);

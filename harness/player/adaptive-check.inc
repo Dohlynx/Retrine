@@ -74,6 +74,10 @@ static UIButton *lyricsMenuIn(UIView *stage) {
 }
 
 - (void)runAdaptiveChecks {
+    BOOL checkCompactHeader = !getenv("HARNESS_NO_LYRICS");
+    __block CGRect originalHost, originalBand;
+    __block UIUserInterfaceSizeClass originalWidthClass;
+    __block UIView *compactOverlay;
     runScript(@[
         @[^BOOL {
             return SGRNowPlayingArtwork(NULL, NULL) != nil;
@@ -113,10 +117,26 @@ static UIButton *lyricsMenuIn(UIView *stage) {
                 HARNESS_CHECK([list numberOfSections] > 0);
                 SGRPlayerToggleLyrics();
                 HARNESS_CHECK(getenv("HARNESS_NO_LYRICS") ? SGRPlayerQueueSideShown() : SGRPlayerLyricsOpen());
+                // Spotify hides the outgoing cover cell while rebuilding a resized page.
+                // Restoration must not depend on finding that hidden page again.
+                self->_tilt.hidden = YES;
                 self.window.traitOverrides.horizontalSizeClass = UIUserInterfaceSizeClassCompact;
                 [self layOut];
                 HARNESS_CHECK(!SGRPlayerTwoColumns() && !overlay.superview);
+                HARNESS_CHECK(self->_covers.alpha == 1);
                 HARNESS_CHECK(fabs(bottom.frame.size.width - self->_host.bounds.size.width) < 1);
+                self->_tilt.hidden = NO;
+                [self layOut];
+                CGRect fullHost = self->_host.frame;
+                CGRect resizedHost = fullHost;
+                resizedHost.size.width += 40;
+                self->_host.frame = resizedHost;
+                CGRect band = SGRPlayerArtworkAreaIn(self->_host);
+                CGRect header = [self->_units[0].view convertRect:self->_units[0].view.bounds toView:self->_host];
+                HARNESS_CHECK(!CGRectIsNull(band) && CGRectGetMinY(band) >= CGRectGetMaxY(header));
+                HARNESS_CHECK(SGRFindByIdentifier(self->_units[0].view, @"now-playing-minimize-button", NULL).alpha == 0);
+                HARNESS_CHECK(SGRFindByIdentifier(self->_units[0].view, @"Context menu", NULL).alpha == 0);
+                self->_host.frame = fullHost;
                 CGRect singleControls = bottom.frame;
                 self.window.traitOverrides.horizontalSizeClass = UIUserInterfaceSizeClassRegular;
                 [self layOut];
@@ -148,6 +168,54 @@ static UIButton *lyricsMenuIn(UIView *stage) {
                 NSLog(@"[harness] adaptive frames: artwork %@ controls %@ side %@", NSStringFromCGRect(art),
                       NSStringFromCGRect(controls), NSStringFromCGRect(side));
             }
+        }],
+        @[@0, ^{
+            if (!checkCompactHeader) return;
+            originalHost = self->_host.frame;
+            UIView *band = self->_tilt.superview.superview;
+            originalBand = band.frame;
+            originalWidthClass = self.window.traitCollection.horizontalSizeClass;
+            self.window.traitOverrides.horizontalSizeClass = UIUserInterfaceSizeClassCompact;
+            CGRect compact = originalHost;
+            compact.size.width = MIN(compact.size.width, 375);
+            self->_host.frame = compact;
+            // During resizing the artwork band can still begin above the stationary header.
+            CGRect staleBand = originalBand;
+            staleBand.origin.y = 0;
+            band.frame = staleBand;
+            [self layOut];
+            HARNESS_CHECK(!SGRPlayerTwoColumns() && !SGRPlayerLyricsOpen());
+            SGRPlayerToggleLyrics();
+            compactOverlay = firstOfClass(self->_host, @"SGRPlayerLyricsOverlay");
+            HARNESS_CHECK(SGRPlayerLyricsOpen() && compactOverlay.superview == self->_host);
+        }],
+        @[^BOOL {
+            if (!checkCompactHeader) return YES;
+            UIView *thumb = [compactOverlay valueForKey:@"thumb"], *stage = [compactOverlay valueForKey:@"stage"];
+            return thumb.layer.presentationLayer && !thumb.layer.animationKeys.count &&
+                   stage.layer.presentationLayer.opacity > 0.99;
+        }, ^{
+            if (!checkCompactHeader) return;
+            UIView *thumb = [compactOverlay valueForKey:@"thumb"];
+            CALayer *drawn = thumb.layer.presentationLayer, *host = self->_host.layer.presentationLayer;
+            HARNESS_CHECK(drawn && host && drawn.opacity > 0.99);
+            CGRect thumbnail = [drawn convertRect:drawn.bounds toLayer:host];
+            UIView *header = self->_units[0].view;
+            CGRect headerFrame = [header convertRect:header.bounds toView:self->_host];
+            if (CGRectGetMinY(thumbnail) < CGRectGetMaxY(headerFrame))
+                HARNESS_FAIL(@"compact lyrics thumbnail %@ overlaps header %@", NSStringFromCGRect(thumbnail), NSStringFromCGRect(headerFrame));
+            NSLog(@"[harness] rendered compact lyrics thumbnail %@ below header %@", NSStringFromCGRect(thumbnail), NSStringFromCGRect(headerFrame));
+            SGRPlayerToggleLyrics();
+        }],
+        @[^BOOL {
+            return !checkCompactHeader || !compactOverlay.superview;
+        }, ^{
+            if (!checkCompactHeader) return;
+            self->_host.frame = originalHost;
+            self->_tilt.superview.superview.frame = originalBand;
+            self.window.traitOverrides.horizontalSizeClass = originalWidthClass;
+            [self layOut];
+            [self layOut];
         }],
         @[^BOOL {
             if (!SGRPlayerTwoColumns() || SGRPlayerQueueSideShown()) return YES;

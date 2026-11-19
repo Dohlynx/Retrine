@@ -512,9 +512,11 @@ static void run(void) {
     checkArtworkShape();
     checkStaleCapsuleRow();
 
-    printf("[harness] now-playing-bar: %lu checks passed\n", (unsigned long)sg_checks);
-    fflush(stdout);
-    exit(0);
+    checkPlatterInvalidation(^{
+        printf("[harness] now-playing-bar: %lu checks passed\n", (unsigned long)sg_checks);
+        fflush(stdout);
+        exit(0);
+    });
 }
 
 @interface NowPlayingBarApp : UIResponder <UIApplicationDelegate>

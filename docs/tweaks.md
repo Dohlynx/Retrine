@@ -1382,6 +1382,8 @@ Redesigned:
                   Device and add step aside; optional Next remains. Compact-width iPad and iPhone keep the card.
                   Capsule commands mirror with the window's direction. Play and inactive commands are white;
                   shuffle and repeat use the accent only while Spotify reports them active.
+                  Following the adjacent tab platter reacts to changed geometry, not repeated assignments of the
+                  same frame, bounds or center: those KVO setter notifications must not start another bar layout.
                   Spotify's device button on it is hidden unless switched back on, as the Music app's mini player has none
                   (BarConnect.x, its own key and its own row on the Player page, apart from the native look's). Unless
                   switched off a Next button of the mod's stands after Spotify's button stack, last in the row that holds
@@ -1440,10 +1442,17 @@ Redesigned:
                   Both orientations use these columns, mirrored for RTL, with leading-column-first VoiceOver order.
                   The leading footer sits above the window's bottom safe area; the lyrics options button stays
                   inside the trailing column's safe area, rather than following the single-column footer.
+                  On iPadOS 26 and later the visible safe rectangle uses UIKit's vertical corner-adapted safe-area
+                  region, keeping the system's window-control corner clear; the redesign draws no window control.
+                  Returning to one column restores the exact cover list the overlay faded, even while Spotify hides
+                  its outgoing cover cell during a resize. The artwork band is identified inside that cell, not by
+                  matching its temporarily stale width to the player's, and the lyric thumbnail stays below the header.
                   PlayerLandscape.x already limits its separate landscape window to iPhone; it is not used on iPad.
                   Compact windows and Spotify's narrow side panel retain the existing single-column layout.
                   `harness/player/ipad-check.py --screenshots <directory>` checks disposable iPad/iPhone clones,
-                  including compact width, RTL and accessibility text size, and captures the layouts.
+                  including compact width, RTL, accessibility text size and hidden-cover restoration,
+                  and captures the layouts. Its width overrides are harness tests, not system window-control transitions;
+                  they do not establish behavior on iPadOS 27.
                   The header has only the Music app's grabber, a 60 × 4 pill 7 pt under the screen's safe area in a
                   44 pt touch area that lies wholly inside the header row: Spotify's ⋯ is put away (alpha, out of
                   VoiceOver's reach), and its down arrow too once the arrow has a tap's action to close by

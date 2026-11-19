@@ -729,6 +729,9 @@ static void placeCapsuleButtons(UIView *bar, BOOL capsule) {
     BOOL _pending;
 }
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    // KVO reports setters, not movement. UIKit assigns the same platter geometry during layout;
+    // turning those assignments into another synchronous layout feeds the next notification.
+    if ([change[NSKeyValueChangeOldKey] isEqual:change[NSKeyValueChangeNewKey]]) return;
     if (_pending) return;
     _pending = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -746,7 +749,7 @@ static void watchTabGlass(UIView *platter) {
     if (!watcher) watcher = [SGRTabGlassWatcher new];
     for (NSString *key in @[@"frame", @"center", @"bounds"]) {
         [previous removeObserver:watcher forKeyPath:key];
-        [platter addObserver:watcher forKeyPath:key options:0 context:NULL];
+        [platter addObserver:watcher forKeyPath:key options:NSKeyValueObservingOptionOld | NSKeyValueObservingOptionNew context:NULL];
     }
     watched = platter;
 }

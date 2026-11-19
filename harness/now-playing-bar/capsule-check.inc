@@ -1,6 +1,47 @@
 @interface HarnessPlatterView : UIView @end
 @implementation HarnessPlatterView @end
 
+@interface HarnessBarLayoutView : UIView
+@property (nonatomic) NSUInteger passes;
+@end
+@implementation HarnessBarLayoutView
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    self.passes++;
+}
+@end
+
+static void checkPlatterInvalidation(void (^done)(void)) {
+    UIViewController *container = [UIViewController new];
+    HarnessBarLayoutView *view = [[HarnessBarLayoutView alloc] initWithFrame:CGRectMake(0, 0, 500, 76)];
+    container.view = view;
+    sg_container = container;
+    sg_capsule = YES;
+    UIView *platter = [[HarnessPlatterView alloc] initWithFrame:CGRectMake(0, 0, 280, 76)];
+    [view addSubview:platter];
+    [view layoutIfNeeded];
+    watchTabGlass(platter);
+    NSUInteger settled = view.passes;
+    // UIKit assigns platter geometry during layout even when it has not moved.
+    platter.frame = platter.frame;
+    platter.bounds = platter.bounds;
+    platter.center = platter.center;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        HARNESS_CHECK(view.passes == settled);
+        platter.center = CGPointMake(150, 38);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            HARNESS_CHECK(view.passes > settled);
+            watchTabGlass(nil);
+            sg_container = nil;
+            sg_capsule = NO;
+            (void)container; // Keep the weak production owner alive through both deliveries.
+            sg_checks++;
+            NSLog(@"[harness] unchanged platter geometry leaves layout idle: PASS");
+            done();
+        });
+    });
+}
+
 static BOOL whiteTint(UIColor *color) {
     CGFloat r, g, b, a;
     return [color getRed:&r green:&g blue:&b alpha:&a] && r == 1 && g == 1 && b == 1 && a == 1;
