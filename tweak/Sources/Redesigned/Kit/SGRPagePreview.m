@@ -581,7 +581,7 @@ SGRPreviewHeader *SGRPreviewAddHeader(SGRPagePreview *card, NSUInteger cover, NS
     SGRPreviewHeader *header = [SGRPreviewHeader new];
     header.fullCover = YES;
     UIImageView *artwork = SGRPreviewCover(cover);
-    artwork.accessibilityIdentifier = @"vitrine.preview.header.artwork";
+    artwork.accessibilityIdentifier = @"retrine.preview.header.artwork";
     UIView *dissolve = SGRPreviewGradient(@[], CGPointMake(0.5, 0), CGPointMake(0.5, 1));
     UIView *badge = SGRPreviewGlass();
     UIImageView *badgeGlyph = SGRPreviewAddSymbol(badge, badgeSymbol, SGRPrimary());
@@ -591,7 +591,7 @@ SGRPreviewHeader *SGRPreviewAddHeader(SGRPagePreview *card, NSUInteger cover, NS
     logo.alpha = 0;
     UIView *shuffle = SGRPreviewGlass(), *trailing = SGRPreviewGlass(), *play = SGRPreviewBar(UIColor.whiteColor);
     UIView *controls = [SGRPreviewFixedRow new];
-    controls.accessibilityIdentifier = @"vitrine.preview.header.controls";
+    controls.accessibilityIdentifier = @"retrine.preview.header.controls";
     for (UIView *view in @[shuffle, play, trailing]) [controls addSubview:view];
     UIImageView *shuffleGlyph = SGRPreviewAddSymbol(shuffle, @"shuffle", SGRPrimary());
     UIImageView *trailingGlyph = SGRPreviewAddSymbol(trailing, trailingSymbol, SGRPrimary());
@@ -732,7 +732,7 @@ void SGRPreviewAddTopBar(SGRPagePreview *card) {
     UIImageView *backGlyph = SGRPreviewAddSymbol(back, @"chevron.left", SGRPrimary());
     // Pointing back, to the right right to left.
     backGlyph.image = backGlyph.image.imageFlippedForRightToLeftLayoutDirection;
-    backGlyph.accessibilityIdentifier = @"vitrine.preview.back";
+    backGlyph.accessibilityIdentifier = @"retrine.preview.back";
     UIImageView *moreGlyph = SGRPreviewAddSymbol(more, @"ellipsis", SGRPrimary());
     UIView *overlay = [card addOverlayWithLayout:^CGRect(UIView *view, CGSize page, CGFloat unit) {
         CGFloat side = kTopButton * unit, inset = kTopButtonInset * unit;

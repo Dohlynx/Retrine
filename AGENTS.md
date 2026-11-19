@@ -1,4 +1,4 @@
-# Vitrine
+# Retrine
 
 A Theos tweak (Objective-C + Logos) injected into the decrypted Spotify iOS app. The full guide is
 `docs/tweaks.md`; read it before changing code.
@@ -25,7 +25,7 @@ can be given. `SGRedesignAvailable()` (`Core/SGUIMode.h`) says whether this OS h
 redesign runs only after a warning that it is untested there (`SGKeyRedesignUntested`, stored by
 `SGSetRedesignedUI` in `App/Pages.m`), and a launch with it that hangs (issue #37) is followed by one in
 the native look with both switches off. The native look's floor is iOS 16.1, which is
-Spotify 9.1.78's own. Vitrine is made for Spotify 9.1.78 and supports 9.1.88, 9.1.90 and 9.2.0, the release base. The install warning
+Spotify 9.1.78's own. Retrine is made for Spotify 9.1.78 and supports 9.1.88, 9.1.90 and 9.2.0, the release base. The install warning
 leaves all four alone. A new version goes in one of the two lists
 in `App/Onboarding/Onboarding.h` (`SGSpotifySupportedVersions`, `SGSpotifyLikelyWorksVersions`), and the warning's text
 and About follow. The IPA build reads
@@ -68,15 +68,16 @@ Rules:
   has a file. Sources (providers, downloads) are a design only: `docs/lossless-sources.md`. Do not take Sing's
   `SGPlayerSetStage` slot. After audio edits, run the handoff harness (`harness/lossless/handoff-build.sh`).
 
-- Build: `make install` (signs and pushes to the phone), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). Tweak only:
+- Build: `make install PIXIE=1` (signs and pushes to the phone; the phone keeps Pixie's downloads), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). Tweak only:
   `env -u MAKELEVEL gmake -C tweak clean package`.
   IPA builds include app-local WireGuard/proxy by default and require the exact Go release from
   `WireGuard/go.mod`, including release builds. Use `WIREGUARD=0` to exclude it; direct tweak builds
   remain Go-free by default. At runtime it stays off until a profile is imported or a proxy saved,
   explicitly enabled and the app restarted. It is not a leak-proof or device-wide VPN; see
   `docs/wireguard.md` for uncovered paths and the enforcement lost with `WIREGUARD=0`.
-- Handing over an IPA: upload it with `rclone copy out/vitrine-<version>.ipa dropbox:Vitrine/`, confirm it with
-  `rclone check out/vitrine-<version>.ipa dropbox:Vitrine/ --one-way`, and give the `rclone link` URL with `dl=0`
+- Handing over an IPA: shared builds include Pixie (`make release PIXIE=1`, `out/retrine-<version>-pixie.ipa`).
+  Upload it with `rclone copy <ipa> dropbox:Vitrine/` (the shared folder keeps its name, so existing links stay
+  valid), confirm it with `rclone check <ipa> dropbox:Vitrine/ --one-way`, and give the `rclone link` URL with `dl=0`
   changed to `dl=1`. Then delete that IPA from `out/` (leave `out/extension/`, the extension build cache). Never
   print `rclone config` output or the config file: it holds the Dropbox tokens.
 - Look at Spotify's views through recorded trees (`make session` records clean ones into

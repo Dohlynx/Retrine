@@ -100,7 +100,7 @@ void CatalogStart(NSString *path) {
     CatalogFixture = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     CHECK([CatalogFixture isKindOfClass:NSDictionary.class]);
     CatalogAssetPaths = [NSMutableArray array];
-    NSString *workspace = NSProcessInfo.processInfo.environment[@"VITRINE_TEST_ROOT"];
+    NSString *workspace = NSProcessInfo.processInfo.environment[@"RETRINE_TEST_ROOT"];
     CHECK(workspace.length > 0);
     CatalogRoot = [NSURL fileURLWithPath:workspace isDirectory:YES];
     CHECK([NSFileManager.defaultManager createDirectoryAtURL:CatalogRoot withIntermediateDirectories:YES attributes:nil error:nil]);

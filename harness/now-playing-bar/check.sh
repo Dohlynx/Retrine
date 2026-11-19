@@ -41,7 +41,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>now-playing-bar-check</string>
-<key>CFBundleIdentifier</key><string>com.vitrine.nowplayingbar.check</string>
+<key>CFBundleIdentifier</key><string>com.retrine.nowplayingbar.check</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
 <key>UILaunchScreen</key><dict/>

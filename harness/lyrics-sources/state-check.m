@@ -2190,7 +2190,7 @@ static void checkReload(void) {
 }
 
 // Both providers are real walk/menu entries; only their network callbacks are controlled here.
-// Run one race in isolation with VITRINE_PICK_RACE=1, 2 or 3 to check it against pre-fix sources.
+// Run one race in isolation with RETRINE_PICK_RACE=1, 2 or 3 to check it against pre-fix sources.
 static void checkPickRaces(NSUInteger only) {
     NSArray *keys = @[@"musixmatch", @"netease"];
     NSMutableArray *saved = [NSMutableArray array];
@@ -2795,7 +2795,7 @@ static void checkCommunityPersistence(BOOL cached) {
 }
 
 static void checkLiveTranslations(void) {
-    NSString *only = getenv("VITRINE_TRANSLATION_CASE") ? @(getenv("VITRINE_TRANSLATION_CASE")) : nil;
+    NSString *only = getenv("RETRINE_TRANSLATION_CASE") ? @(getenv("RETRINE_TRANSLATION_CASE")) : nil;
     for (NSString *scenario in @[@"community-stale", @"ttml-stale", @"received"]) {
         if (!only || [only isEqual:scenario]) checkLiveTranslationTarget(scenario);
     }
@@ -3122,7 +3122,7 @@ int main(void) {
         checkSpotifySyllables();
         checkSpotifyPublishedClock();
         checkHeaderOrigin();
-        BOOL aheadOnly = getenv("VITRINE_UP_NEXT_ONLY") != NULL;
+        BOOL aheadOnly = getenv("RETRINE_UP_NEXT_ONLY") != NULL;
         if (!aheadOnly) {
         checkOwnMethod();
         checkTranslationPresence();
@@ -3131,11 +3131,11 @@ int main(void) {
         checkNetEaseURLs();
         }
         // A separate suite makes the default writes real without touching the app's or the user's.
-        sg_testSuite = [@"com.vitrine.lyrics-state-check." stringByAppendingString:NSUUID.UUID.UUIDString];
+        sg_testSuite = [@"com.retrine.lyrics-state-check." stringByAppendingString:NSUUID.UUID.UUIDString];
         sg_testDefaults = [[NSUserDefaults alloc] initWithSuiteName:sg_testSuite];
         // A previous harness run's offline answer must not bypass this run's held providers.
         // Pin/reload invalidation also stays out of the user's real lyrics directory.
-        char store[] = "/tmp/vitrine-lyrics-state.XXXXXX";
+        char store[] = "/tmp/retrine-lyrics-state.XXXXXX";
         CHECK(mkdtemp(store));
         sg_testStore = @(store);
         SGLyricsStoreConfigureForTests([NSURL fileURLWithPath:sg_testStore], 1000, 30 * 1024 * 1024);
@@ -3159,7 +3159,7 @@ int main(void) {
         sg_requested = [NSMutableSet set]; sg_asking = [NSMutableSet set]; sg_looking = [NSMutableSet set];
         sg_losses = [NSMutableDictionary dictionary]; sg_ownSources = YES;
         sg_lastSeenID = @"song";
-        if (getenv("VITRINE_RESILIENCE_ONLY")) {
+        if (getenv("RETRINE_RESILIENCE_ONLY")) {
             checkHedgedWalk();
             checkWalkBudget();
             checkFastFailureTiming();
@@ -3168,10 +3168,10 @@ int main(void) {
             checkInvocationDeadline();
             return 0;
         }
-        if (getenv("VITRINE_AUTH_ONLY")) { checkSpotifyAuthPause(); return 0; }
-        if (getenv("VITRINE_CANCEL_ONLY")) { checkRetiredCancellation(); return 0; }
-        if (getenv("VITRINE_TRANSLATION_CASE")) { checkLiveTranslations(); return 0; }
-        if (getenv("VITRINE_STORE_ONLY")) { checkStoredTranslationLanguage(); return 0; }
+        if (getenv("RETRINE_AUTH_ONLY")) { checkSpotifyAuthPause(); return 0; }
+        if (getenv("RETRINE_CANCEL_ONLY")) { checkRetiredCancellation(); return 0; }
+        if (getenv("RETRINE_TRANSLATION_CASE")) { checkLiveTranslations(); return 0; }
+        if (getenv("RETRINE_STORE_ONLY")) { checkStoredTranslationLanguage(); return 0; }
         checkAsyncLRCLIBPick();
         checkBackgroundTimedDelivery();
         checkUpNext();
@@ -3184,7 +3184,7 @@ int main(void) {
         checkCompletedBounds();
         checkImportedDelivery();
         checkDirectInstrumentalFallback();
-        const char *race = getenv("VITRINE_PICK_RACE");
+        const char *race = getenv("RETRINE_PICK_RACE");
         if (race) { checkPickRaces((NSUInteger)atoi(race)); return 0; }
         HarnessPort *port = [HarnessPort new]; port.UID = @"headphones-one"; port.portName = @"Headphones"; port.portType = AVAudioSessionPortBluetoothA2DP;
         sg_fakeRoute = [HarnessRoute new]; sg_fakeRoute.outputs = @[port];

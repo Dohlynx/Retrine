@@ -723,7 +723,7 @@ static void placeQueueGlyph(UIView *host, UIView *spotifyQueue, CGPoint center) 
     }
     if (!glyph) {
         glyph = [SGRGlyphButton buttonWithSymbol:kQueueSymbol pointSize:kLyricsGlyphSize title:SGL(@"settings.player.ipad.queue", @"Queue")];
-        glyph.accessibilityIdentifier = @"vitrine.player.queue";
+        glyph.accessibilityIdentifier = @"retrine.player.queue";
         __weak SGRGlyphButton *weakGlyph = glyph;
         glyph.onTap = ^{
             if (SGRPlayerTwoColumns()) SGRPlayerToggleQueueSide();

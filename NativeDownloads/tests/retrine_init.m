@@ -1,7 +1,7 @@
 // Exercise the production SGModPage init hook, including init replacement/nil.
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
-#include <assert.h>
+#import "../../harness/harness-fail.h"
 #import "AudioProbeUI.h"
 
 static NSUInteger destroyed;
@@ -29,9 +29,9 @@ static NSUInteger mode;
 - (void)dealloc {destroyed++;}
 @end
 
-// Match Vitrine's exported row factories; no page is presented by this fixture.
+// Keep the actual navigation factory in the row, as the host does.
 __attribute__((visibility("default")))
-id SGPageRow(NSString *title,UIViewController *(^page)(void)) {return title;}
+id SGPageRow(NSString *title,UIViewController *(^page)(void)) {return @[title,[page copy]];}
 __attribute__((visibility("default")))
 id SGActionRow(NSString *title,NSString *subtitle,void (^action)(void)) {return title;}
 __attribute__((visibility("default")))
@@ -42,29 +42,38 @@ id SGSection(NSString *title,NSArray *rows) {return rows;}
 int main(void) {
     @autoreleasepool {
         SAPInstallDownloadSettings();
-        for(mode=0;mode<3;mode++) {
+        for(NSString *title in @[@"Retrine",@"Vitrine"]) for(mode=0;mode<3;mode++) {
             NSUInteger before=destroyed;
             __weak id result;
             @autoreleasepool {
                 SGModPage *page=[SGModPage alloc];
                 allocatedReceiver=page;
-                page=[page initWithTitle:@"Vitrine" intro:nil sections:@[@"existing"] footer:nil];
+                page=[page initWithTitle:title intro:nil sections:@[@"existing"] footer:nil];
                 result=page;
-                assert(receivedSections.count==2);
-                assert([receivedSections[0] isEqual:@"existing"]);
-                assert([receivedSections[1] count]==2); // one manager and one Send log
-                if(mode==0)assert(page==allocatedReceiver && destroyed==before);
-                if(mode==1)assert(allocatedReceiver==nil && page==replacement && destroyed==before+1);
-                if(mode==2)assert(page==nil && allocatedReceiver==nil && destroyed==before+1);
+                HARNESS_CHECK(receivedSections.count==2);
+                HARNESS_CHECK([receivedSections[0] isEqual:@"existing"]);
+                HARNESS_CHECK([receivedSections[1] count]==2);
+                if(mode==0) {
+                    HARNESS_CHECK(page==allocatedReceiver && destroyed==before);
+                    NSArray *row=receivedSections[1][0];
+                    HARNESS_CHECK([row[0] isEqual:@"Pixie Download Manager"]);
+                    UIViewController *(^open)(void)=row[1];
+                    UINavigationController *nav=[[UINavigationController alloc] initWithRootViewController:UIViewController.new];
+                    [nav pushViewController:open() animated:NO];
+                    [nav.topViewController loadViewIfNeeded];
+                    HARNESS_CHECK([nav.topViewController.title isEqual:@"Pixie Download Manager"]);
+                }
+                if(mode==1)HARNESS_CHECK(allocatedReceiver==nil && page==replacement && destroyed==before+1);
+                if(mode==2)HARNESS_CHECK(page==nil && allocatedReceiver==nil && destroyed==before+1);
             }
-            assert(result==nil && replacement==nil && destroyed==before+1);
+            HARNESS_CHECK(result==nil && replacement==nil && destroyed==before+1);
         }
         mode=0;
         @autoreleasepool {
             id page=[[SGModPage alloc] initWithTitle:@"Other" intro:nil sections:@[@"existing"] footer:nil];
-            assert(page && receivedSections.count==1);
+            HARNESS_CHECK(page && receivedSections.count==1);
         }
-        puts("PASS: production Vitrine init hook preserves +1, substituted/nil receiver ownership and root-only rows");
+        puts("PASS: both Retrine and Vitrine roots open Pixie Download Manager; unrelated pages and init ownership preserved");
     }
     return 0;
 }

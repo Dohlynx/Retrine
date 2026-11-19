@@ -751,7 +751,7 @@ SGRMirrorButton *SGRPinnedDownload(UIView *page, const void *key, UIView *source
     if (!button) {
         button = [[SGRMirrorButton alloc] initWithFrame:CGRectZero];
         button.fallbackGlyph = [UIImage systemImageNamed:@"arrow.down"];
-        button.accessibilityIdentifier = @"Vitrine.Album.Download";
+        button.accessibilityIdentifier = @"Retrine.Album.Download";
         objc_setAssociatedObject(page, key, button, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     BOOL inlineHeader = [button.superview isKindOfClass:SGRHeaderInfo.class];

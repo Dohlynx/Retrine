@@ -142,22 +142,22 @@ SGLyricsResult *SGHarnessImportedLRCFor(NSString *uri, NSString *title, NSString
 @implementation SGHarnessDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
-    NSString *uri = @"spotify:local:Vitrine:Demos:A+Song+of+Our+Own:120";
+    NSString *uri = @"spotify:local:Retrine:Demos:A+Song+of+Our+Own:120";
     SGFakeTrack *track = [SGFakeTrack new];
     track.URI = uri;
     track.trackTitle = @"A Song of Our Own";
-    track.artistName = @"Vitrine";
+    track.artistName = @"Retrine";
     sg_state = [SGFakeState new];
     sg_state.track = track;
 
     NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-    [NSFileManager.defaultManager removeItemAtPath:[documents stringByAppendingPathComponent:@"Vitrine/Lyrics"] error:nil];
+    [NSFileManager.defaultManager removeItemAtPath:[documents stringByAppendingPathComponent:@"Retrine/Lyrics"] error:nil];
     [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyImportedLRCLinks];
     NSMutableString *sheet = [NSMutableString string];
     for (NSInteger i = 0; i < 24; i++) {
         [sheet appendFormat:@"[00:%02ld.00]Line %ld of the song, long enough to wrap onto a second row here\n", (long)(i * 2), (long)i + 1];
     }
-    NSURL *file = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:@"Vitrine - A Song of Our Own.lrc"];
+    NSURL *file = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:@"Retrine - A Song of Our Own.lrc"];
     [sheet writeToURL:file atomically:YES encoding:NSUTF8StringEncoding error:nil];
     SGImportLRC(file, uri, ^(NSString *name, NSError *error) {
         check(name != nil, @"imported and linked");

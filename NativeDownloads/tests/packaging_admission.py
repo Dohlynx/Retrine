@@ -45,7 +45,7 @@ class Admission(unittest.TestCase):
             z.writestr("Payload/Spotify.app/Frameworks/spotifyglass.dylib",b"fixture: admission must precede compilation")
 
     def preflight(self, mode, status, message):
-        result=subprocess.run([sys.executable,"-B",str(ROOT/"tools/build_vitrine_9190.py"),
+        result=subprocess.run([sys.executable,"-B",str(ROOT/"tools/build_retrine_9190.py"),
                                str(self.ipa),mode,"--output",str(self.output)],
                               capture_output=True,text=True,timeout=30)
         self.assertEqual(result.returncode,status,result.stdout+result.stderr)
@@ -89,7 +89,7 @@ class Admission(unittest.TestCase):
     def test_exact_9200_jailbreak_rejected_before_output(self):
         self.archive()
         result=subprocess.run([sys.executable,"-B",str(ROOT/"tools/build_debs.py"),
-                               str(self.ipa),"--vitrine-dylib",str(self.folder/"absent.dylib"),
+                               str(self.ipa),"--retrine-dylib",str(self.folder/"absent.dylib"),
                                "--output",str(self.output)],capture_output=True,text=True,timeout=30)
         self.assertNotEqual(result.returncode,0)
         self.assertIn("Jailbreak Pixie supports only the exact Spotify 9.1.90 profile",result.stderr)
@@ -131,8 +131,8 @@ class Admission(unittest.TestCase):
                 self.preflight("--check-input",1,expected)
                 self.preflight("--check-clean",1,expected)
                 for tool,arguments in [
-                    ("build_vitrine_9190.py",[]),
-                    ("build_debs.py",["--vitrine-dylib",str(self.folder/"absent.dylib")]),
+                    ("build_retrine_9190.py",[]),
+                    ("build_debs.py",["--retrine-dylib",str(self.folder/"absent.dylib")]),
                 ]:
                     result=subprocess.run([sys.executable,"-B",str(ROOT/"tools"/tool),str(self.ipa),
                                            "--output",str(self.output),*arguments],

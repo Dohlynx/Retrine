@@ -40,6 +40,7 @@ if [ ! -f "$CACHE/.from" ] || [ "$IPA" -nt "$CACHE/.from" ] || [ "$(cat "$CACHE/
   printf '%s' "$IPA" > "$CACHE/.from"
 fi
 APP="$(ls -d "$CACHE"/Payload/*.app | head -1)"
+[ -d "$APP/Retrine.bundle" ] || { echo "cached IPA lacks Retrine.bundle: run the full build once (make install)" >&2; exit 1; }
 
 if [ "$WIREGUARD" = 1 ]; then
   python3 -B "$ROOT/scripts/spotify-transport-scan.py" "$APP" --wireguard-compatible
@@ -69,7 +70,7 @@ install_name_tool -change /Library/Frameworks/CydiaSubstrate.framework/CydiaSubs
 
 # The license notice tweak/Makefile stages beside the strings, which a cache unpacked from a build
 # without WireGuard lacks; a build without it carries no notice.
-NOTICE="$APP/Vitrine.bundle/WireGuard-THIRD_PARTY_LICENSES.txt"
+NOTICE="$APP/Retrine.bundle/WireGuard-THIRD_PARTY_LICENSES.txt"
 if [ "$WIREGUARD" = 1 ]; then
   mkdir -p "$(dirname "$NOTICE")"
   cp "$ROOT/WireGuard/THIRD_PARTY_LICENSES.txt" "$NOTICE"

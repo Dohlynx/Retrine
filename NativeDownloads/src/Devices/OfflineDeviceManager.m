@@ -112,7 +112,7 @@ static void withHeaders(SAPSlotRequest *op,void (^ready)(SAPSlotRequest *)) {
     void (^received)(NSDictionary *)=^(NSDictionary *headers){
         dispatch_async(dispatch_get_main_queue(),^{
             SAPSlotRequest *op=weakOp;if(!op||op.finished||op.headers)return;
-            if(![headers isKindOfClass:NSDictionary.class]){[op finish:nil error:SAPL(@"settings.pixie.devices.error.invalid_headers",@"Vitrine returned invalid authenticated headers. No device request was sent.")];return;}
+            if(![headers isKindOfClass:NSDictionary.class]){[op finish:nil error:SAPL(@"settings.pixie.devices.error.invalid_headers",@"Retrine returned invalid authenticated headers. No device request was sent.")];return;}
             NSMutableDictionary *allowed=[NSMutableDictionary dictionary];
             NSSet *names=[NSSet setWithArray:@[@"authorization",@"client-token",@"spotify-app-version",@"app-platform",@"user-agent"]];
             for(id key in headers)if([key isKindOfClass:NSString.class]&&[names containsObject:[key lowercaseString]]&&[headers[key]isKindOfClass:NSString.class])allowed[key]=headers[key];
@@ -127,7 +127,7 @@ static void withHeaders(SAPSlotRequest *op,void (^ready)(SAPSlotRequest *)) {
     if(testHeaders){testHeaders(received);return;}
 #endif
     void (*provider)(void (^)(NSDictionary *))=dlsym(RTLD_DEFAULT,"SGSpclientHeaders");
-    if(!provider){[op finish:nil error:SAPL(@"settings.pixie.devices.error.provider_refresh",@"Vitrine's authenticated request provider is unavailable. Play one track online on this device, then refresh.")];return;}
+    if(!provider){[op finish:nil error:SAPL(@"settings.pixie.devices.error.provider_refresh",@"Retrine's authenticated request provider is unavailable. Play one track online on this device, then refresh.")];return;}
     provider(received);
 }
 static NSArray *activeDevices(NSArray *devices) {

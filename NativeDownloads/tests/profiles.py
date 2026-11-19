@@ -13,7 +13,7 @@ from zipfile import ZipFile
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"tools"))
 from pixie_target import V9190,V9200,select_profile,artifact_name
-from build_vitrine_9190 import prepare_native,read_input,input_profile,verify_caves
+from build_retrine_9190 import prepare_native,read_input,input_profile,verify_caves
 from generate_target import generate_headers,validate_headers
 import patch_native_restrictions as quota
 import patch_key_request_mode as key
@@ -44,9 +44,9 @@ class StaticProfile(unittest.TestCase):
             input_profile(archive,require_enabled=False,jailbreak=True)
 
     def test_primary_compatibility_and_ordinary_artifact_names(self):
-        self.assertEqual(artifact_name("1.2.3",V9200),"vitrine-1.2.3-pixie.ipa")
-        self.assertEqual(artifact_name("1.2.3",V9190),"vitrine-1.2.3-pixie-spotify-9.1.90.ipa")
-        self.assertEqual(artifact_name("1.2.3"),"vitrine-1.2.3.ipa")
+        self.assertEqual(artifact_name("1.2.3",V9200),"retrine-1.2.3-pixie.ipa")
+        self.assertEqual(artifact_name("1.2.3",V9190),"retrine-1.2.3-pixie-spotify-9.1.90.ipa")
+        self.assertEqual(artifact_name("1.2.3"),"retrine-1.2.3.ipa")
 
     def test_isolated_headers_reject_cross_profile(self):
         with tempfile.TemporaryDirectory(prefix="pixie-headers-") as temporary:

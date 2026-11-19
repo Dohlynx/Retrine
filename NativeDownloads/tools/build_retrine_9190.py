@@ -1,4 +1,4 @@
-"""Build the guarded SpotifyAudioProbe overlay for an exact supported Vitrine IPA."""
+"""Build the guarded SpotifyAudioProbe overlay for an exact supported Retrine IPA."""
 import argparse
 import hashlib
 import json
@@ -98,14 +98,14 @@ def reject_native_overlay(native, segments):
                 raise ValueError("Existing Pixie instruction patch or partial overlay")
 
 
-def clean_input(archive, *, require_vitrine=False):
+def clean_input(archive, *, require_retrine=False):
     names = archive.namelist()
     if len(names) != len(set(names)):
         raise ValueError("Duplicate ZIP members are not supported")
     if any(Path(name).name == "SpotifyAudioProbe.dylib" for name in names):
         raise ValueError("Pixie is already installed")
-    if require_vitrine and "Payload/Spotify.app/Frameworks/spotifyglass.dylib" not in names:
-        raise ValueError("Expected Vitrine's spotifyglass.dylib")
+    if require_retrine and "Payload/Spotify.app/Frameworks/spotifyglass.dylib" not in names:
+        raise ValueError("Expected Retrine's spotifyglass.dylib")
     info = plistlib.loads(archive.read("Payload/Spotify.app/Info.plist"))
     if info.get("CFBundleExecutable") != "Spotify":
         raise ValueError("Unexpected Spotify executable name")
@@ -136,9 +136,9 @@ def input_profile(archive, *, require_enabled=True, jailbreak=False):
     return native, profile
 
 
-def read_input(source, require_vitrine=True, *, static_only=False):
+def read_input(source, require_retrine=True, *, static_only=False):
     with ZipFile(source) as archive:
-        info, native, main_uuid, shared_uuid, prepared = clean_input(archive, require_vitrine=require_vitrine)
+        info, native, main_uuid, shared_uuid, prepared = clean_input(archive, require_retrine=require_retrine)
         select_profile(info, main_uuid, shared_uuid, require_enabled=not static_only)
     return native, prepared
 
@@ -151,10 +151,10 @@ def require_separate_output(source, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ipa", type=Path)
-    parser.add_argument("--vitrine-dylib", type=Path, help="Vitrine rebuilt from the local sources")
+    parser.add_argument("--retrine-dylib", type=Path, help="Retrine rebuilt from the local sources")
     parser.add_argument("--fixed-key-mode-zero", action="store_true", help="Recovery rollback: use the direct mode-0 instruction from the last working build, without the runtime selector")
     parser.add_argument("--check-input", action="store_true",
-                        help="Validate a decrypted source IPA without requiring Vitrine or writing output")
+                        help="Validate a decrypted source IPA without requiring Retrine or writing output")
     parser.add_argument("--check-clean", action="store_true",
                         help="Reject malformed input and existing/partial Pixie overlays, even when excluding Pixie")
     parser.add_argument("--artifact-name", metavar="MOD_VERSION",
@@ -171,7 +171,7 @@ def main():
         require_separate_output(source, output)
     with ZipFile(source) as archive:
         info, native, main_uuid, shared_uuid, prepared = clean_input(
-            archive, require_vitrine=not (args.check_input or args.check_clean))
+            archive, require_retrine=not (args.check_input or args.check_clean))
     if args.check_clean:
         print("Pixie exclusion preflight: clean Spotify input")
         return
@@ -188,27 +188,28 @@ def main():
     output = output or ROOT.parent / "out" / artifact_name((ROOT.parent / "version.txt").read_text().strip(), profile)
     require_separate_output(source, output)
     patched, exports = patch_export.patch(patched, profile)
-    vitrine = args.vitrine_dylib.resolve() if args.vitrine_dylib else None
-    if vitrine:
-        run("codesign", "--verify", "--strict", vitrine)
-        run("xcrun", "dyld_info", "-validate_only", vitrine)
-        if b"Vitrine.Album.Download" not in vitrine.read_bytes():
-            raise RuntimeError("The rebuilt Vitrine lacks the album download button")
+    retrine = args.retrine_dylib.resolve() if args.retrine_dylib else None
+    if retrine:
+        run("codesign", "--verify", "--strict", retrine)
+        run("xcrun", "dyld_info", "-validate_only", retrine)
+        image = retrine.read_bytes()
+        if not any(marker in image for marker in (b"Retrine.Album.Download", b"Vitrine.Album.Download")):
+            raise RuntimeError("The rebuilt Retrine lacks the album download button")
     executable = "Payload/Spotify.app/Spotify"
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="vitrine-9190-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="retrine-9190-") as temporary:
         temporary = Path(temporary)
-        if vitrine:
-            staged_vitrine = temporary / "spotifyglass.dylib"
-            staged_vitrine.write_bytes(vitrine.read_bytes())
+        if retrine:
+            staged_retrine = temporary / "spotifyglass.dylib"
+            staged_retrine.write_bytes(image)
             # Theos links this manual hook to its jailbreak framework path.
             # The supplied sideload IPA already bundles the same framework.
-            if substrate_dependencies(staged_vitrine):
-                pin_substrate_dependency(staged_vitrine)
-            run("codesign", "--force", "--sign", "-", "--timestamp=none", staged_vitrine)
-            run("codesign", "--verify", "--strict", staged_vitrine)
-            run("xcrun", "dyld_info", "-validate_only", staged_vitrine)
-            vitrine = staged_vitrine
+            if substrate_dependencies(staged_retrine):
+                pin_substrate_dependency(staged_retrine)
+            run("codesign", "--force", "--sign", "-", "--timestamp=none", staged_retrine)
+            run("codesign", "--verify", "--strict", staged_retrine)
+            run("xcrun", "dyld_info", "-validate_only", staged_retrine)
+            retrine = staged_retrine
         companion = temporary / "SpotifyAudioProbe.dylib"
         build_companion(companion, temporary, profile)
         binary = temporary / "Spotify"
@@ -231,7 +232,7 @@ def main():
                 for member in original.infolist():
                     if member.filename in {IPA_LICENSE_DIRECTORY+name for name in licenses}:
                         continue
-                    replacement = binary.read_bytes() if member.filename == executable else vitrine.read_bytes() if vitrine and member.filename == "Payload/Spotify.app/Frameworks/spotifyglass.dylib" else original.read(member.filename)
+                    replacement = binary.read_bytes() if member.filename == executable else retrine.read_bytes() if retrine and member.filename == "Payload/Spotify.app/Frameworks/spotifyglass.dylib" else original.read(member.filename)
                     result.writestr(member, replacement)
                 result.write(companion, "Payload/Spotify.app/Frameworks/SpotifyAudioProbe.dylib")
                 for name, content in licenses.items():

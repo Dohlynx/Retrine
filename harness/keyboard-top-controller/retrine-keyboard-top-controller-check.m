@@ -373,7 +373,7 @@ static void runChecks(UIWindow *sceneWindow) {
     // 8. No window, no answer: nil rather than a guess.
     check(SGTopControllerInWindow(nil, nil, nil) == nil, @"no window resolves no controller");
 
-    printf("vitrine-keyboard-top-controller-check: %d/%d passed\n", checks - failures, checks);
+    printf("retrine-keyboard-top-controller-check: %d/%d passed\n", checks - failures, checks);
     fflush(stdout);
     exit(failures ? 1 : 0);
 }

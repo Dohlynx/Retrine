@@ -3,7 +3,7 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$(cd "$HERE/../../tweak/Sources" && pwd)
-OUT=$(mktemp -d /tmp/vitrine-explicit-badge.XXXXXX)
+OUT=$(mktemp -d /tmp/retrine-explicit-badge.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 LOGOS=${THEOS:-$HOME/theos}/bin/logos.pl

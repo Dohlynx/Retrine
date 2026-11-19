@@ -2,7 +2,7 @@
 # Exercise the actual collection captures and add-only command on the host runtime.
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OUT=$(mktemp -d /tmp/vitrine-like.XXXXXX)
+OUT=$(mktemp -d /tmp/retrine-like.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 python3 - "$OUT" "${LIKE_SOURCE:-$ROOT/tweak/Sources/Shared/HeadGestures/HeadGestures.x}" <<'PY'
 import pathlib, sys

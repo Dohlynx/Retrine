@@ -3,7 +3,7 @@
 #import <UIKit/UIKit.h>
 
 #define SGKeyAppFont @"spotifyglass.font"
-// The imported family: its files' names in Application Support/Vitrine/Font, and the family name read from them.
+// The imported family: its files' names in Application Support/Retrine/Font, and the family name read from them.
 // SGKeyAppFontFile is the single file of an import from before families, moved to the list on first use.
 #define SGKeyAppFontFiles @"spotifyglass.font.files"
 #define SGKeyAppFontName @"spotifyglass.font.name"

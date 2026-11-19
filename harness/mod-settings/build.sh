@@ -28,7 +28,7 @@ cat > "$OUT/ModSettingsHarness.app/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>ModSettingsHarness</string>
-<key>CFBundleIdentifier</key><string>com.vitrine.modsettingsharness</string>
+<key>CFBundleIdentifier</key><string>com.retrine.modsettingsharness</string>
 <key>CFBundleName</key><string>ModSettingsHarness</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleShortVersionString</key><string>1.0</string>
@@ -47,5 +47,5 @@ cat > "$OUT/ModSettingsHarness.app/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 # The mod's translations, inside the app where cyan puts them in the IPA: launch with -AppleLanguages '(ko)' to read them.
-cp -R "$SRC/../layout/Library/Application Support/Vitrine.bundle" "$OUT/ModSettingsHarness.app/"
+cp -R "$SRC/../layout/Library/Application Support/Retrine.bundle" "$OUT/ModSettingsHarness.app/"
 echo "built $OUT/ModSettingsHarness.app"

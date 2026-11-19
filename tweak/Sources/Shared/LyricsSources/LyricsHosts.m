@@ -1,6 +1,6 @@
 #import "LyricsHosts.h"
 static NSString *const kBiniFileHost = @"lrc.red";
-static NSString *const kLyricsRequestOrigin = @"Vitrine.Lyrics.RequestOrigin";
+static NSString *const kLyricsRequestOrigin = @"Retrine.Lyrics.RequestOrigin";
 
 BOOL SGLyricsProviderURLAllowed(NSURL *url) {
     return [url.scheme.lowercaseString isEqualToString:@"https"] && !url.user && !url.password &&

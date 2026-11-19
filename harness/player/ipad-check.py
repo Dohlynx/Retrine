@@ -86,12 +86,12 @@ with tempfile.TemporaryDirectory(prefix="adaptive-player-") as temp:
             for name, variables in cases:
                 scenario(udid, "com.vojta.playerharness", prefix + "-player-" + name,
                          dict(variables, HARNESS_SCENARIO="adaptive"), "adaptive checks: PASS")
-            scenario(udid, "com.vitrine.nowplayingbar.check", prefix + "-capsule",
+            scenario(udid, "com.retrine.nowplayingbar.check", prefix + "-capsule",
                      {"HARNESS_CAPSULE": "1"}, "capsule checks: PASS")
             if prefix == "ipad":
                 for name, variables in [("rtl", {"HARNESS_RTL": "1"}), ("compact", {"HARNESS_COMPACT": "1"}),
                                         ("active", {"HARNESS_OPTIONS_ACTIVE": "1"})]:
-                    scenario(udid, "com.vitrine.nowplayingbar.check", prefix + "-capsule-" + name,
+                    scenario(udid, "com.retrine.nowplayingbar.check", prefix + "-capsule-" + name,
                              dict(variables, HARNESS_CAPSULE="1"), "capsule checks: PASS")
                 run("xcrun", "simctl", "ui", udid, "content_size", "accessibility-extra-extra-extra-large")
                 scenario(udid, "com.vojta.playerharness", prefix + "-player-accessibility",

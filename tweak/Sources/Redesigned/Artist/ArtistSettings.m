@@ -79,7 +79,7 @@ static UIView *addCardRow(SGRPagePreview *card, UIView *leading) {
 static UIView *previewPlay(UIView *header) {
     __block UIView *controls = nil;
     SGForEachView(header, ^(UIView *view) {
-        if (!controls && [view.accessibilityIdentifier isEqualToString:@"vitrine.preview.header.controls"]) controls = view;
+        if (!controls && [view.accessibilityIdentifier isEqualToString:@"retrine.preview.header.controls"]) controls = view;
     });
     return controls.subviews.count == 3 ? controls.subviews[1] : nil;
 }

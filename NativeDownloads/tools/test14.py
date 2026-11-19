@@ -99,7 +99,7 @@ FIXTURES = (
     Fixture("diagnostic_trace", "diagnostics", ("DiagnosticTrace.m", "NativeKeyTrace.m", "WireProto.m", "diagnostic_trace.m"), scenarios=tuple((s,) for s in ("normal", "rotation", "loss", "write_error", "reset", "off_reset", "noise"))),
     Fixture("support_log", "diagnostics", ("SupportLogSerializer.m", "support_log.m")),
     Fixture("track_download", "transport", ("PlayerTrace.m", "WireProto.m", "track_download.m"), groups=("manual_download",), diagnostics=True),
-    Fixture("vitrine_track_download", "transport", ("PlayerTrace.m", "WireProto.m", "tests/track_download.m"), groups=("manual_download",), diagnostics=True),
+    Fixture("retrine_track_download", "transport", ("PlayerTrace.m", "WireProto.m", "tests/track_download.m"), groups=("manual_download",), diagnostics=True),
     Fixture("artist_session", "session", ("WireProto.m", "artist_session.m"), groups=("artist_session",)),
     Fixture("artist_metadata", "catalog", ("ArtistMetadata.m", "WireProto.m", "artist_metadata.m")),
     Fixture("album_metadata", "catalog", ("AlbumMetadata.m", "WireProto.m", "album_metadata.m")),
@@ -107,7 +107,7 @@ FIXTURES = (
     Fixture("playlist_streaming", "playlists", ("WireProto.m", "playlist_streaming.m"), groups=("playlists",)),
     Fixture("download_compatibility", "devices", ("OfflineCompatibilityChecks.m", "WireProto.m", "download_compatibility.m"), diagnostics=True),
     Fixture("offline_devices", "devices", ("OfflineDeviceManager.m", "WireProto.m", "offline_devices.m"), diagnostics=True),
-    Fixture("offline_devices_vitrine_auth", "devices", ("OfflineDeviceManager.m", "WireProto.m", "offline_devices.m"), diagnostics=True, defines=("SAP_VITRINE_AUTH_ASYNC",)),
+    Fixture("offline_devices_retrine_auth", "devices", ("OfflineDeviceManager.m", "WireProto.m", "offline_devices.m"), diagnostics=True, defines=("SAP_RETRINE_AUTH_ASYNC",)),
 )
 GROUP_FALLBACKS = {
     "manual_download": ("ManualTrackDownload.m","TrackLibrary.m","TrackMenu.m","SpotifyTransportRegistry.m","SpotifyTransportHooks.m","SpotifyServiceCalls.m","SpotifyCommands.m"),
@@ -279,7 +279,7 @@ def main():
         results.append(result)
         print(f"{result['status']}: {suite}/{name}" + (f" — {result['reason']}" if "reason" in result else ""), flush=True)
     counts = {status: sum(r["status"] == status for r in results) for status in ("PASS", "SKIP", "FAIL")}
-    report = {"host": platform.platform(), "production_target": "Vitrine / Spotify 9.1.90 / Pixie 1.4", "sanitizers": not args.no_sanitize, "device_runtime_tested": False, "counts": counts, "results": results}
+    report = {"host": platform.platform(), "production_target": "Retrine / Spotify 9.1.90 / Pixie 1.4", "sanitizers": not args.no_sanitize, "device_runtime_tested": False, "counts": counts, "results": results}
     (build / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     print(f"Results: {counts}; {build / 'results.json'}", flush=True)
     return 1 if counts["FAIL"] or not counts["PASS"] else 0

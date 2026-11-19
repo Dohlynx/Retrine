@@ -245,9 +245,9 @@ int main(void) {
         checkRunOwnership();
     }
     if (failures) {
-        printf("vitrine-keyboard-commands-check: %d failure(s)\n", failures);
+        printf("retrine-keyboard-commands-check: %d failure(s)\n", failures);
         return 1;
     }
-    printf("vitrine-keyboard-commands-check: ok\n");
+    printf("retrine-keyboard-commands-check: ok\n");
     return 0;
 }

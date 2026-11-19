@@ -8,7 +8,7 @@ set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SRC=$(cd "$HERE/../../tweak/Sources" && pwd)
 LOGOS=${THEOS:-$HOME/theos}/bin/logos.pl
-if [ -n "${OUT:-}" ]; then mkdir -p "$OUT"; else OUT=$(mktemp -d /tmp/vitrine-cover-check.XXXXXX); trap 'rm -rf "$OUT"' EXIT; fi
+if [ -n "${OUT:-}" ]; then mkdir -p "$OUT"; else OUT=$(mktemp -d /tmp/retrine-cover-check.XXXXXX); trap 'rm -rf "$OUT"' EXIT; fi
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 CC="xcrun clang -target arm64-apple-ios17.0-macabi -fobjc-arc -g -O0 -isysroot $SDK -iframework $SDK/System/iOSSupport/System/Library/Frameworks -Wno-deprecated-declarations"
 FRAMEWORKS="-framework UIKit -framework QuartzCore -framework CoreGraphics -framework CoreImage -framework Foundation -framework Vision"
@@ -49,7 +49,7 @@ hero() {
         "$SRC"/Redesigned/Album/AlbumNotes.m "$SRC"/Shared/AnimatedArtwork/SGMotionClip.m "$SRC"/Shared/AdBlock/Protobuf.m \
         "$SRC"/Redesigned/Album/AlbumPlaysPlace.m "$SRC"/Redesigned/Kit/SGRRollingDigits.m "$SRC"/Redesigned/Kit/SGRRefinements.m \
         $FRAMEWORKS -framework Metal -framework Symbols -framework CoreText -framework AVFoundation -framework CoreMedia -framework CoreVideo \
-        -o "$dir/cover-hero-check"
+        "$SRC/Core/SGDataRoot.m" -o "$dir/cover-hero-check"
 }
 
 hero "$OUT/hero"

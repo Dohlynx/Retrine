@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")"
 SRC=$(cd ../../tweak/Sources && pwd)
 PIXIE=$(cd ../../NativeDownloads/src && pwd)
-OUT=$(mktemp -d /tmp/vitrine-offline-attributes.XXXXXX)
+OUT=$(mktemp -d /tmp/retrine-offline-attributes.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 "${THEOS:-$HOME/theos}/bin/logos.pl" -c generator=internal "${ADNETWORK_SOURCE:-$SRC/Shared/AdBlock/AdNetwork.x}" > "$OUT/AdNetwork.m"
 xcrun clang -c -fobjc-arc -fblocks -fvisibility=hidden -std=gnu11 \
@@ -15,8 +15,8 @@ xcrun clang -dynamiclib -fobjc-arc -fblocks -fvisibility=hidden -std=gnu11 \
     offline-companion.m "$OUT/OfflineConfig.o" "$PIXIE/Spotify/WireProto.m" \
     -framework Foundation -o "$OUT/SpotifyAudioProbe.dylib"
 xcrun clang -fobjc-arc -fblocks -O0 -Wall -Werror -I "$OUT" -I shim -I ../shared/foundation \
-    -I "$SRC/Shared/AdBlock" offline-check.m "${PREMIUM_SOURCE:-$SRC/Shared/AdBlock/Premium.m}" \
-    "$SRC/Shared/AdBlock/OfflineCompanion.m" "$SRC/Shared/AdBlock/Protobuf.m" -framework Foundation -o "$OUT/offline-check"
+    -I "$SRC" -I "$SRC/Shared/AdBlock" offline-check.m "${PREMIUM_SOURCE:-$SRC/Shared/AdBlock/Premium.m}" \
+    "$SRC/Shared/AdBlock/OfflineCompanion.m" "$SRC/Shared/AdBlock/Protobuf.m" -framework Foundation "$SRC/Core/SGDataRoot.m" -o "$OUT/offline-check"
 for premium in ${OFFLINE_PREMIUM_CASES:-0 1}; do
     FAKE_PREMIUM=$premium CFFIXED_USER_HOME="$OUT" "$OUT/offline-check" "$OUT/SpotifyAudioProbe.dylib"
     if [ -z "${REVIEW_REGRESSIONS:-}${RECHECK_REGRESSIONS:-}" ]; then

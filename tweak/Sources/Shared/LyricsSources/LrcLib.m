@@ -17,7 +17,7 @@ static const NSInteger kLengthSlack = 4;
 static const NSUInteger kMostTimedRows = 4000;
 
 static NSDictionary<NSString *, NSString *> *headers(void) {
-    return @{@"User-Agent": @"Vitrine " @SG_VERSION};
+    return @{@"User-Agent": @"Retrine " @SG_VERSION};
 }
 
 // Bound transport before JSON allocation, and each sheet before ranking or LRC conversion.

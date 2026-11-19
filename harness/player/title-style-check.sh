@@ -22,7 +22,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>Check</string>
-<key>CFBundleIdentifier</key><string>com.vitrine.player.titlestylecheck</string>
+<key>CFBundleIdentifier</key><string>com.retrine.player.titlestylecheck</string>
 <key>CFBundleVersion</key><string>1</string>
 </dict></plist>
 PLIST

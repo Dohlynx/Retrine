@@ -108,11 +108,11 @@ static UIButton *lyricsMenuIn(UIView *stage) {
                 HARNESS_CHECK(CGRectContainsRect(self.window.rootViewController.view.bounds, self->_host.frame));
                 HARNESS_CHECK([self->_host.accessibilityElements indexOfObject:bottom] <
                               [self->_host.accessibilityElements indexOfObject:overlay]);
-                SGRGlyphButton *queue = (id)SGRFindByIdentifier(self->_host, @"vitrine.player.queue", NULL);
+                SGRGlyphButton *queue = (id)SGRFindByIdentifier(self->_host, @"retrine.player.queue", NULL);
                 HARNESS_CHECK(queue && queue.accessibilityLabel.length && queue.bounds.size.width >= 44);
                 queue.onTap();
                 HARNESS_CHECK(SGRPlayerQueueSideShown());
-                UITableView *list = (id)SGRFindByIdentifier(stage, @"vitrine.queue", NULL);
+                UITableView *list = (id)SGRFindByIdentifier(stage, @"retrine.queue", NULL);
                 HARNESS_CHECK(list && list.window && list.bounds.size.height > 100);
                 HARNESS_CHECK([list numberOfSections] > 0);
                 SGRPlayerToggleLyrics();

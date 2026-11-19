@@ -146,7 +146,7 @@ UIViewController *SGRAlbumSettingsPage(void) {
         SGNotedSection(SGL(@"settings.album.apple_music.header", @"Apple Music"), @[
             motion,
             notes,
-            SGOptionRow(SGL(@"settings.album.motion_low_data.title", @"Download in Low Data Mode"), SGL(@"settings.album.motion_low_data.subtitle", @"Applies to animated artwork throughout Vitrine."), SGKeyMotionLowData),
+            SGOptionRow(SGL(@"settings.album.motion_low_data.title", @"Download in Low Data Mode"), SGL(@"settings.album.motion_low_data.subtitle", @"Applies to animated artwork throughout Retrine."), SGKeyMotionLowData),
         ], SGL(@"settings.album.apple_music.note", @"Only the album's name is sent to Apple Music. A cover stays still in Low Power Mode.")),
         SGNotedSection(SGL(@"settings.album.tracks.header", @"Tracks"), @[plays, source],
                        SGL(@"settings.album.play_counts.sources_note", @"Your plays uses Listening stats on this phone, matched by album and track names. Spotify plays uses Spotify's track metadata and may be unavailable.")),

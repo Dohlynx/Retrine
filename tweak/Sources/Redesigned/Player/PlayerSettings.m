@@ -1114,7 +1114,7 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
     backgrounds.accessibilityLabel = SGL(@"settings.player.background.a11y", @"Background");
     backgrounds.apportionsSegmentWidthsByContent = YES;
 
-    SGModRow *lowData = SGOptionRow(SGL(@"settings.player.motion_low_data.title", @"Download in Low Data Mode"), SGL(@"settings.player.motion_low_data.subtitle", @"Up to about 7 MB a song. Applies to animated artwork throughout Vitrine."), SGKeyMotionLowData);
+    SGModRow *lowData = SGOptionRow(SGL(@"settings.player.motion_low_data.title", @"Download in Low Data Mode"), SGL(@"settings.player.motion_low_data.subtitle", @"Up to about 7 MB a song. Applies to animated artwork throughout Retrine."), SGKeyMotionLowData);
     lowData.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundAnimated; };
     SGModRow *sources = SGMotionSourcesRow();
     sources.visible = lowData.visible;

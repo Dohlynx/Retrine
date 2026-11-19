@@ -1,4 +1,5 @@
 #import "AlbumSpotifyCounts.h"
+#import "Core/SGDataRoot.h"
 
 static const NSUInteger kMaxTracksPerAlbum = 500, kMaxCachedAlbums = 64, kMaxCacheBytes = 2 * 1024 * 1024;
 static const NSUInteger kMaxPendingAlbums = 16, kMaxAlbumWaiters = 16;
@@ -210,7 +211,7 @@ static BOOL validCounts(id counts) {
     if (!(self = [super init])) return nil;
     _url = url;
     _transport = [transport copy];
-    _queue = dispatch_queue_create("vitrine.album-counts", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
+    _queue = dispatch_queue_create("retrine.album-counts", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
     _pending = [NSMutableDictionary dictionary];
     return self;
 }
@@ -300,8 +301,8 @@ SGRAlbumCountsStore *SGRAlbumSpotifyCountsStore(void) {
     static SGRAlbumCountsStore *store;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        NSURL *base = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
-        store = [[SGRAlbumCountsStore alloc] initWithCacheURL:[base URLByAppendingPathComponent:@"Vitrine/AlbumCounts.plist"]
+        NSURL *base = SGDataRoot(NSCachesDirectory);
+        if (base) store = [[SGRAlbumCountsStore alloc] initWithCacheURL:[base URLByAppendingPathComponent:@"AlbumCounts.plist"]
             transport:^(NSString *path, NSData *body, SGSpotifyMetadataReply done) { SGSpotifyMetadataRequest(path, body, done); }];
     });
     return store;

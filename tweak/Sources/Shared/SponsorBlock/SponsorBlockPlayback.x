@@ -3,7 +3,7 @@
 #import "SponsorBlock.h"
 
 // Spotify 9.1.90 Objective-C metadata: v48@0:8@16@24@?32@?40. This is Spotify's
-// existing timed, accessible action snackbar; no Vitrine overlay or playback timer.
+// existing timed, accessible action snackbar; no Retrine overlay or playback timer.
 @protocol SGSponsorBlockSnackbar <NSObject>
 - (void)presentSnackbarWithText:(NSString *)text buttonTitle:(NSString *)title
                    actionBlock:(dispatch_block_t)action presentationEndedBlock:(id)ended;

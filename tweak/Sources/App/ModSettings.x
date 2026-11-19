@@ -229,7 +229,7 @@ static UIViewController *modSettingsPage(void) {
         ]),
         SGSection(nil, @[mod]),
     ]];
-    SGModPage *page = [[SGModPage alloc] initWithTitle:@"Vitrine" intro:nil sections:sections footer:nil];
+    SGModPage *page = [[SGModPage alloc] initWithTitle:@"Retrine" intro:nil sections:sections footer:nil];
     page.tiles = YES;
     page.searchable = YES;
     // The page can stay open as Redesigned UI is flipped and the root is not rebuilt (the restart can be put off), so

@@ -758,7 +758,7 @@ static void offlineImageAdded(const struct mach_header *image, intptr_t slide) {
         %init(TaskRequests);
         if (premium) installRequestFactories();
     }
-    offlineInstallQueue = dispatch_queue_create("com.vitrine.offline-loader", DISPATCH_QUEUE_SERIAL);
+    offlineInstallQueue = dispatch_queue_create("com.retrine.offline-loader", DISPATCH_QUEUE_SERIAL);
     installOfflineHooks();
     _dyld_register_func_for_add_image(offlineImageAdded);
 }

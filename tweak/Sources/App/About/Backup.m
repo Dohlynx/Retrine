@@ -2,6 +2,7 @@
 #import <OSLog/OSLog.h>
 #import <sys/utsname.h>
 #import "Core/SGCore.h"
+#import "Core/SGDataRoot.h"
 #import "Shared/AdBlock/AdBlock.h"
 #import "Shared/Lyrics/Lyrics.h"
 #import "Settings/SGPageStyle.h"
@@ -61,7 +62,7 @@ static NSMutableString *diagnosticMetadata(void) {
     NSMutableString *text = [NSMutableString string];
     struct utsname machine;
     uname(&machine);
-    [text appendFormat:@"Vitrine %s, Spotify %@, iOS %@, %s\n", SG_VERSION,
+    [text appendFormat:@"Retrine %s, Spotify %@, iOS %@, %s\n", SG_VERSION,
         [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"unknown",
         UIDevice.currentDevice.systemVersion, machine.machine];
     [text appendFormat:@"look %@, hide ads %d, hide upsells %d, spoof premium %d, EeveeSpotify %d\n\n",
@@ -108,8 +109,8 @@ static NSError *writeDiagnostics(NSMutableString *text, NSURL *url) {
         for (NSUInteger i = 0; i < lines.count; i++)
             [text appendFormat:@"%@%@", i ? @"\n" : @"", lines[(oldest + i) % lines.count]];
         if (!lines.count) [text appendFormat:@"(none: %@)", error.localizedDescription ?: @"the log is empty"];
-        NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
-        NSString *config = [NSString stringWithContentsOfURL:[caches URLByAppendingPathComponent:@"Vitrine/live-config.txt"]
+        NSURL *caches = SGDataRoot(NSCachesDirectory);
+        NSString *config = [NSString stringWithContentsOfURL:[caches URLByAppendingPathComponent:@"live-config.txt"]
                                                     encoding:NSUTF8StringEncoding error:nil];
         [text appendFormat:@"\n\n== config Spotify's server last sent\n%@", config ?: @"(none yet: Spoof Premium is off, or no fetch so far)\n"];
         NSError *writeError = nil;
@@ -131,7 +132,7 @@ void SGExportDiagnosticsToURL(NSURL *url, void (^completion)(NSError *error)) {
 NSURL *SGWriteDiagnosticsFile(void) {
     __block NSMutableString *text;
     dispatch_sync(dispatch_get_main_queue(), ^{ text = diagnosticMetadata(); });
-    NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"vitrine-diagnostics.txt"]];
+    NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"retrine-diagnostics.txt"]];
     __block NSError *error;
     dispatch_sync(diagnosticWriter(), ^{ error = writeDiagnostics(text, url); });
     return error ? nil : url;
@@ -150,7 +151,7 @@ void SGShareDiagnostics(UIViewController *presenter) {
     if (exporting || !SGDiagnosticsCanPresentFrom(presenter)) return;
     exporting = YES;
     __weak UIViewController *weakPresenter = presenter;
-    NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"vitrine-diagnostics.txt"]];
+    NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"retrine-diagnostics.txt"]];
     SGExportDiagnosticsToURL(url, ^(NSError *error) {
         exporting = NO;
         UIViewController *owner = weakPresenter;

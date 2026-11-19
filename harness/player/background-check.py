@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fake lifecycle checks on production UI owners, in a disposable clone of Vitrine."""
+"""Fake lifecycle checks on production UI owners, in a disposable simulator clone."""
 import os
 from pathlib import Path
 import subprocess
@@ -13,11 +13,11 @@ parser.add_argument("--menu-scenarios", nargs="+", choices=["background", "rows"
 args = parser.parse_args()
 
 ROOT = Path(__file__).resolve().parents[2]
-with tempfile.TemporaryDirectory(prefix="vitrine-background-") as temporary:
+with tempfile.TemporaryDirectory(prefix="retrine-background-") as temporary:
     work = Path(temporary)
     builds = [
         ("player", "PlayerHarness.app", "com.vojta.playerharness", []),
-        ("system-menu", "SystemMenuHarness.app", "com.vitrine.systemmenuharness", ["background"]),
+        ("system-menu", "SystemMenuHarness.app", "com.retrine.systemmenuharness", ["background"]),
         ("album", "AlbumHarness.app", "com.vojta.albumharness", ["download-background"]),
     ]
     builds = [build for build in builds if build[0] in args.areas]

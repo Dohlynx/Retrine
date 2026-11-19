@@ -6,6 +6,7 @@
 #import <UIKit/UIKit.h>
 #import "Shared/LocalFiles/LocalFiles.h"
 #import "Shared/LocalFiles/LocalLyrics.h"
+#import "Shared/LocalFiles/LyricRetirement.h"
 #import "import.h"
 #import <objc/runtime.h>
 #include <spawn.h>
@@ -151,7 +152,7 @@ static void freshLaunch(void) {
 
 static NSString *lyricsPath(NSString *name) {
     return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject
-             stringByAppendingPathComponent:@"Vitrine/Lyrics"] stringByAppendingPathComponent:name];
+             stringByAppendingPathComponent:@"Retrine/Lyrics"] stringByAppendingPathComponent:name];
 }
 
 // A fresh launch, then the lyrics folder and the retired list as that launch leaves them.
@@ -160,8 +161,8 @@ static NSArray<NSString *> *freshFolder(void) {
     return SGImportedLRCFiles();
 }
 
-static NSArray<NSString *> *freshRetired(void) {
-    return [NSUserDefaults.standardUserDefaults arrayForKey:SGKeyRetiredImportedLyrics] ?: @[];
+static NSArray<NSString *> *retiredNames(void) {
+    return [[NSUserDefaults.standardUserDefaults arrayForKey:SGKeyRetiredImportedLyrics] valueForKey:@"name"] ?: @[];
 }
 
 // Every asynchronous store request this check makes is counted, so the wait below knows when all of them
@@ -213,10 +214,11 @@ static void reuseRaceCheck(void) {
     NSString *name = @"reused.lrc";
     NSString *uri = @"spotify:local:Reuse:Album:Song:150";
     // The state a replacement leaves behind, with a retire step about to run over it.
-    CHECK([[@"[00:01]Retired words" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:lyricsPath(name) atomically:YES]);
-    [NSUserDefaults.standardUserDefaults setObject:(@[name]) forKey:SGKeyRetiredImportedLyrics];
+    NSError *error = nil;
+    NSDictionary *receipt = nil;
+    CHECK(SGWriteImportedLyric(@"[00:01]Retired words", [NSURL fileURLWithPath:lyricsPath(name)], &receipt, &error) && receipt);
+    [NSUserDefaults.standardUserDefaults setObject:@[receipt] forKey:SGKeyRetiredImportedLyrics];
     [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyImportedLRCLinks];
-    [NSUserDefaults.standardUserDefaults synchronize];
     __block BOOL imported = NO, retired = NO, deleted = YES;
     retireLyrics(^(NSArray<NSString *> *removed) {
         CHECK([removed isEqual:(@[name])]);   // the step did run first, and it did delete that file
@@ -232,7 +234,7 @@ static void reuseRaceCheck(void) {
     CHECK(!deleted);   // the order held: the retire step had already removed the file
     CHECK([SGImportedLRCLinkedTo(uri) isEqual:name]);
     CHECK([[NSString stringWithContentsOfFile:lyricsPath(name) encoding:NSUTF8StringEncoding error:nil] isEqual:@"[00:02]New words"]);
-    CHECK(![[NSUserDefaults.standardUserDefaults arrayForKey:SGKeyRetiredImportedLyrics] containsObject:name]);
+    CHECK(![retiredNames() containsObject:name]);
     // And a launch over that state leaves the file the import now owns.
     CHECK([freshFolder() containsObject:name]);
     CHECK([[NSString stringWithContentsOfFile:lyricsPath(name) encoding:NSUTF8StringEncoding error:nil] isEqual:@"[00:02]New words"]);
@@ -330,7 +332,7 @@ static void validatorCheck(void) {
     CHECK([SGImportedLRCLinkedTo(uri) isEqual:@"second-letters.txt"]);
     CHECK([SGImportedLRCFor(uri, nil, nil).texts.firstObject isEqual:@"Plain words"]);
     CHECK([SGImportedLRCFiles() containsObject:@"first.lrc"]);   // still there: nothing is deleted at import
-    CHECK(([[NSUserDefaults.standardUserDefaults arrayForKey:SGKeyRetiredImportedLyrics] isEqual:(@[@"first.lrc"])]));
+    CHECK(([retiredNames() isEqual:@[@"first.lrc"]]));
 
     // No import ever deletes for not being linked: a by-name file and one copied in by hand are nobody's
     // links, and they are still there after any number of launches.
@@ -342,7 +344,7 @@ static void validatorCheck(void) {
         CHECK([folder containsObject:@"By Name - A Song.lrc"]);
         CHECK([folder containsObject:@"hand-copied.lrc"]);
         CHECK(![folder containsObject:@"first.lrc"]);
-        CHECK(([freshRetired() isEqual:@[]]));
+        CHECK(([retiredNames() isEqual:@[]]));
     }
     SGLyricsResult *byName = SGImportedLRCFor(@"spotify:track:y", @"A Song", @"By Name");
     CHECK(byName != nil);
@@ -359,9 +361,9 @@ static void validatorCheck(void) {
     CHECK([replacedName isEqual:@"third-replaced.lrc"]);
     [NSUserDefaults.standardUserDefaults setObject:@{uri: @"second-letters.txt"} forKey:SGKeyImportedLRCLinks];
     [NSUserDefaults.standardUserDefaults synchronize];
-    CHECK(([[NSUserDefaults.standardUserDefaults arrayForKey:SGKeyRetiredImportedLyrics] containsObject:@"second-letters.txt"]));
+    CHECK([retiredNames() containsObject:@"second-letters.txt"]);
     CHECK(([freshFolder() containsObject:@"second-letters.txt"]));
-    CHECK(([freshRetired() isEqual:(@[@"second-letters.txt"])]));
+    CHECK(([retiredNames() isEqual:@[@"second-letters.txt"]]));
     // The link the app has in memory still names the file the failed launch left, and it still holds its
     // words: the crash cost nothing.
     CHECK([SGImportedLRCLinkedTo(uri) isEqual:@"third-replaced.lrc"]);
@@ -372,7 +374,7 @@ static void validatorCheck(void) {
     NSArray<NSString *> *afterCrash = freshFolder();
     CHECK(![afterCrash containsObject:@"second-letters.txt"]);
     CHECK([afterCrash containsObject:@"third-replaced.lrc"]);
-    CHECK(([freshRetired() isEqual:@[]]));
+    CHECK(([retiredNames() isEqual:@[]]));
 
     // A retired name that is a directory, a symlink or nothing at all is never deleted: only a regular file
     // directly in the lyrics directory is.
@@ -395,17 +397,17 @@ static void validatorCheck(void) {
 
     // The same with a write that fails: the old lyrics, the link and the stored file stand as they were.
     CHECK([importLRC(lrc(@"kept.lrc", @"[00:01]Kept words"), uri, &error) isEqual:@"kept.lrc"]);
-    SEL write = @selector(writeToFile:atomically:encoding:error:);
+    SEL write = @selector(writeToURL:atomically:encoding:error:);
     Method method = class_getInstanceMethod(NSString.class, write);
     IMP original = method_getImplementation(method);
     static atomic_bool failWrites;
     atomic_store(&failWrites, true);
-    IMP failing = imp_implementationWithBlock(^BOOL(id receiver, NSString *path, BOOL atomically, NSStringEncoding encoding, NSError **out) {
+    IMP failing = imp_implementationWithBlock(^BOOL(id receiver, NSURL *url, BOOL atomically, NSStringEncoding encoding, NSError **out) {
         if (atomic_load(&failWrites)) {
             if (out) *out = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileWriteNoPermissionError userInfo:nil];
             return NO;
         }
-        return ((BOOL (*)(id, SEL, id, BOOL, NSStringEncoding, NSError **))original)(receiver, write, path, atomically, encoding, out);
+        return ((BOOL (*)(id, SEL, id, BOOL, NSStringEncoding, NSError **))original)(receiver, write, url, atomically, encoding, out);
     });
     method_setImplementation(method, failing);
     error = nil;
@@ -524,7 +526,7 @@ int main(int argc, char *argv[]) {
         temporaryDirectory = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
         CHECK([NSFileManager.defaultManager createDirectoryAtURL:temporaryDirectory withIntermediateDirectories:YES attributes:nil error:nil]);
         NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-        [NSFileManager.defaultManager removeItemAtPath:[documents stringByAppendingPathComponent:@"Vitrine/Lyrics"] error:nil];
+        [NSFileManager.defaultManager removeItemAtPath:[documents stringByAppendingPathComponent:@"Retrine/Lyrics"] error:nil];
         [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyImportedLRCLinks];
         [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyRetiredImportedLyrics];
         sg_order = @[@"lrclib"];
@@ -597,7 +599,7 @@ int main(int argc, char *argv[]) {
 
         // UTF-16 is read and kept as UTF-8.
         NSString *utf16 = importLRC(fileNamed(@"wide.lrc", [@"[ti:Wide]\n[00:02.00]wide" dataUsingEncoding:NSUTF16StringEncoding]), nil, &error);
-        NSString *kept = [NSString stringWithContentsOfFile:[documents stringByAppendingPathComponent:[@"Vitrine/Lyrics" stringByAppendingPathComponent:utf16]]
+        NSString *kept = [NSString stringWithContentsOfFile:[documents stringByAppendingPathComponent:[@"Retrine/Lyrics" stringByAppendingPathComponent:utf16]]
                                                    encoding:NSUTF8StringEncoding error:nil];
         CHECK([kept hasPrefix:@"[ti:Wide]"]);
         invalidationCheck(NO);

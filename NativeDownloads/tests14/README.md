@@ -89,19 +89,14 @@ while on, and retains the direct function ABI. `download_evidence` verifies unkn
 context state, context/item separation, recovery removal and trusted-total bounds.
 Use `--list` for the current explicit fixture inventory.
 
-Compile/link the current UI without querying or launching a simulator:
+Run the settings UI on a booted disposable iPhone simulator (iOS 26+):
 
 ```sh
-python3 NativeDownloads/tools/test_settings_ui.py --compile-only --fixture all
-python3 Tests/PlaylistActionRow/test.py --compile-only
+SIMULATOR_UDID=<clone-udid> python3 -B NativeDownloads/tools/test_retrine_settings_ui.py
 ```
 
-Both commands default to compile-only and produce fresh root `outputs` folders.
-The settings command builds both settings and artist/playlist-picker fixtures
-using the target's full `artist_ui` group. The action-row fixture compiles the
-actual Eevee artist-download bridge and identity adapter; follow state is supplied
-by an explicitly unavailable test provider. It does not prove native Spotify
-follow-provider behavior. Runtime access requires explicit `--run`.
+The fixture opens the settings and diagnostics pages with English, Korean and
+fallback resources. It does not prove native Spotify follow-provider behavior.
 
 Remaining device-only checks include real playlist permissions and service schema
 changes, two-artist service timing, actual offline audio, widget/extension refresh,

@@ -1,7 +1,9 @@
 #import "SGTranslationFiles.h"
 #import "Core/SGFileHash.h"
-#import <UIKit/UIKit.h>
 #import <TargetConditionals.h>
+#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
+#import <UIKit/UIKit.h>
+#endif
 #import <fcntl.h>
 #import <unistd.h>
 #import <sys/stat.h>
@@ -14,7 +16,7 @@ NSUInteger const SGTranslationTransferEntries = 10000;
 static unsigned long long const kReserveBytes = 64ULL * 1024 * 1024;
 
 NSError *SGTranslationStorageError(NSString *message) {
-    return [NSError errorWithDomain:@"Vitrine.TranslationStorage" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
+    return [NSError errorWithDomain:@"Retrine.TranslationStorage" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];
 }
 static BOOL fail(NSError **error, NSString *message) {
     if (error) *error = SGTranslationStorageError(message);
@@ -124,6 +126,7 @@ BOOL SGTranslationMapValid(id map, NSString *space) {
     return data && data.length <= ([space isEqual:@"AI"] ? 1024 * 1024 : 8 * 1024 * 1024);
 }
 NSDictionary *SGTranslationEnvelope(NSString *space, NSString *key, NSDictionary *lines, BOOL recovery) {
+    // The v1 discriminator is part of the canonical bytes hashed into recovery filenames.
     return @{@"type":@"vitrine.saved-record", @"version":@1, @"namespace":space, @"key":key, @"lines":lines, @"recovery":@(recovery)};
 }
 BOOL SGTranslationEnvelopeValid(id record) {
@@ -150,6 +153,7 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
 }
 
 @implementation SGTranslationFiles {
+    NSURL *_legacyConflicts;
     NSMutableDictionary *_metadata;
     NSMutableArray *_unresolved;
     BOOL _ready, _unlocked;
@@ -161,6 +165,12 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
     return self;
 }
 - (NSArray *)unresolved { return [_unresolved copy]; }
+- (instancetype)initWithRoot:(NSURL *)root renamedCache:(NSURL *)cache {
+    // Include conflicts still residing in the pre-rename cache.
+    if ((self = [self initWithRoot:root legacy:cache]) && [cache.lastPathComponent isEqual:@"Retrine"])
+        _legacyConflicts = [cache.URLByDeletingLastPathComponent URLByAppendingPathComponent:@"Vitrine" isDirectory:YES];
+    return self;
+}
 - (NSURL *)metadataURL { return [_root URLByAppendingPathComponent:@"TranslationState/state.json"]; }
 - (BOOL)protect:(NSURL *)url error:(NSError **)error {
 #if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
@@ -181,6 +191,7 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
     return [self protect:url error:error] && flushURL(url, error) && flushURL(url.URLByDeletingLastPathComponent, error);
 }
 - (BOOL)prepare:(NSError **)error {
+    if (!_root || !_legacy) return fail(error, @"Translation storage is unavailable.");
 #if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
     if (!_unlocked) {
         _unlocked = UIApplication.sharedApplication.protectedDataAvailable;
@@ -352,14 +363,19 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
     if (![self prepare:error]) return NO;
     [_unresolved removeAllObjects];
     if ([_metadata[@"allSuppressed"] boolValue]) return YES;
-    for (NSString *space in @[@"Translations", @"AI"]) {
-        if (![self visitDirectory:[_legacy URLByAppendingPathComponent:space] visit:^BOOL(NSURL *file, NSError **listingError) {
+    for (NSURL *base in _legacyConflicts ? @[_legacy, _legacyConflicts] : @[_legacy]) {
+      struct stat st;
+      if (lstat(base.fileSystemRepresentation, &st)) { if (errno == ENOENT) continue; return posixFailure(error); }
+      if (!S_ISDIR(st.st_mode)) return fail(error, @"Invalid legacy cache directory.");
+      for (NSString *space in @[@"Translations", @"AI"]) {
+        if (![self visitDirectory:[base URLByAppendingPathComponent:space] visit:^BOOL(NSURL *file, NSError **listingError) {
             NSString *key = file.lastPathComponent, *identity = [space stringByAppendingFormat:@"/%@", key];
+            NSString *receipt = [base isEqual:self->_legacy] ? identity : [@"leftover/" stringByAppendingString:identity];
             if ([self->_metadata[@"suppressed"][identity] boolValue]) return YES;
             NSError *problem = nil;
             NSData *data = [self data:file missing:NO error:&problem];
             NSString *digest = data ? SGDataSHA256(data) : nil;
-            if (digest && [self->_metadata[@"receipts"][identity] isEqual:digest]) return YES;
+            if (digest && [self->_metadata[@"receipts"][receipt] isEqual:digest]) return YES;
             id lines = data ? SGTranslationReadJSON(data, &problem) : nil;
             if (!problem && (!SGTranslationRecordKeyValid(key) || !SGTranslationMapValid(lines, space))) problem = SGTranslationStorageError(@"Invalid legacy translation.");
             if (!problem && ![self save:lines space:space key:key replace:NO preserveMissing:YES grandfather:YES allowed:nil error:&problem]) {}
@@ -371,15 +387,16 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
                 }
             }
             if (!problem) {
-                id old = self->_metadata[@"receipts"][identity];
-                self->_metadata[@"receipts"][identity] = digest;
+                id old = self->_metadata[@"receipts"][receipt];
+                self->_metadata[@"receipts"][receipt] = digest;
                 if (![self writeJSON:self->_metadata to:self.metadataURL grandfather:YES allowed:nil error:&problem]) {
-                    if (old) self->_metadata[@"receipts"][identity] = old; else [self->_metadata[@"receipts"] removeObjectForKey:identity];
+                    if (old) self->_metadata[@"receipts"][receipt] = old; else [self->_metadata[@"receipts"] removeObjectForKey:receipt];
                 }
             }
             if (problem) [self->_unresolved addObject:@{@"namespace":space, @"key":key, @"url":file, @"error":problem.localizedDescription}];
             return YES;
         } error:error]) return NO;
+      }
     }
     if (_unresolved.count) return fail(error, @"Legacy migration is incomplete. Original files remain available.");
     return YES;

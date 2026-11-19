@@ -17,6 +17,7 @@
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
 #import "Core/SGFileHash.h"
+#import "Core/SGDataRoot.h"
 #import "LockScreenLyrics.h"
 #import "SGLyricsClip.h"
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
@@ -112,8 +113,7 @@ static BOOL sg_clipWorker;
 static dispatch_queue_t sg_previewQueue;
 
 static NSURL *folder(void) {
-    NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
-    return [caches URLByAppendingPathComponent:@"Vitrine/Lyrics" isDirectory:YES];
+    return [SGDataRoot(NSCachesDirectory) URLByAppendingPathComponent:@"Lyrics" isDirectory:YES];
 }
 
 static BOOL currentLine(SGLockLine *line) {
@@ -224,6 +224,7 @@ static UIImage *previewFor(NSString *artworkID, SGLockLine *line, CGSize size) {
 static BOOL writeClip(NSString *artworkID, SGLockLine *line, CGSize size) {
     if (!currentLine(line)) return NO;
     NSURL *file = clipFile(artworkID);
+    if (!file) return NO;
     if ([NSFileManager.defaultManager fileExistsAtPath:file.path]) return YES;
     CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
     BOOL tryMotion = line.motion && !motionFailed(line.motion);
@@ -495,8 +496,10 @@ static NSTimeInterval update(void) {
             invalidateRenders();
             // The worker owns cleanup too: no new-track request may overtake it.
             enqueueClip(^{
-                [NSFileManager.defaultManager removeItemAtURL:folder() error:nil];
-                [NSFileManager.defaultManager createDirectoryAtURL:folder() withIntermediateDirectories:YES attributes:nil error:nil];
+                NSURL *dir = folder();
+                if (!dir) return;
+                [NSFileManager.defaultManager removeItemAtURL:dir error:nil];
+                [NSFileManager.defaultManager createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:nil];
             }, NO);
         }
         NSArray<SGKaraokeLine *> *lines = SGKaraokeLinesForTrack(trackID);

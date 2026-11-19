@@ -127,7 +127,7 @@ int main(int argc, const char **argv) {
             if(!require([SAPAudioExportErrorText(@"pixie.export.busy")isEqual:korean?@"다른 내보내기가 이미 진행 중입니다.":@"Another export is already running."],@"busy display must follow language"))return 1;
             NSString *error=nil;
             if(!require(SAPParseWritablePlaylistPage(loading,&error)==nil&&[error isEqual:@"pixie.playlist.loading"],@"playlist loading must return a stable retry identifier"))return 1;
-            if(!require([SAPDeviceL(@"this_copy")isEqual:korean?@"이 사본":@"This copy"],@"device text must use Vitrine resources"))return 1;
+            if(!require([SAPDeviceL(@"this_copy")isEqual:korean?@"이 사본":@"This copy"],@"device text must use Retrine resources"))return 1;
             printf("PASS: %s grouping, busy/loading identifiers and localized display\n",language.UTF8String);
         }
     }
@@ -147,7 +147,7 @@ int main(int argc, const char **argv) {
             str(ROOT / "src/Spotify/WireProto.m"),
             "-framework", "Foundation", "-o", str(binary)
         ], check=True)
-        subprocess.run([str(binary), str(PROJECT / "tweak/layout/Library/Application Support/Vitrine.bundle")], check=True)
+        subprocess.run([str(binary), str(PROJECT / "tweak/layout/Library/Application Support/Retrine.bundle")], check=True)
 
 
 if __name__ == "__main__":

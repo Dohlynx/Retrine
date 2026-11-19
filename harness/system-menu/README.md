@@ -9,7 +9,7 @@ a UIKit navigation panel from the real player-menu handler.
 
     THEOS=$HOME/theos ./build.sh
     xcrun simctl install <udid> build/SystemMenuHarness.app
-    xcrun simctl launch --console-pty <udid> com.vitrine.systemmenuharness <scenario>
+    xcrun simctl launch --console-pty <udid> com.retrine.systemmenuharness <scenario>
 
 The header row is shaped like Spotify's (`trees/clean/player/01.txt`: a 402x48 row, the down arrow 48x48 at x 12
 and the ⋯ 48x48 at the trailing edge), both put away as `PlayerHeader.x` leaves them; Spotify's ⋯ stays the action
@@ -104,7 +104,7 @@ Use a unique temporary output directory for checks:
     export HARNESS_BUILD_DIR
     THEOS=$HOME/theos ./build.sh
     xcrun simctl install <udid> "$HARNESS_BUILD_DIR/SystemMenuHarness.app"
-    xcrun simctl launch --console-pty <udid> com.vitrine.systemmenuharness delayed-pick
+    xcrun simctl launch --console-pty <udid> com.retrine.systemmenuharness delayed-pick
 
 For the ownership mutation check, make a temporary copy of `ContextMenu.x`, change only
 `static SGRMenuSession *sg_requesting;` back to `static __weak SGRMenuSession *sg_requesting;`,

@@ -220,7 +220,7 @@ static BOOL requestPrivacy(void) {
     for (NSURLQueryItem *item in url.queryItems) query[item.name] = item.value;
     CHECK(([query isEqual:@{@"service": @"Spotify", @"categories": @"[\"sponsor\"]"}]), "request contains only required mapping and categories");
     CHECK(!request.HTTPShouldHandleCookies && request.HTTPBody == nil &&
-          [request.allHTTPHeaderFields isEqual:@{@"X-CLIENT-NAME": @"Vitrine-SponsorBlock/1"}],
+          [request.allHTTPHeaderFields isEqual:@{@"X-CLIENT-NAME": @"Retrine-SponsorBlock/1"}],
           "no account headers, cookies or request body");
     return YES;
 }

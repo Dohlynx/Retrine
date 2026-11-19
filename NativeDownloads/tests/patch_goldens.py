@@ -12,7 +12,7 @@ from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-import build_vitrine_9190 as build
+import build_retrine_9190 as build
 import patch_native_restrictions as quota
 import patch_key_request_mode as key
 import patch_native_trace as trace

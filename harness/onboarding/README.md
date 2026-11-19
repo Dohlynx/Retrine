@@ -7,7 +7,7 @@ the tweak's next make writes its own version's back.
 
     ./build.sh [version]
     xcrun simctl install <udid> build/OnboardingHarness.app
-    xcrun simctl launch <udid> com.vitrine.onboardingharness [tour | old | whatsnew | environment] [pick]
+    xcrun simctl launch <udid> com.retrine.onboardingharness [tour | old | whatsnew | environment] [pick]
 
 `tour` is a first launch on iOS 26 and up: the logo lands, then the page comes in with Redesigned picked.
 `old` fakes an OS below 26: Legacy picked, the redesign card untested. `pick` taps the other card three

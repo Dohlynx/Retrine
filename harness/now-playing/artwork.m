@@ -73,7 +73,7 @@ static NSUInteger coverLoads;
     return [self harnessURLsForDirectory:directory inDomains:domains];
 }
 - (BOOL)harnessRemoveItemAtURL:(NSURL *)url error:(NSError **)error {
-    BOOL lyrics = [url.path isEqual:[cacheRoot.path stringByAppendingPathComponent:@"Vitrine/Lyrics"]];
+    BOOL lyrics = [url.path isEqual:[cacheRoot.path stringByAppendingPathComponent:@"Retrine/Lyrics"]];
     BOOL hold = NO;
     if (lyrics) {
         @synchronized (cacheRoot) {
@@ -99,7 +99,7 @@ static void alreadyPlaying(void);
 __attribute__((constructor)) static void artworkBoundary(void) {
     coverRequests = [NSMutableDictionary dictionary];
     [NSURLProtocol registerClass:CoverProtocol.class];
-    char *path = strdup([[NSTemporaryDirectory() stringByAppendingPathComponent:@"vitrine-artwork.XXXXXX"] fileSystemRepresentation]);
+    char *path = strdup([[NSTemporaryDirectory() stringByAppendingPathComponent:@"retrine-artwork.XXXXXX"] fileSystemRepresentation]);
     if (!mkdtemp(path)) { perror("mkdtemp artwork cache"); exit(1); }
     cacheRoot = [NSURL fileURLWithPath:@(path) isDirectory:YES];
     free(path);

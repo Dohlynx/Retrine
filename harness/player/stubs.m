@@ -92,7 +92,7 @@ void SGRHarnessSetTrack(NSString *uri, NSString *imageURI, BOOL paused) {
     BOOL settings = [NSProcessInfo.processInfo.environment[@"HARNESS_SCENARIO"] isEqualToString:@"settings"];
     if (settings && [uri isEqualToString:@"spotify:track:harnessA"]) metadata[@"title"] = @"Loose Canon";
     [track setValue:metadata[@"title"] forKey:@"trackTitle"];
-    if (settings) [track setValue:@"Vitrine harness" forKey:@"artistName"];
+    if (settings) [track setValue:@"Retrine harness" forKey:@"artistName"];
     if (imageURI) {
         // The four sizes share the picture's last 24 digits (out/karaoke-diag.log:174-177 on the phone).
         NSString *hash = [imageURI substringFromIndex:imageURI.length - 24];

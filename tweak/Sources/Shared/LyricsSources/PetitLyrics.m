@@ -1,6 +1,6 @@
 // Request fields and base64/WSY schema from EeveeSpotifyReincarnated (GPL-3),
 // PetitLyricsRepository.swift at 0d9feaa. Unlike its synchronous adapter, this keeps
-// candidate matching and word clocks and uses Vitrine's bounded asynchronous transport.
+// candidate matching and word clocks and uses Retrine's bounded asynchronous transport.
 #import "Core/SGCore.h"
 #import "LyricsSources.h"
 

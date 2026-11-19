@@ -20,6 +20,7 @@
 NSString *const SGWGVersion = @"1.0";
 
 static NSString *const kDefaultsKey = @"spotifyglass.wireguard";
+// Stable Keychain service for existing profiles, including deletion.
 static NSString *const kKeychainService = @"Vitrine.WireGuard";
 static NSString *const kKeychainAccount = @"profile";
 static NSString *const kKeychainProxyAccount = @"proxy-password";
@@ -1017,7 +1018,7 @@ static void ImageChanged(const struct mach_header *header, intptr_t slide) {
 
 __attribute__((constructor)) static void SGWGInit(void) {
     @autoreleasepool {
-        gQueue = dispatch_queue_create("vitrine.wireguard", DISPATCH_QUEUE_SERIAL);
+        gQueue = dispatch_queue_create("retrine.wireguard", DISPATCH_QUEUE_SERIAL);
         if (!SGWGSettingEnabled()) return;
         atomic_store(&gActive, true);
         gKind = SGWGSettingKind();
@@ -1103,7 +1104,7 @@ static NSString *N(id v) { return v ? [NSString stringWithFormat:@"%@", v] : @"-
 NSString *SGWGDiagnosticsReport(NSDictionary<NSString *, NSString *> *checks) {
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
     NSProcessInfo *info = NSProcessInfo.processInfo;
-    [lines addObject:[NSString stringWithFormat:@"Vitrine app-local WireGuard diagnostics v%@", SGWGVersion]];
+    [lines addObject:[NSString stringWithFormat:@"Retrine app-local WireGuard diagnostics v%@", SGWGVersion]];
     [lines addObject:[NSString stringWithFormat:@"app: Spotify %@ | OS %@ | %@", SGWGAppVersion(), info.operatingSystemVersionString, DeviceModel()]];
     [lines addObject:[NSString stringWithFormat:@"setting.enabled: %@ | active this launch: %@ | supported OS: %@",
         SGWGSettingEnabled() ? @"yes" : @"no", gActive ? @"yes" : @"no", SGWGIsSupportedOS() ? @"yes" : @"no"]];

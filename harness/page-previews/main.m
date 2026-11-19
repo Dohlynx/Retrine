@@ -238,7 +238,7 @@ static void runCoverChoices(void) {
             SGRPagePreview *card = show(^UIViewController *{
                 return isAlbum.boolValue ? SGRAlbumSettingsPage() : SGRPlaylistSettingsPage();
             });
-            UIView *art = identified(card, @"vitrine.preview.header.artwork");
+            UIView *art = identified(card, @"retrine.preview.header.artwork");
             BOOL full = isAlbum.boolValue ? album : playlist;
             if (!art || art.bounds.size.width <= 0) HARNESS_FAIL(@"missing cover preview");
             if (full && CGRectGetMinX(art.frame) != 0) HARNESS_FAIL(@"Full screen cover must reach both edges");
@@ -269,7 +269,7 @@ static void runCoverChoices(void) {
 
 #pragma mark - the mirror check
 
-static NSString *const kControlsID = @"vitrine.preview.header.controls", *const kBackID = @"vitrine.preview.back";
+static NSString *const kControlsID = @"retrine.preview.header.controls", *const kBackID = @"retrine.preview.back";
 // Drawn at this scale for the ink and the chevron's pixels.
 static const CGFloat kDrawScale = 3;
 // A label's text drawn right to left sits within this of the left to right one's mirror: the glyphs themselves are

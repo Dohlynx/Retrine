@@ -21,7 +21,7 @@ cat > "$OUT/SystemMenuHarness.app/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>SystemMenuHarness</string>
-<key>CFBundleIdentifier</key><string>com.vitrine.systemmenuharness</string>
+<key>CFBundleIdentifier</key><string>com.retrine.systemmenuharness</string>
 <key>CFBundleName</key><string>SystemMenuHarness</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleShortVersionString</key><string>1.0</string>

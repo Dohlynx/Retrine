@@ -22,11 +22,12 @@ static NSString *const kDashboard = @"https://developers.spicylyrics.org/dashboa
 #ifndef SG_VERSION
 #define SG_VERSION "dev"
 #endif
-static NSString *const kAgent = @"Vitrine/" SG_VERSION " (Spotify for iOS lyrics, by track id)";
+static NSString *const kAgent = @"Retrine/" SG_VERSION " (Spotify for iOS lyrics, by track id)";
 // A reply for this many tracks is kept; a rate limit is waited out for at most an hour, 60 s when the
 // reply does not say; a refused key is tried again after ten minutes.
 static const NSUInteger kKeptTracks = 100;
 static const NSTimeInterval kMostWait = 3600, kDefaultWait = 60, kRefusedWait = SGLyricsCredentialPauseSeconds;
+// Stable Keychain service for existing keys, including deletion.
 static NSString *const kService = @"Vitrine.SpicyLyrics", *const kAccount = @"api-key";
 static NSUInteger sg_keyGeneration;
 static NSString *sg_key;

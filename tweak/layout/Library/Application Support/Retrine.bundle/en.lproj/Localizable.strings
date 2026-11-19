@@ -1,4 +1,4 @@
-/* Vitrine's English, written by scripts/check-strings.py --sync from SGL(...) and SAPL(...) source calls. */
+/* Retrine's English, written by scripts/check-strings.py --sync from SGL(...) and SAPL(...) source calls. Historical license and Pixie lookup keys remain stable. */
 
 "common.add" = "Add";
 
@@ -152,7 +152,7 @@
 "settings.album.hide_track_artists.title" = "Repeated track artists";
 "settings.album.hide_under_tracks.header" = "Hide under an album's tracks";
 "settings.album.hide_under_tracks.note" = "Sections are told apart by their English names. With Spotify in another language, Everything else covers them all.";
-"settings.album.motion_low_data.subtitle" = "Applies to animated artwork throughout Vitrine.";
+"settings.album.motion_low_data.subtitle" = "Applies to animated artwork throughout Retrine.";
 "settings.album.motion_low_data.title" = "Download in Low Data Mode";
 "settings.album.native.hide_on_page.header" = "Hide on the page";
 "settings.album.native.title" = "Album";
@@ -433,9 +433,9 @@
 "settings.audioeffects.preset.warm_analog.subtitle" = "Tube warmth, a warm equalizer";
 "settings.audioeffects.preset.wide_stereo" = "Wide stereo";
 "settings.audioeffects.preset.wide_stereo.subtitle" = "Stereo widening";
-"settings.audioeffects.presetfile.error.empty" = "This preset has no settings this version of Vitrine can use.";
-"settings.audioeffects.presetfile.error.format" = "This file is not a Vitrine audio preset.";
-"settings.audioeffects.presetfile.error.newer" = "This preset was made by a newer Vitrine. Update Vitrine to import it.";
+"settings.audioeffects.presetfile.error.empty" = "This preset has no settings this version of Retrine can use.";
+"settings.audioeffects.presetfile.error.format" = "This file is not a Retrine audio preset.";
+"settings.audioeffects.presetfile.error.newer" = "This preset was made by a newer Retrine. Update Retrine to import it.";
 "settings.audioeffects.presetfile.error.toolarge" = "This preset file is too large.";
 "settings.audioeffects.presetfile.error.values" = "This preset file has invalid settings.";
 "settings.audioeffects.presetfile.error.version" = "This preset file has an invalid version.";
@@ -552,7 +552,7 @@
 "settings.edit_info.field.album" = "Album";
 "settings.edit_info.field.artist" = "Artist";
 "settings.edit_info.field.title" = "Title";
-"settings.edit_info.footer" = "Kept by Vitrine for this file. The file itself is not changed.";
+"settings.edit_info.footer" = "Kept by Retrine for this file. The file itself is not changed.";
 "settings.edit_info.keep_editing" = "Keep editing";
 "settings.edit_info.not_an_image.message" = "Pick a JPEG, PNG or HEIC file.";
 "settings.edit_info.not_an_image.title" = "Not an image";
@@ -574,15 +574,15 @@
 "settings.edit_info.suggest.year" = "Year";
 "settings.edit_info.title" = "Edit info";
 
-"settings.environment.app_changes.message" = "Some of what Vitrine does needs changes to the app that only its IPA build makes. Without them, %@. Build the IPA with Vitrine instead of injecting its .deb.";
-"settings.environment.app_changes.title" = "Installed without Vitrine's app changes";
+"settings.environment.app_changes.message" = "Some of what Retrine does needs changes to the app that only its IPA build makes. Without them, %@. Build the IPA with Retrine instead of injecting its .deb.";
+"settings.environment.app_changes.title" = "Installed without Retrine's app changes";
 "settings.environment.chroma.action.keep" = "Keep";
-"settings.environment.chroma.alert.message" = "Its Karaoke voice model and its saved lock screen videos are still in Spotify's storage, and Vitrine uses neither. Your listening history and audio effects stay.";
+"settings.environment.chroma.alert.message" = "Its Karaoke voice model and its saved lock screen videos are still in Spotify's storage, and Retrine uses neither. Your listening history and audio effects stay.";
 "settings.environment.chroma.alert.title" = "Chroma left %@ on this iPhone";
-"settings.environment.chroma.subtitle" = "%@ Vitrine never uses. Tap to delete";
+"settings.environment.chroma.subtitle" = "%@ Retrine never uses. Tap to delete";
 "settings.environment.chroma.title" = "Chroma left files behind";
 "settings.environment.current_version.subtitle" = "This is %@. Tap for what that does";
-"settings.environment.eevee.message" = "Vitrine already blocks ads and brings lyrics, and EeveeSpotify hooks the same parts of Spotify. With both, Spotify can freeze as it starts or show the wrong lyrics. Sign Spotify again without EeveeSpotify.";
+"settings.environment.eevee.message" = "Retrine already blocks ads and brings lyrics, and EeveeSpotify hooks the same parts of Spotify. With both, Spotify can freeze as it starts or show the wrong lyrics. Sign Spotify again without EeveeSpotify.";
 "settings.environment.eevee.title" = "EeveeSpotify is injected too";
 "settings.environment.fallback.message" = "Spotify did not get going with the redesign on iOS %@, so it is back in Native and Redesigned UI is off. Mod Settings can turn it on again.";
 "settings.environment.fallback.title" = "The redesign did not start";
@@ -592,8 +592,8 @@
 "settings.environment.multiple_problems.alert.title" = "%lu things to know";
 "settings.environment.supported_versions.title" = "Made for Spotify %@";
 "settings.environment.version.likely_suffix" = ", and %@ likely %@ too";
-"settings.environment.version.mismatch.message" = "Vitrine is made for Spotify %@%@. On another version some of its changes find nothing to change, and some screens can look wrong or crash. Inject Vitrine into Spotify %@.";
-"settings.environment.version.mismatch.title" = "Spotify %@ is not the version Vitrine is made for";
+"settings.environment.version.mismatch.message" = "Retrine is made for Spotify %@%@. On another version some of its changes find nothing to change, and some screens can look wrong or crash. Inject Retrine into Spotify %@.";
+"settings.environment.version.mismatch.title" = "Spotify %@ is not the version Retrine is made for";
 "settings.environment.warning.subtitle" = "Tap for what that does";
 "settings.environment.without_app_changes.title" = "Installed without the app changes";
 
@@ -858,7 +858,7 @@
 "settings.karaoke.card.vocals.a11y" = "Vocals";
 "settings.karaoke.computeunits.choice.automatic" = "Automatic";
 "settings.karaoke.computeunits.choice.cpuonly" = "CPU only";
-"settings.karaoke.computeunits.footer" = "Karaoke loads the voice model on the CPU first and starts with it. On Automatic a second copy then loads on the Neural Engine and takes over, in the background too. The iPhone prepares it the first time after Vitrine is installed or updated, for a minute or so, and Karaoke runs on the CPU until then, unless Prepare after updates did it already. If it does not load, Karaoke stays on the CPU until Spotify is opened again.";
+"settings.karaoke.computeunits.footer" = "Karaoke loads the voice model on the CPU first and starts with it. On Automatic a second copy then loads on the Neural Engine and takes over, in the background too. The iPhone prepares it the first time after Retrine is installed or updated, for a minute or so, and Karaoke runs on the CPU until then, unless Prepare after updates did it already. If it does not load, Karaoke stays on the CPU until Spotify is opened again.";
 "settings.karaoke.computeunits.note.auto" = "The Neural Engine, the fastest, with the CPU while it loads";
 "settings.karaoke.computeunits.note.cpu" = "Slower and warmer, and a little less memory";
 "settings.karaoke.computeunits.title" = "Runs on";
@@ -954,7 +954,7 @@
 "settings.karaoke.note.no_neural_engine" = "This iPhone has no Neural Engine Karaoke can use, so it runs on the CPU.";
 "settings.karaoke.note.not_a_song" = "Karaoke turns down the vocals of songs, and what plays now is not one, so it plays as it is.";
 "settings.karaoke.note.over_airplay" = "Karaoke does not run over AirPlay, whose delay changes as it plays, so the song plays as it is.";
-"settings.karaoke.note.preparing_background" = "After an update, the iPhone prepares the voice model for the Neural Engine once, which takes about a minute. Vitrine does it now, in the background, so Karaoke starts at full speed when it is switched on (%.0f s so far).";
+"settings.karaoke.note.preparing_background" = "After an update, the iPhone prepares the voice model for the Neural Engine once, which takes about a minute. Retrine does it now, in the background, so Karaoke starts at full speed when it is switched on (%.0f s so far).";
 "settings.karaoke.note.preparing_first_time" = "Preparing for the Neural Engine, first time only (%.0f s so far). Karaoke runs on the CPU until then.";
 "settings.karaoke.note.processing_lag" = "The voice model takes %.1f s for every 1.5 s of song on this iPhone, so the vocals stay in until it catches up. %@";
 "settings.karaoke.note.ready_to_play" = "The voice model is ready, and Karaoke starts once Spotify plays a song. %@";
@@ -964,7 +964,7 @@
 "settings.karaoke.note.stopped_for_good" = "Karaoke could not keep up on this iPhone %d times in a row, so it stopped and songs play as they are. Switch Karaoke off and on, or choose another Runs on, to try again.";
 "settings.karaoke.note.stopped_memory" = "Karaoke stopped to free memory, so the song plays as it is. It loads the voice model again with the next song if there is room, or switch Karaoke off and on.";
 "settings.karaoke.note.thermal_throttled" = "The iPhone is hot, so Karaoke has let go of the voice model and the song plays as it is. Karaoke loads it again once the iPhone cools. Ignore heat warnings keeps Karaoke going.";
-"settings.karaoke.prepareahead.subtitle" = "Readies the Neural Engine in the background after Vitrine or iOS updates, so Karaoke starts at full speed";
+"settings.karaoke.prepareahead.subtitle" = "Readies the Neural Engine in the background after Retrine or iOS updates, so Karaoke starts at full speed";
 "settings.karaoke.prepareahead.title" = "Prepare after updates";
 "settings.karaoke.state.action.tryagain" = "Try again";
 "settings.karaoke.state.alert.title" = "Karaoke";
@@ -1073,9 +1073,9 @@
 "settings.liveactivity.colors.choice.spotify" = "Spotify";
 "settings.liveactivity.colors.title" = "Colors";
 "settings.liveactivity.fadeout.title" = "Fade-out duration";
-"settings.liveactivity.missing.alert.message" = "iOS shows a Live Activity only for an app that says it has one, and only Vitrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Vitrine's .deb injected by hand, so iOS turns the card down. Build the IPA with Vitrine to get it.";
+"settings.liveactivity.missing.alert.message" = "iOS shows a Live Activity only for an app that says it has one, and only Retrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Retrine's .deb injected by hand, so iOS turns the card down. Build the IPA with Retrine to get it.";
 "settings.liveactivity.missing.alert.title" = "Live Activity is missing";
-"settings.liveactivity.missing.extension.message" = "The lock screen Live Activity is unavailable in this install. App extensions may have been removed during signing or left out of the IPA; LiveContainer also cannot register them. To use Live Activity, keep app extensions when signing and install an IPA that includes them directly, outside LiveContainer. The rest of Vitrine still works.";
+"settings.liveactivity.missing.extension.message" = "The lock screen Live Activity is unavailable in this install. App extensions may have been removed during signing or left out of the IPA; LiveContainer also cannot register them. To use Live Activity, keep app extensions when signing and install an IPA that includes them directly, outside LiveContainer. The rest of Retrine still works.";
 "settings.liveactivity.missing.subtitle" = "Tap for why";
 "settings.liveactivity.missing.title" = "Missing from this install";
 "settings.liveactivity.preview.a11y.hint" = "Shows the next step";
@@ -1177,7 +1177,7 @@
 "settings.localmusic.empty" = "No imported files";
 "settings.localmusic.failed" = "Spotify could not play this.";
 "settings.localmusic.folders" = "Folders";
-"settings.localmusic.free_limit" = "Spotify Free limits playing chosen songs. Spoof Premium in Vitrine Settings lifts this limit.";
+"settings.localmusic.free_limit" = "Spotify Free limits playing chosen songs. Spoof Premium in Retrine Settings lifts this limit.";
 "settings.localmusic.go_artist" = "Go to Artist";
 "settings.localmusic.imported" = "Imported";
 "settings.localmusic.library" = "Local Library";
@@ -1204,7 +1204,7 @@
 "settings.lockscreen.artwork.title" = "Full-screen artwork";
 "settings.lockscreen.dim_artwork.subtitle" = "Blurs and darkens the whole artwork, moving artwork included, and floats the lyrics over it instead of shading only around them.";
 "settings.lockscreen.dim_artwork.title" = "Dim the whole artwork";
-"settings.lockscreen.low_data.subtitle" = "Moving artwork, up to about 7 MB a song. Applies to animated artwork throughout Vitrine.";
+"settings.lockscreen.low_data.subtitle" = "Moving artwork, up to about 7 MB a song. Applies to animated artwork throughout Retrine.";
 "settings.lockscreen.low_data.title" = "Download in Low Data Mode";
 "settings.lockscreen.lyrics_layout.choice.centered" = "Centered";
 "settings.lockscreen.lyrics_layout.choice.left" = "Left";
@@ -1312,8 +1312,6 @@
 "settings.lyrics.language_rules.subtitle" = "Rules are made from the lyrics menu.";
 "settings.lyrics.language_rules.title" = "Clear language rules…";
 "settings.lyrics.load_failed" = "Couldn't load lyrics · Retry";
-"settings.lyrics.retry" = "Retry";
-"settings.lyrics.pip.open_retry" = "Open Spotify to retry";
 "settings.lyrics.lockscreen_lyrics.subtitle" = "Current line in place of the artist";
 "settings.lyrics.lockscreen_lyrics.title" = "Lock screen lyrics";
 "settings.lyrics.meaning.by_community" = "Genius community";
@@ -1339,7 +1337,7 @@
 "settings.lyrics.pip.center" = "Center";
 "settings.lyrics.pip.close" = "Close Picture in Picture";
 "settings.lyrics.pip.credit_links" = "View source credits";
-"settings.lyrics.pip.disabled" = "Enable Picture in Picture lyrics in Vitrine settings → Lyrics, then restart Spotify.";
+"settings.lyrics.pip.disabled" = "Enable Picture in Picture lyrics in Retrine settings → Lyrics, then restart Spotify.";
 "settings.lyrics.pip.extras.note" = "Shows available pronunciation and translation using your lyrics display and language rules. Opening Picture in Picture never starts translation or AI.";
 "settings.lyrics.pip.failed" = "Picture in Picture could not start. This device or Spotify's current playback session may not support it. Keep Spotify in front and try again.";
 "settings.lyrics.pip.fit.note" = "Sizes are maximums in the rendered frame. Long text wraps and shrinks to fit; an ellipsis marks text that still cannot fit.";
@@ -1356,6 +1354,7 @@
 "settings.lyrics.pip.menu.close" = "Close lyrics Picture in Picture";
 "settings.lyrics.pip.menu.open" = "Open lyrics Picture in Picture";
 "settings.lyrics.pip.no_lyrics" = "No lyrics available";
+"settings.lyrics.pip.open_retry" = "Open Spotify to retry";
 "settings.lyrics.pip.original" = "Original";
 "settings.lyrics.pip.page.subtitle" = "Open lyrics over other apps and customize their background.";
 "settings.lyrics.pip.portrait" = "Portrait";
@@ -1366,7 +1365,7 @@
 "settings.lyrics.pip.reset" = "Reset layout and text";
 "settings.lyrics.pip.reset.note" = "Background and the enable switch are kept.";
 "settings.lyrics.pip.right" = "Right";
-"settings.lyrics.pip.sample.credit" = "Sample lyrics · Vitrine";
+"settings.lyrics.pip.sample.credit" = "Sample lyrics · Retrine";
 "settings.lyrics.pip.sample.next" = "A new day is on its way";
 "settings.lyrics.pip.sample.original" = "별빛을 따라 걸어요";
 "settings.lyrics.pip.sample.song" = "A song for the night";
@@ -1390,6 +1389,7 @@
 "settings.lyrics.pronunciation.hangul" = "Hangul";
 "settings.lyrics.pronunciation.latin" = "Latin";
 "settings.lyrics.pronunciation.subtitle" = "Shows readings in your chosen alphabet.";
+"settings.lyrics.retry" = "Retry";
 "settings.lyrics.romanized.title" = "Pronunciation";
 "settings.lyrics.show_source.subtitle" = "Spicy Lyrics is always credited after the last line: its terms ask for it";
 "settings.lyrics.show_source.title" = "Show source";
@@ -1663,7 +1663,7 @@
 "settings.mod.language.title" = "Language";
 "settings.mod.licenses.autoeq.subtitle" = "Headphone corrections · MIT License";
 "settings.mod.licenses.bs2b.subtitle" = "Crossfeed · MIT License";
-"settings.mod.licenses.eevee.note" = "By whoeevee (whoeevee/EeveeSpotify), under the GNU General Public License v3.0, as Vitrine is.\n\nPorted from it, on the Premium, ads & privacy page: Hide ads (the ad services kept from starting, ad components taken out of Home and Search, ad sections out of the feeds, ad requests answered empty), Hide upsells (the Premium pop-ups, and the ad and upsell flags it turns off) and Spoof Premium (the account attributes and flag rules it rewrites, and crossfade under it).";
+"settings.mod.licenses.eevee.note" = "By whoeevee (whoeevee/EeveeSpotify), under the GNU General Public License v3.0, as Retrine is.\n\nPorted from it, on the Premium, ads & privacy page: Hide ads (the ad services kept from starting, ad components taken out of Home and Search, ad sections out of the feeds, ad requests answered empty), Hide upsells (the Premium pop-ups, and the ad and upsell flags it turns off) and Spoof Premium (the account attributes and flag rules it rewrites, and crossfade under it).";
 "settings.mod.licenses.eevee.subtitle" = "Ads, upsells, Spoof Premium · GNU GPL v3.0";
 "settings.mod.licenses.intro" = "The mod's own license, and the code from others it includes.";
 "settings.mod.licenses.light_voice_model.subtitle" = "Mini-BS-RoFormer-18M · MIT License";
@@ -1922,13 +1922,13 @@
 "settings.pixie.devices.error.http_format" = "Spotify management request %@ returned HTTP %ld (%@). No success inferred.";
 "settings.pixie.devices.error.identifiers_incomplete" = "The direct device response has incomplete identifiers; the current state cannot be confirmed.";
 "settings.pixie.devices.error.identity_unavailable" = "The current device identity is unavailable. Play one track online on this device, then refresh.";
-"settings.pixie.devices.error.invalid_headers" = "Vitrine returned invalid authenticated headers. No device request was sent.";
+"settings.pixie.devices.error.invalid_headers" = "Retrine returned invalid authenticated headers. No device request was sent.";
 "settings.pixie.devices.error.invalid_identities" = "The direct device response has duplicate or invalid identities; the current state cannot be confirmed.";
 "settings.pixie.devices.error.invalid_url" = "Invalid management URL";
 "settings.pixie.devices.error.license_invalid_protobuf" = "The direct license response is not a valid LicenseStatus protobuf; the current state cannot be confirmed.";
 "settings.pixie.devices.error.no_transport_error" = "no transport error";
 "settings.pixie.devices.error.operation_in_progress" = "Another offline-device operation is in progress.";
-"settings.pixie.devices.error.provider_refresh" = "Vitrine's authenticated request provider is unavailable. Play one track online on this device, then refresh.";
+"settings.pixie.devices.error.provider_refresh" = "Retrine's authenticated request provider is unavailable. Play one track online on this device, then refresh.";
 "settings.pixie.devices.error.registration_unavailable" = "Registration state is unavailable. Play one track online on this device, then refresh.";
 "settings.pixie.devices.error.selection_invalid" = "The reviewed device selection is missing, expired or invalid. Refresh it before changing registrations.";
 "settings.pixie.devices.error.selection_not_in_plan" = "The selected registrations were not in the reviewed list. Nothing was changed.";
@@ -2245,7 +2245,7 @@
 "settings.pixie.native.manager_shut_down" = "The native manager has shut down, or this Spotify build does not match the verified 9.1.90.";
 "settings.pixie.native.mode_unverified" = "The request-mode instruction could not be verified.";
 "settings.pixie.native.no_request" = "\nNo download request was sent.";
-"settings.pixie.native.patch_missing" = "The download restriction patch is missing or does not match this executable. Install a verified Vitrine-Pixie build.";
+"settings.pixie.native.patch_missing" = "The download restriction patch is missing or does not match this executable. Install a verified Pixie build.";
 "settings.pixie.native.preparation_cancelled" = "Preparation cancelled.";
 "settings.pixie.native.queue_unavailable" = "The native download manager queue is unavailable.";
 "settings.pixie.native.quota_unconfirmed" = "The requested local track quota was not confirmed after preparation.";
@@ -2527,7 +2527,7 @@
 "settings.pixie.ui.unavailable" = "Unavailable";
 "settings.pixie.ui.unknown_error" = "unknown error";
 "settings.pixie.ui.waiting" = "Waiting";
-"settings.pixie.vitrine.send_log.subtitle" = "Report, actions, download history and Vitrine diagnostics";
+"settings.pixie.vitrine.send_log.subtitle" = "Report, actions, download history and Retrine diagnostics";
 
 "settings.player.artwork.header" = "Artwork";
 "settings.player.artwork_background.title" = "Artwork background";
@@ -2630,7 +2630,7 @@
 "settings.player.menu.show_visualizer" = "Show Visualizer";
 "settings.player.mini_player.footer" = "Apple Music style moves the now playing bar in between two tabs as you scroll down.";
 "settings.player.mini_player.header" = "Mini player";
-"settings.player.motion_low_data.subtitle" = "Up to about 7 MB a song. Applies to animated artwork throughout Vitrine.";
+"settings.player.motion_low_data.subtitle" = "Up to about 7 MB a song. Applies to animated artwork throughout Retrine.";
 "settings.player.motion_low_data.title" = "Download in Low Data Mode";
 "settings.player.music_close.subtitle" = "Close into the mini player in stages. Applies after restarting Spotify.";
 "settings.player.music_close.title" = "Music-like player close";
@@ -2777,7 +2777,7 @@
 "settings.redesign.action.turn_on_and_restart" = "Turn On and Restart";
 "settings.redesign.confirm.alert.title" = "Turn on the redesign?";
 "settings.redesign.confirm_restart.alert.message" = "\n\nSpotify restarts to turn it on.";
-"settings.redesign.info" = "Redesigned uses Vitrine's Apple Music-inspired interface. Native keeps Spotify's interface. Appearance settings are separate for each look; shared features work in both. Switching requires a restart.";
+"settings.redesign.info" = "Redesigned uses Retrine's Apple Music-inspired interface. Native keeps Spotify's interface. Appearance settings are separate for each look; shared features work in both. Switching requires a restart.";
 "settings.redesign.restart.alert.title" = "Restart Spotify";
 "settings.redesign.restart_off.alert.message" = "Spotify's own look comes back when Spotify starts again. Spotify closes now; open it again to see it.";
 "settings.redesign.restart_on.alert.message" = "The redesign takes over when Spotify starts again. Spotify closes now; open it again to see it.";
@@ -2846,6 +2846,7 @@
 "settings.search.spatial_voice.keywords" = "spatial audio surround head tracking headphone motion";
 "settings.search.tabbar.keywords" = "navigation bar tabs bottom";
 "settings.search.vibrations.keywords" = "haptics vibration haptic feedback buzz";
+"settings.search.wireguard.keywords" = "lyrics requests Genius direct blocked sources tunnel proxy VPN";
 "settings.search.workshop.keywords" = "presets headphones autoeq fonts visualizers download";
 
 "settings.search_tab.cards.header" = "Category cards";
@@ -2951,9 +2952,9 @@
 "settings.stats.a11y.previous_year" = "Previous year";
 "settings.stats.action.erase" = "Erase listening history";
 "settings.stats.action.export" = "Export history";
-"settings.stats.action.export.subtitle" = "Vitrine JSON, ready to import again";
+"settings.stats.action.export.subtitle" = "Retrine JSON, ready to import again";
 "settings.stats.action.import" = "Import history";
-"settings.stats.action.import.subtitle" = "Vitrine JSON or Spotify JSON/ZIP";
+"settings.stats.action.import.subtitle" = "Retrine JSON or Spotify JSON/ZIP";
 "settings.stats.action.import_folder" = "Import a folder";
 "settings.stats.action.import_folder.subtitle" = "JSON files in the selected folder and its subfolders";
 "settings.stats.alert.erase.action" = "Erase";
@@ -2964,7 +2965,7 @@
 "settings.stats.alert.imported.title" = "Imported";
 "settings.stats.alert.no_history_export.message" = "Record or import some plays first.";
 "settings.stats.alert.no_history_export.title" = "No history to export";
-"settings.stats.alert.no_history_found.message" = "Choose a Vitrine history export, Spotify StreamingHistory_music or Streaming_History_Audio JSON files, their ZIP, or a folder containing JSON files. Unreadable, unsupported or oversized files are skipped.";
+"settings.stats.alert.no_history_found.message" = "Choose a Retrine history export, Spotify StreamingHistory_music or Streaming_History_Audio JSON files, their ZIP, or a folder containing JSON files. Unreadable, unsupported or oversized files are skipped.";
 "settings.stats.alert.no_history_found.title" = "No listening history found";
 "settings.stats.chart.a11y.down" = "Down %lu";
 "settings.stats.chart.a11y.new" = "New";
@@ -3018,7 +3019,7 @@
 "settings.stats.recap.announce.footer" = "For %lu days from 1 January, the year just ended is pointed out once it has a recap: by the Recap row in Listening stats, or by a prompt after Spotify opens.";
 "settings.stats.recap.announce.launch" = "When Spotify opens";
 "settings.stats.recap.announce.off" = "Off";
-"settings.stats.recap.announce.settings" = "In Vitrine Settings";
+"settings.stats.recap.announce.settings" = "In Retrine Settings";
 "settings.stats.recap.announce.title" = "Announce new recaps";
 "settings.stats.recap.card.album" = "Top album";
 "settings.stats.recap.card.artist" = "Top artist";
@@ -3041,12 +3042,12 @@
 "settings.stats.recap.peak.line" = "was your hour for music";
 "settings.stats.recap.peak.month" = "%@ was your month, with %@.";
 "settings.stats.recap.prompt.later" = "Not now";
-"settings.stats.recap.prompt.message" = "%@ of music on %@. Play it now, or later from Listening stats in Vitrine Settings.";
+"settings.stats.recap.prompt.message" = "%@ of music on %@. Play it now, or later from Listening stats in Retrine Settings.";
 "settings.stats.recap.prompt.play" = "Play";
 "settings.stats.recap.prompt.title" = "Your %@ Recap is ready";
 "settings.stats.recap.ready" = "Your %@ Recap is ready";
 "settings.stats.recap.share.failed" = "Could not share the card";
-"settings.stats.recap.share.mark" = "Vitrine · %@ Recap";
+"settings.stats.recap.share.mark" = "Retrine · %@ Recap";
 "settings.stats.recap.story.title" = "Your %@ Recap";
 "settings.stats.recap.subtitle" = "A year of listening, card by card";
 "settings.stats.recap.title" = "Recap";
@@ -3066,7 +3067,7 @@
 "settings.stats.row.history" = "History";
 "settings.stats.row.listening_time" = "Listening time";
 "settings.stats.row.plays" = "Plays";
-"settings.stats.section.history.footer" = "Streaks use local calendar days when plays ended. A current streak can end yesterday until you listen today. Import Spotify's account or extended streaming history, or Vitrine's own versioned history export. Duplicate plays are skipped. Large selections may need to be imported in smaller batches.";
+"settings.stats.section.history.footer" = "Streaks use local calendar days when plays ended. A current streak can end yesterday until you listen today. Import Spotify's account or extended streaming history, or Retrine's own versioned history export. Duplicate plays are skipped. Large selections may need to be imported in smaller batches.";
 "settings.stats.section.top_albums" = "Top albums";
 "settings.stats.section.top_artists" = "Top artists";
 "settings.stats.section.top_tracks" = "Top tracks";
@@ -3256,7 +3257,7 @@
 "settings.translation.library.deletewarning" = "This deletes active records, recovery copies and the legacy Caches copies. Migration suppression is kept. If any deletion fails, the remaining copies will be reported.";
 "settings.translation.library.exportall" = "Export all (including recovery)";
 "settings.translation.library.exportselected" = "Export selected";
-"settings.translation.library.footer" = "Tap records to select them. Recovery copies are never automatically deleted. Export before uninstalling. Older Vitrine versions only see the stale legacy cache snapshot; there is no two-way sync.";
+"settings.translation.library.footer" = "Tap records to select them. Recovery copies are never automatically deleted. Export before uninstalling or going back to an older version: an older version may not see these records.";
 "settings.translation.library.full" = "Storage ceiling reached. Existing records are kept.";
 "settings.translation.library.import" = "Import JSON or ZIP";
 "settings.translation.library.importresult" = "%lu of %lu records committed.%@";
@@ -3375,7 +3376,7 @@
 "settings.translation.translateanysong.subtitle" = "The lyrics' translate menu for songs that already read as your language";
 "settings.translation.translateanysong.title" = "Translate any song";
 
-"settings.vibrations.alert.missing.message" = "iOS plays Music Haptics only for apps that say they support it, and only Vitrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Vitrine's .deb injected by hand, so the vibrations stop when Spotify leaves the screen. Music Haptics above still works while Spotify is open. Build the IPA with Vitrine to get both.";
+"settings.vibrations.alert.missing.message" = "iOS plays Music Haptics only for apps that say they support it, and only Retrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Retrine's .deb injected by hand, so the vibrations stop when Spotify leaves the screen. Music Haptics above still works while Spotify is open. Build the IPA with Retrine to get both.";
 "settings.vibrations.alert.missing.title" = "In the Background is missing";
 "settings.vibrations.alert.not_now" = "Not Now";
 "settings.vibrations.alert.open_settings" = "Open Settings";
@@ -3430,18 +3431,10 @@
 "settings.whatsnew.kind.fixes" = "Fixes";
 "settings.whatsnew.kind.performance" = "Performance";
 "settings.whatsnew.kind.reverts" = "Reverts";
-"settings.whatsnew.title" = "What's New in Vitrine";
+"settings.whatsnew.title" = "What's New in Retrine";
 "settings.whatsnew.version" = "Version %s";
 
 "settings.wireguard.address" = "Address";
-"settings.wireguard.lyrics" = "Lyrics requests";
-"settings.wireguard.lyrics_tunnel" = "Through the tunnel";
-"settings.wireguard.lyrics_blocked" = "Direct for blocked sources only";
-"settings.wireguard.lyrics_all" = "All lyrics sources direct";
-"settings.wireguard.lyrics_tunnel_footer" = "Vitrine's own lyrics requests use the tunnel and fail when it is not ready; blocked sources can fall back. Direct connections would reveal your real IP and the song you look up to those sites. Spotify's own traffic keeps the tunnel's existing protection. Applies to new requests immediately.";
-"settings.wireguard.lyrics_blocked_footer" = "Only Vitrine's own lyrics requests to Genius connect directly, even when the tunnel is not ready. Genius sees your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.";
-"settings.wireguard.lyrics_all_footer" = "Only Vitrine's own lyrics requests to listed HTTPS provider hosts connect directly, even when the tunnel is not ready. Those sites see your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.";
-"settings.search.wireguard.keywords" = "lyrics requests Genius direct blocked sources tunnel proxy VPN";
 "settings.wireguard.cancel" = "Cancel";
 "settings.wireguard.check_connection" = "Run connection diagnostics (DNS · HTTPS · 206)";
 "settings.wireguard.check_copy" = "Copy diagnostics";
@@ -3476,6 +3469,13 @@
 "settings.wireguard.import_hint" = "Choose a standard WireGuard .conf file (64 KB or smaller).";
 "settings.wireguard.import_pasteboard" = "Import from clipboard";
 "settings.wireguard.later" = "Later";
+"settings.wireguard.lyrics" = "Lyrics requests";
+"settings.wireguard.lyrics_all" = "All lyrics sources direct";
+"settings.wireguard.lyrics_all_footer" = "Only Retrine's own lyrics requests to listed HTTPS provider hosts connect directly, even when the tunnel is not ready. Those sites see your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.";
+"settings.wireguard.lyrics_blocked" = "Direct for blocked sources only";
+"settings.wireguard.lyrics_blocked_footer" = "Only Retrine's own lyrics requests to Genius connect directly, even when the tunnel is not ready. Genius sees your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.";
+"settings.wireguard.lyrics_tunnel" = "Through the tunnel";
+"settings.wireguard.lyrics_tunnel_footer" = "Retrine's own lyrics requests use the tunnel and fail when it is not ready; blocked sources can fall back. Direct connections would reveal your real IP and the song you look up to those sites. Spotify's own traffic keeps the tunnel's existing protection. Applies to new requests immediately.";
 "settings.wireguard.no" = "no";
 "settings.wireguard.no_profile" = "Import a WireGuard .conf file first.";
 "settings.wireguard.no_profile_title" = "No profile";
@@ -3525,8 +3525,8 @@
 "settings.workshop.audio_presets.title" = "Audio presets";
 "settings.workshop.free_fonts.title" = "Free fonts";
 "settings.workshop.headphones.title" = "Headphones";
-"settings.workshop.intro.native.v2" = "Built-in and open libraries Vitrine can use without an account. Visualizers appear here when Redesigned UI is selected. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.";
-"settings.workshop.intro.redesigned.v2" = "Built-in and open libraries Vitrine can use without an account. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.";
+"settings.workshop.intro.native.v2" = "Built-in and open libraries Retrine can use without an account. Visualizers appear here when Redesigned UI is selected. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.";
+"settings.workshop.intro.redesigned.v2" = "Built-in and open libraries Retrine can use without an account. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.";
 "settings.workshop.look.header" = "Look";
 "settings.workshop.sound.header" = "Sound";
 "settings.workshop.title" = "Libraries & presets";

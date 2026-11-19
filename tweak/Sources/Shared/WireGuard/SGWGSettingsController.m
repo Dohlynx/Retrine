@@ -57,7 +57,7 @@ typedef NS_ENUM(NSInteger, WGCheckRow) { WGCheckCountry, WGCheckConnection, WGCh
     [self.enabledSwitch addTarget:self action:@selector(toggleEnabled:) forControlEvents:UIControlEventValueChanged];
     self.kindControl = [[UISegmentedControl alloc] initWithItems:@[@"WireGuard", @"HTTP", @"HTTPS", @"SOCKS5"]];
     [self.kindControl addTarget:self action:@selector(kindChanged) forControlEvents:UIControlEventValueChanged];
-    // The same segmented control Vitrine's Flags page draws: the accent behind the chosen segment, 11pt text.
+    // The same segmented control Retrine's Flags page draws: the accent behind the chosen segment, 11pt text.
     self.kindControl.selectedSegmentTintColor = SGGreen();
     UIFont *segmentFont = SGCappedFont(SGSubtitleFont(), 15);
     [self.kindControl setTitleTextAttributes:@{NSForegroundColorAttributeName: UIColor.whiteColor, NSFontAttributeName: segmentFont} forState:UIControlStateNormal];
@@ -208,11 +208,11 @@ static NSArray<NSString *> *Kinds(void) { return @[SGWGKindWireGuard, SGWGKindHT
         case WGSectionLyrics:
             switch (SGWGSettingLyricsRoute()) {
                 case SGWGLyricsBlockedDirect:
-                    return SGL(@"settings.wireguard.lyrics_blocked_footer", @"Only Vitrine's own lyrics requests to Genius connect directly, even when the tunnel is not ready. Genius sees your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.");
+                    return SGL(@"settings.wireguard.lyrics_blocked_footer", @"Only Retrine's own lyrics requests to Genius connect directly, even when the tunnel is not ready. Genius sees your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.");
                 case SGWGLyricsAllDirect:
-                    return SGL(@"settings.wireguard.lyrics_all_footer", @"Only Vitrine's own lyrics requests to listed HTTPS provider hosts connect directly, even when the tunnel is not ready. Those sites see your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.");
+                    return SGL(@"settings.wireguard.lyrics_all_footer", @"Only Retrine's own lyrics requests to listed HTTPS provider hosts connect directly, even when the tunnel is not ready. Those sites see your real IP and the song you look up. Other requests, including Spotify's own traffic, keep the tunnel's existing protection. Applies to new requests immediately.");
                 default:
-                    return SGL(@"settings.wireguard.lyrics_tunnel_footer", @"Vitrine's own lyrics requests use the tunnel and fail when it is not ready; blocked sources can fall back. Direct connections would reveal your real IP and the song you look up to those sites. Spotify's own traffic keeps the tunnel's existing protection. Applies to new requests immediately.");
+                    return SGL(@"settings.wireguard.lyrics_tunnel_footer", @"Retrine's own lyrics requests use the tunnel and fail when it is not ready; blocked sources can fall back. Direct connections would reveal your real IP and the song you look up to those sites. Spotify's own traffic keeps the tunnel's existing protection. Applies to new requests immediately.");
             }
         case WGSectionServer:
             return self.selectedWireGuard ? nil : SGL(@"settings.wireguard.footer_server", @"HTTP and HTTPS use CONNECT. HTTP sends proxy credentials without encryption; prefer HTTPS. HTTPS verifies the proxy certificate. Credentials are bound to the connection type, server, port and user, and cleared when these change.");
@@ -225,7 +225,7 @@ static NSArray<NSString *> *Kinds(void) { return @[SGWGKindWireGuard, SGWGKindHT
     return nil;
 }
 
-// Headers, notes and the gap over a card are Vitrine's own (Settings/SGPageStyle): 11pt gray uppercase headings and
+// Headers, notes and the gap over a card are Retrine's own (Settings/SGPageStyle): 11pt gray uppercase headings and
 // notes, and a section with no row showing has none of them.
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
     NSString *title = [self headerTextForSection:section];
@@ -247,7 +247,7 @@ static NSArray<NSString *> *Kinds(void) { return @[SGWGKindWireGuard, SGWGKindHT
     return text.length && [self tableView:tableView numberOfRowsInSection:section] ? SGSectionFooterHeight(tableView, text) : CGFLOAT_MIN;
 }
 
-// A row as Vitrine draws it: 13pt title over an 11pt gray subtitle on a #1C1C1E card (SGFillCell). The controls these
+// A row as Retrine draws it: 13pt title over an 11pt gray subtitle on a #1C1C1E card (SGFillCell). The controls these
 // rows hold are single instances moved between cells, so every cell is new rather than reused.
 - (UITableViewCell *)cellTitled:(NSString *)title subtitle:(NSString *)subtitle color:(UIColor *)color {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
@@ -578,7 +578,7 @@ static NSString *ErrorText(NSError *error) {
         [lines addObject:[NSString stringWithFormat:@"HTTPS www.google.com: %@ HTTP %ld %@ (%.1f s)", ok ? @"OK" : @"FAIL", (long)response.statusCode, ErrorText(error), seconds]];
         self.checks[@"https.generate_204"] = [NSString stringWithFormat:@"HTTP %ld %@ %.1fs", (long)response.statusCode, ErrorText(error), seconds];
         [self checkRange:@[@"https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png",
-                           @"https://raw.githubusercontent.com/kes158/vitrine/main/LICENSE"] index:0 lines:lines];
+                           @"https://raw.githubusercontent.com/oneulddu/Retrine/main/LICENSE"] index:0 lines:lines];
     }];
 }
 

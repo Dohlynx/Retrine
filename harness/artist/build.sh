@@ -28,7 +28,7 @@ xcrun -sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator -fobjc-ar
     "$SRC"/Redesigned/Artist/ArtistArtwork.m "$SRC"/Shared/AnimatedArtwork/SGMotionClip.m "$SRC"/Shared/AdBlock/Protobuf.m \
     "$SRC"/Redesigned/Kit/SGRRollingDigits.m "$SRC"/Redesigned/Kit/SGRRefinements.m "$SRC"/Redesigned/Kit/SGRCoverRead.m \
     -framework UIKit -framework QuartzCore -framework Metal -framework CoreGraphics -framework CoreImage -framework Foundation -framework Symbols -framework CoreText -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework Vision \
-    -o "$OUT/ArtistHarness.app/ArtistHarness"
+    "$SRC/Core/SGDataRoot.m" -o "$OUT/ArtistHarness.app/ArtistHarness"
 
 cat > "$OUT/ArtistHarness.app/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

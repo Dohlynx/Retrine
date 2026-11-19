@@ -2137,7 +2137,7 @@ static void installSettingsWorkProbes(void) {
         [self expect:motionOn() && !demo() && [[[card() valueForKey:@"_canvas"] accessibilityValue] isEqualToString:@"Animated background"]
                 step:@"Animated: the player's clip on the card" detail:cardState()];
         [self expect:[[[card() valueForKey:@"_title"] text] isEqualToString:@"Loose Canon"]
-                     && [[[card() valueForKey:@"_artist"] text] isEqualToString:@"Vitrine harness"]
+                     && [[[card() valueForKey:@"_artist"] text] isEqualToString:@"Retrine harness"]
                      && [[[card() valueForKey:@"_elapsed"] text] isEqualToString:@"1:15"]
                      && [[[card() valueForKey:@"_remaining"] text] isEqualToString:@"-2:45"]
                 step:@"the actual current song, artist, elapsed and remaining time" detail:cardState()];

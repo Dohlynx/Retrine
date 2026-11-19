@@ -35,7 +35,7 @@ static void confirmReset(void) {
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
-// Reset all leaves the Keychain alone, so a key outlives a reset; this takes every item Vitrine keeps there,
+// Reset all leaves the Keychain alone, so a key outlives a reset; this takes every item Retrine keeps there,
 // by each service's own name, and keeps the settings.
 static void confirmClearKeychain(void) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:SGL(@"settings.mod.keychain.alert.title", @"Clear Keychain?")

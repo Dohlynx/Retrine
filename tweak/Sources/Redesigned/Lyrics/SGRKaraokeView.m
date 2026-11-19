@@ -3128,7 +3128,7 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
         if (!automaticRevision && !SGFlag(SGRKeyLyricsTranslation, NO)) SGRSetLyricsTextShown(SGRLyricsTextTranslation, YES);
     }, ^(NSArray<NSString *> *translations, NSString *error) {
         if (error && !automaticRevision) {
-            BOOL needsDownload = [error isEqualToString:@"vitrine.translation.languagesMissing"];
+            BOOL needsDownload = [error isEqualToString:@"retrine.translation.languagesMissing"];
             NSString *detail = needsDownload ? SGL(@"settings.translation.download.message", @"Download the song's language and your translation language in Settings > Apps > Translate > Languages, then try again.") : error;
             NSString *message = had ? [NSString stringWithFormat:@"%@\n\n%@", detail, SGL(@"settings.lyricstools.translation.kept", @"Lines that could not be translated keep their previous translation.")] : detail;
             NSString *title = needsDownload ? SGL(@"settings.translation.download.title", @"Language not downloaded") : (translations ? SGL(@"settings.translation.partial.title", @"Partly translated") : SGL(@"settings.translation.none.title", @"No translation"));

@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleDevelopmentRegion</key><string>en</string>
-<key>CFBundleDisplayName</key><string>Open in Vitrine</string>
-<key>CFBundleExecutable</key><string>OpenInVitrine</string>
-<key>CFBundleIdentifier</key><string>HOST_BUNDLE_ID.openinvitrine</string>
+<key>CFBundleDisplayName</key><string>Open in Retrine</string>
+<key>CFBundleExecutable</key><string>OpenInRetrine</string>
+<key>CFBundleIdentifier</key><string>HOST_BUNDLE_ID.openinretrine</string>
 <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-<key>CFBundleName</key><string>OpenInVitrine</string>
+<key>CFBundleName</key><string>OpenInRetrine</string>
 <key>CFBundlePackageType</key><string>XPC!</string>
 <key>CFBundleShortVersionString</key><string>HOST_SHORT_VERSION</string>
 <key>CFBundleVersion</key><string>HOST_VERSION</string>
@@ -22,6 +22,6 @@
         <key>NSExtensionServiceRoleType</key><string>NSExtensionServiceRoleTypeViewer</string>
     </dict>
     <key>NSExtensionPointIdentifier</key><string>com.apple.ui-services</string>
-    <key>NSExtensionPrincipalClass</key><string>OIVViewController</string>
+    <key>NSExtensionPrincipalClass</key><string>OIRViewController</string>
 </dict>
 </dict></plist>

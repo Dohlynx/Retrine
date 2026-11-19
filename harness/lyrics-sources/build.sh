@@ -5,7 +5,7 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=${LYRICS_SOURCE_ROOT:-$(cd "$HERE/../../tweak/Sources" && pwd)}
 LS="$SRC/Shared/LyricsSources"
-BUILD=$(mktemp -d "/tmp/vitrine-lyrics-sources.XXXXXX")
+BUILD=$(mktemp -d "/tmp/retrine-lyrics-sources.XXXXXX")
 trap 'rm -rf "$BUILD"' EXIT HUP INT TERM
 if [ "${1:-}" != "--transport-only" ]; then
 xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi -isysroot "$(xcrun --sdk macosx --show-sdk-path)" -iframework "$(xcrun --sdk macosx --show-sdk-path)/System/iOSSupport/System/Library/Frameworks" -fobjc-arc -g -Wall -I"$SRC" -DSG_VERSION=\"0.0.0\" \

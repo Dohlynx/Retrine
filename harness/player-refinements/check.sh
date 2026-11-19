@@ -25,7 +25,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>player-refinements-check</string>
-<key>CFBundleIdentifier</key><string>com.vitrine.playerrefinements.check</string>
+<key>CFBundleIdentifier</key><string>com.retrine.playerrefinements.check</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>UIApplicationSceneManifest</key><dict>
 <key>UIApplicationSupportsMultipleScenes</key><false/>

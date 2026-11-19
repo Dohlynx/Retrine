@@ -1,5 +1,5 @@
 // Player redesign: the ⋯ beside the title, where the Music app has it, opens the system menu (Redesigned/ContextMenu):
-// the song's actions first and Vitrine's after them. Share, Add to playlist and Add to queue in a row at its top, then
+// the song's actions first and Retrine's after them. Share, Add to playlist and Add to queue in a row at its top, then
 // the title row's own buttons, which the ⋯ takes the place of -- the add button (★: Save to Your Library, or Change
 // Where It's Saved once saved) and Spotify's X when it shows one (feedback_headunit_right_ban_button, "Don't play
 // this") -- each fired as a tap on it would be; then the rest of Spotify's rows, and then the player's own items here, which take over what Speed and

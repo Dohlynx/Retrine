@@ -399,7 +399,7 @@ static BOOL edgesTo(UIView *bar, CGRect r, CGPoint origin) {
 // the room up. Not one of the buttons' stack: Spotify moves its items there by index, and Next among them put the add
 // button after play (9.1.90). It asks the player for the next track as the Live Activity's Next does.
 static NSString *const kPlayId = @"SPTNowPlayingPlayButton";
-static NSString *const kNextId = @"vitrine.nowplayingbar.next";
+static NSString *const kNextId = @"retrine.nowplayingbar.next";
 static char kNextKey;
 
 // The smallest touch target a control may have, in points (Apple's Human Interface Guidelines). Play's item, which the
@@ -575,8 +575,8 @@ static void tuckExtras(UIView *bar, SGRBarTuck tuck) {
 // opens the player, through spotify:now-playing on Spotify's link dispatcher, on its lyrics (SGRPlayerShowLyricsOnOpen);
 // queue opens Playing Next over the app (PlayerQueue.m). For their room the capsule grows from Spotify's card toward
 // the glass tab bar beside it, keeping its other side where Spotify put it, and stops short of the tab bar's glass.
-static NSString *const kShuffleId = @"vitrine.nowplayingbar.shuffle", *const kRepeatId = @"vitrine.nowplayingbar.repeat";
-static NSString *const kLyricsId = @"vitrine.nowplayingbar.lyrics", *const kQueueId = @"vitrine.nowplayingbar.queue";
+static NSString *const kShuffleId = @"retrine.nowplayingbar.shuffle", *const kRepeatId = @"retrine.nowplayingbar.repeat";
+static NSString *const kLyricsId = @"retrine.nowplayingbar.lyrics", *const kQueueId = @"retrine.nowplayingbar.queue";
 static NSString *const kRepeatSymbol = @"repeat", *const kRepeatOneSymbol = @"repeat.1";
 // The four glyphs' point size, drawn as heavy as play's and Next's glyphs read beside them.
 static const CGFloat kCapsuleGlyphSize = 17;

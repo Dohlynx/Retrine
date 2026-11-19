@@ -23,7 +23,7 @@ static const void *SAPAttachmentKey=&SAPAttachmentKey;
 static void *SAPContentSizeContext=&SAPContentSizeContext;
 static void (*originalSettingsLoad)(id,SEL);
 static void (*originalSettingsLayout)(id,SEL);
-static void *(*originalVitrinePageInit)(void *,SEL,id,id,id,id);
+static void *(*originalModPageInit)(void *,SEL,id,id,id,id);
 static BOOL settingsInstalled;
 static NSString *settingsInstallStatus=@"not_attempted";
 NSDictionary *SAPDownloadSettingsInstallReport(void) {
@@ -708,8 +708,8 @@ static void SAPAttachSettings(UIViewController *host) {
 }
 static void SAPSettingsLoaded(id self,SEL selector) {originalSettingsLoad(self,selector);SAPAttachSettings(self);}
 static void SAPSettingsLayout(id self,SEL selector) {originalSettingsLayout(self,selector);SAPAttachSettings(self);}
-static void *SAPVitrinePageInit(void *self,SEL selector,NSString *title,NSString *intro,NSArray *sections,NSString *footer) {
-    if([title isEqualToString:@"Vitrine"]) {
+static void *SAPModPageInit(void *self,SEL selector,NSString *title,NSString *intro,NSArray *sections,NSString *footer) {
+    if([title isEqualToString:@"Retrine"] || [title isEqualToString:@"Vitrine"]) {
         id (*pageRow)(NSString *,UIViewController *(^)(void))=dlsym(RTLD_DEFAULT,"SGPageRow");
         id (*actionRow)(NSString *,NSString *,void (^)(void))=dlsym(RTLD_DEFAULT,"SGActionRow");
         id (*withTile)(id,NSString *,UIColor *)=dlsym(RTLD_DEFAULT,"SGWithTile");
@@ -717,27 +717,27 @@ static void *SAPVitrinePageInit(void *self,SEL selector,NSString *title,NSString
         if(pageRow && actionRow && withTile && section) {
             id row=pageRow(SAPL(@"settings.pixie.manager.title",@"Pixie Download Manager"),^UIViewController *{return [SAPDownloadsSettings new];});
             row=withTile(row,@"arrow.down.circle.fill",UIColor.systemGreenColor);
-            id log=actionRow(SAPL(@"settings.pixie.entry.send_log.title",@"Send log"),SAPL(@"settings.pixie.vitrine.send_log.subtitle",@"Report, actions, download history and Vitrine diagnostics"),^{[SAPSettingsActions perform:SAPSettingsSendLog];});
+            id log=actionRow(SAPL(@"settings.pixie.entry.send_log.title",@"Send log"),SAPL(@"settings.pixie.vitrine.send_log.subtitle",@"Report, actions, download history and Retrine diagnostics"),^{[SAPSettingsActions perform:SAPSettingsSendLog];});
             log=withTile(log,@"square.and.arrow.up",UIColor.systemTealColor);
             id group=section(nil,@[row,log]);
-            if(group){sections=[sections arrayByAddingObject:group];SAP_TRACE("ui","pixie_rows_added_to_vitrine",0,@{@"added_rows":@2,@"root_title":title});}
+            if(group){sections=[sections arrayByAddingObject:group];SAP_TRACE("ui","pixie_rows_added_to_retrine",0,@{@"added_rows":@2,@"root_title":title});}
         }else {
-            settingsInstallStatus=@"vitrine_row_factories_unavailable";
+            settingsInstallStatus=@"retrine_row_factories_unavailable";
         }
     }
-    return originalVitrinePageInit(self,selector,title,intro,sections,footer);
+    return originalModPageInit(self,selector,title,intro,sections,footer);
 }
 void SAPInstallDownloadSettings(void) {
     if(!SAPRuntimeProfileAdmitted())return;
     if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{SAPInstallDownloadSettings();});return;}
     if(settingsInstalled)return;
-    Class vitrine=NSClassFromString(@"SGModPage");
+    Class modPage=NSClassFromString(@"SGModPage");
     SEL init=NSSelectorFromString(@"initWithTitle:intro:sections:footer:");
-    Method method=vitrine?class_getInstanceMethod(vitrine,init):NULL;
+    Method method=modPage?class_getInstanceMethod(modPage,init):NULL;
     if(method&&method_getNumberOfArguments(method)==6) {
-        originalVitrinePageInit=(void *)method_getImplementation(method);
-        class_replaceMethod(vitrine,init,(IMP)SAPVitrinePageInit,method_getTypeEncoding(method));
-        settingsInstalled=YES;settingsInstallStatus=@"vitrine_page_hook_installed";return;
+        originalModPageInit=(void *)method_getImplementation(method);
+        class_replaceMethod(modPage,init,(IMP)SAPModPageInit,method_getTypeEncoding(method));
+        settingsInstalled=YES;settingsInstallStatus=@"retrine_page_hook_installed";return;
     }
         #ifdef SAP_UI_FIXTURE
         Class cls=NSClassFromString(@"SAPFixtureEeveeSettingsViewController");
@@ -745,7 +745,7 @@ void SAPInstallDownloadSettings(void) {
         Class cls=NSClassFromString(@"EeveeSpotify.EeveeSettingsViewController");
 #endif
         if(!cls)cls=NSClassFromString(@"_TtC12EeveeSpotify27EeveeSettingsViewController");
-        if(!cls){settingsInstallStatus=vitrine?@"vitrine_page_signature_unavailable":@"settings_host_not_loaded";return;}
+        if(!cls){settingsInstallStatus=modPage?@"retrine_page_signature_unavailable":@"settings_host_not_loaded";return;}
         SEL load=@selector(viewDidLoad),layout=@selector(viewDidLayoutSubviews);
         Method lm=class_getInstanceMethod(cls,load),dm=class_getInstanceMethod(cls,layout);
         if(!lm || !dm || method_getNumberOfArguments(lm)!=2 || method_getNumberOfArguments(dm)!=2){settingsInstallStatus=@"settings_host_signature_mismatch";return;}

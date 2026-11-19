@@ -7,7 +7,8 @@
 # LC_BUILD_VERSION platform turned from iOS (2) into iOS Simulator (7), which arm64 code needs nothing
 # else for, and is signed ad hoc. The extensions and the Watch app are left out. scripts/sim-shim.m goes
 # in too (Substrate's MSHookMessageEx, and a phone's hw.machine). The device is a simulator of its own
-# ("Vitrine" by default, an iPhone 17 on the newest iOS runtime), so the booted ones are left alone.
+# ("Vitrine" by default, an iPhone 17 on the newest iOS runtime; the name predates the Retrine rename and is kept so
+# the existing signed-in simulator is reused), so the booted ones are left alone.
 # SG_DRIVER=1 builds the tweak with the phone driver, on port 8086: PHONE_PORT=8086 scripts/phone.py state.
 # SIM_PORT=8087 moves it, so two simulators can run their drivers at once.
 #
@@ -42,8 +43,8 @@ find "$APP" -name SC_Info -prune -exec rm -rf {} +
 echo "==> building the simulator shim"
 xcrun -sdk iphonesimulator clang -target arm64-apple-ios16.0-simulator -dynamiclib -Os -lobjc -framework Foundation \
   -DSG_DRIVER="${SG_DRIVER:-0}" \
-  -install_name @executable_path/Frameworks/libvitrinesim.dylib -o "$APP/Frameworks/libvitrinesim.dylib" "$ROOT/scripts/sim-shim.m"
-"$ROOT/scripts/insert-dylib.py" "$APP/Spotify" @executable_path/Frameworks/libvitrinesim.dylib
+  -install_name @executable_path/Frameworks/libretrinesim.dylib -o "$APP/Frameworks/libretrinesim.dylib" "$ROOT/scripts/sim-shim.m"
+"$ROOT/scripts/insert-dylib.py" "$APP/Spotify" @executable_path/Frameworks/libretrinesim.dylib
 
 if [ "$TWEAK" = 1 ]; then
   # The flag table is generated from the IPA (gitignored), as pipeline.sh does.
@@ -65,7 +66,7 @@ if [ "$TWEAK" = 1 ]; then
   DYLIB="$APP/Frameworks/spotifyglass.dylib"
   cp "$ROOT/tweak/.theos/obj-sim/spotifyglass.dylib" "$DYLIB"
   install_name_tool -id @rpath/spotifyglass.dylib \
-    -change /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate @executable_path/Frameworks/libvitrinesim.dylib \
+    -change /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate @executable_path/Frameworks/libretrinesim.dylib \
     "$DYLIB" 2>/dev/null
   if otool -L "$DYLIB" | grep -q CydiaSubstrate; then echo "the tweak still loads CydiaSubstrate" >&2; exit 1; fi
   "$ROOT/scripts/insert-dylib.py" "$APP/Spotify" @rpath/spotifyglass.dylib

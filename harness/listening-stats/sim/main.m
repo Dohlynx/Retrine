@@ -3,7 +3,7 @@
 // delegate. The launch line plays actions, one every 0.7 s from 1 s in; screenshot after.
 //
 //     THEOS=$HOME/theos ./build-sim.sh && xcrun simctl install <udid> build/sim/ListeningStatsHarness.app
-//     xcrun simctl launch <udid> com.vitrine.listeningstatsharness [action...]
+//     xcrun simctl launch <udid> com.retrine.listeningstatsharness [action...]
 //
 // Actions: erase (the log emptied), seed (a week, a month and a year of plays merged in), record (a track played
 // 31 s, one played 5 s, one paused after 10 s for 10 s and played 25 s more, then playback stopped: takes 82 s, so put it
@@ -377,7 +377,7 @@ static UIDocumentPickerViewController *SGHarnessPicker;
             [self after:2 do:^{
                 NSString *tmp = NSTemporaryDirectory();
                 for (NSString *path in [NSFileManager.defaultManager subpathsAtPath:tmp]) {
-                    if (![path.lastPathComponent hasPrefix:@"Vitrine-Recap-"]) continue;
+                    if (![path.lastPathComponent hasPrefix:@"Retrine-Recap-"]) continue;
                     UIImage *image = [UIImage imageWithContentsOfFile:[tmp stringByAppendingPathComponent:path]];
                     NSLog(@"[harness] shared %@: %.0f x %.0f px under %@", path.lastPathComponent, image.size.width * image.scale, image.size.height * image.scale,
                           story.presentedViewController.class);

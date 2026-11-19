@@ -26,7 +26,7 @@ the setup-Theos action; its caches contain build tools/output, never
 credentials or test data.
 
 The cap reduces macOS runner demand without changing the weighting. The successful
-full scheduled run [43850580004](https://github.com/oneulddu/vitrine/actions/runs/43850580004)
+full scheduled run [43850580004](https://github.com/oneulddu/retrine/actions/runs/43850580004)
 (2026-11-16, `297145c6`) reported 78 harness durations totaling 3,601.7 seconds.
 Repacking those measurements with the current three-shard plan gives 820.7,
 1,209.4 and 1,571.6 seconds. Per-job setup/cleanup overhead was 42–71 seconds,

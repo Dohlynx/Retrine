@@ -292,7 +292,7 @@ def main():
                 SGWG_TEST_APP_VERSION="9.1.95", SGWG_EXPECT_BLOCKED="1")
             run("failclosed: wrong build", "failclosed", SGWG_TEST_APP_BUILD="919002270", SGWG_EXPECT_BLOCKED="1")
             out = run("live Proton: handshake, US exit, HTTPS and range", "live")
-            report = out[out.find("Vitrine app-local WireGuard diagnostics"):]
+            report = out[out.find("Retrine app-local WireGuard diagnostics"):]
             source = profile.read_text()
             for name, field, replacement in [
                 ("bad endpoint", "Endpoint", "127.0.0.1:1"),

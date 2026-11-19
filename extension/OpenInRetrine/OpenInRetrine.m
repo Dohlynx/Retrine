@@ -4,13 +4,13 @@
 #import <objc/message.h>
 #import "LinkURL.h"
 
-@interface OIVViewController : UIViewController
+@interface OIRViewController : UIViewController
 @end
 
-static const NSUInteger OIVMaximumSharedItems = 8;
-static const NSUInteger OIVMaximumItemProviders = 8;
+static const NSUInteger OIRMaximumSharedItems = 8;
+static const NSUInteger OIRMaximumItemProviders = 8;
 
-@implementation OIVViewController {
+@implementation OIRViewController {
     BOOL _started;
 }
 - (void)viewDidLoad {
@@ -22,7 +22,7 @@ static const NSUInteger OIVMaximumItemProviders = 8;
     if (_started) return;
     _started = YES;
     NSArray *input = self.extensionContext.inputItems;
-    NSArray *items = [input subarrayWithRange:NSMakeRange(0, MIN(input.count, OIVMaximumSharedItems))];
+    NSArray *items = [input subarrayWithRange:NSMakeRange(0, MIN(input.count, OIRMaximumSharedItems))];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         [self findLink:items];
     });
@@ -38,9 +38,9 @@ static const NSUInteger OIVMaximumItemProviders = 8;
     NSUInteger providers = 0;
     for (NSExtensionItem *item in input) {
         NSURL *url = SGSpotifyLinkInSharedText(item.attributedContentText.string);
-        if (url) { [self finishWithURL:SGVitrineURLForSpotifyURL(url)]; return; }
+        if (url) { [self finishWithURL:SGRetrineURLForSpotifyURL(url)]; return; }
         for (NSItemProvider *provider in item.attachments) {
-            if (providers == OIVMaximumItemProviders) break;
+            if (providers == OIRMaximumItemProviders) break;
             providers++;
             for (NSString *type in @[UTTypeURL.identifier, UTTypePlainText.identifier]) {
                 if ([provider hasItemConformingToTypeIdentifier:type])
@@ -60,7 +60,7 @@ static const NSUInteger OIVMaximumItemProviders = 8;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             NSString *text = [item isKindOfClass:NSURL.class] ? [item absoluteString] :
                              ([item isKindOfClass:NSString.class] ? item : nil);
-            NSURL *url = SGVitrineURLForSpotifyURL(SGSpotifyLinkInSharedText(text));
+            NSURL *url = SGRetrineURLForSpotifyURL(SGSpotifyLinkInSharedText(text));
             if (url) [self finishWithURL:url];
             else [self loadItems:items index:index + 1];
         });
@@ -70,7 +70,7 @@ static const NSUInteger OIVMaximumItemProviders = 8;
     void (^finished)(BOOL) = ^(BOOL success) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) [self.extensionContext completeRequestReturningItems:@[] completionHandler:nil];
-            else [self fail:@"iOS didn't let the share sheet open Vitrine."];
+            else [self fail:@"iOS didn't let the share sheet open Retrine."];
         });
     };
     // Action extensions cannot use UIApplication.sharedApplication. Sideloaded hosts may expose it
@@ -85,7 +85,7 @@ static const NSUInteger OIVMaximumItemProviders = 8;
     [self.extensionContext openURL:url completionHandler:finished];
 }
 - (void)fail:(NSString *)message {
-    NSBundle *bundle = [NSBundle bundleForClass:OIVViewController.class];
+    NSBundle *bundle = [NSBundle bundleForClass:OIRViewController.class];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[bundle objectForInfoDictionaryKey:@"CFBundleDisplayName"]
                                                                  message:[bundle localizedStringForKey:message value:nil table:nil]
                                                           preferredStyle:UIAlertControllerStyleAlert];

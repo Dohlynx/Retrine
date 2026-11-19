@@ -224,7 +224,7 @@ static NSArray<NSString *> *signatureOf(NSArray<SPTPlayerTrack *> *tracks) {
     _upNext = [[SGRQueueUpNextHeader alloc] initWithReuseIdentifier:nil];
     _covers = [NSCache new];
     _coming = [NSMutableDictionary dictionary];
-    self.tableView.accessibilityIdentifier = @"vitrine.queue";
+    self.tableView.accessibilityIdentifier = @"retrine.queue";
     [self takeState:SGPlayerState()];
     SGAddPlayerStateObserver(self);
     // Both are posted on the main thread.

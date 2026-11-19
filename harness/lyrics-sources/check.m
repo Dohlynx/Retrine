@@ -98,7 +98,7 @@ void SGLyricsSourceRequest(NSURL *url, NSDictionary *headers, NSData *body, void
     NSInteger status = 200;
     id answer;
     if ([url.host isEqualToString:@"lrclib.net"]) {
-        CHECK([headers[@"User-Agent"] hasPrefix:@"Vitrine "] && !body);
+        CHECK([headers[@"User-Agent"] hasPrefix:@"Retrine "] && !body);
         answer = sg_answer(url, nil);
     } else answer = sg_sourceAnswer(url, headers, body, &status);
     NSData *data = [answer isKindOfClass:NSString.class] ? [answer dataUsingEncoding:NSUTF8StringEncoding] :

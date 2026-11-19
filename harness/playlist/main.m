@@ -21,7 +21,7 @@ static void pinnedOn(UIView *page, SGRMirrorButton **download, SGRMirrorButton *
     *more = nil;
     for (UIView *v in page.subviews) {
         if (![v isKindOfClass:SGRMirrorButton.class]) continue;
-        if ([v.accessibilityIdentifier isEqualToString:@"Vitrine.Album.Download"]) *download = (id)v;
+        if ([v.accessibilityIdentifier isEqualToString:@"Retrine.Album.Download"]) *download = (id)v;
         else *more = (id)v;
     }
 }
@@ -123,7 +123,7 @@ static void verifyMixActions(UIView *root, BOOL independent) {
     while (pending.count) {
         UIView *view = pending.lastObject;
         [pending removeLastObject];
-        if ([view.accessibilityIdentifier isEqualToString:@"Vitrine.Album.Download"]) download = (id)view;
+        if ([view.accessibilityIdentifier isEqualToString:@"Retrine.Album.Download"]) download = (id)view;
         else if ([view isKindOfClass:SGRMirrorButton.class] && view.superview.subviews.lastObject == view
                  && ![view isDescendantOfView:info]) more = (id)view;
         [pending addObjectsFromArray:view.subviews];

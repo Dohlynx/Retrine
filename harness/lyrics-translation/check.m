@@ -26,7 +26,7 @@ NSURL *SGLyricsTestCacheRoot(void) {
         }
     }
     static NSURL *root;
-    if (!root) root = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES] URLByAppendingPathComponent:[@"vitrine-lyrics-check-" stringByAppendingString:NSUUID.UUID.UUIDString] isDirectory:YES];
+    if (!root) root = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES] URLByAppendingPathComponent:[@"retrine-lyrics-check-" stringByAppendingString:NSUUID.UUID.UUIDString] isDirectory:YES];
     return root;
 }
 static BOOL deviceAvailable;

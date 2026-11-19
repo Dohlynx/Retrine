@@ -1,4 +1,4 @@
-"""Pin the optional Vitrine replacement's Substrate dependency beside its loader."""
+"""Pin the optional Retrine replacement's Substrate dependency beside its loader."""
 import hashlib
 import struct
 import subprocess

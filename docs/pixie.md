@@ -1,8 +1,8 @@
 # Optional Pixie native downloads
 
-Pixie is an **optional, opt-in** build overlay that adds a native download manager to Vitrine.
-Default builds never include it, on any Spotify version. Read the whole page before using it:
-**9.2.0 packages are not yet functional-download releases** (see [Supported targets](#supported-targets)).
+Pixie is an **optional, opt-in** build overlay that adds a native download manager to Retrine.
+Default builds never include it, on any Spotify version. Read the whole page before using it, including
+what is still unverified (see [Supported targets](#supported-targets)).
 
 ## Building
 
@@ -11,9 +11,9 @@ make release PIXIE=1                                # primary Spotify 9.2.0
 make release PIXIE=1 IPA=ipa/Spotify-9.1.90.ipa     # compatibility lane
 ```
 
-These produce `out/vitrine-<version>-pixie.ipa` and
-`out/vitrine-<version>-pixie-spotify-9.1.90.ipa`, separately from the input and ordinary
-Vitrine output. An explicit `IPA=` overrides the Pixie primary target.
+These produce `out/retrine-<version>-pixie.ipa` and
+`out/retrine-<version>-pixie-spotify-9.1.90.ipa`, separately from the input and ordinary
+Retrine output. An explicit `IPA=` overrides the Pixie primary target.
 `make build PIXIE=1` and `make install PIXIE=1` use the same overlay
 (the latter also signs and installs). Direct pipeline usage accepts `--pixie`
 (`--require-pixie` is an alias). Default builds never include Pixie on any version;
@@ -27,23 +27,21 @@ Packaging accepts the exact decrypted Spotify **9.2.0** (`920002054`) and
 Version, build, both UUIDs, instruction windows, import bindings and unused executable
 padding are checked before the base build; requested Pixie mismatches fail closed.
 
-**9.2.0 packages are not yet functional-download releases.** Packaging admission
-does not override the companion's unverified native-layout/counter gates:
-its runtime remains inactive on 9.2.0. Separately, the host must feed the nebula
-account-attributes response through `SAPRewriteOfflineAccountAttributes`; without
-that integration, Eevee's 9.2 port observed `NOT_ALLOWED (23)` for downloads.
-Neither condition is established by a successful build. Jailbreak packaging is
-9.1.90-only; 9.2.0 DEBs are refused before output mutation.
+**Downloads work on the supported 9.2.0 IPA.** Its profile admits the runtime
+using the verified Eevee `0d9feaa` manager layout, including the eight-byte
+quota-field shift. The host also routes nebula account attributes through Pixie's
+conversion. Downloading, keeping a download across an app restart, and deleting
+it were verified on a real device. Jailbreak packaging remains 9.1.90-only.
 
 Default builds still work without Pixie. All builds reject existing Pixie
 payloads, partial overlays, malformed inputs and encrypted executables.
-The finished Vitrine IPA is checked again and overlaid after App Intents merging, before
+The finished Retrine IPA is checked again and overlaid after App Intents merging, before
 any installation. The companion build needs Xcode's iPhoneOS SDK and `ldid`; application
 entitlements are preserved and the complete ZIP is verified before atomic publication.
 
 ## In the app
 
-Settings → Vitrine reuses Pixie's existing runtime attachment for **Pixie Download Manager**
+Settings → Retrine reuses Pixie's existing runtime attachment for **Pixie Download Manager**
 and **Send log**. Downloads stay in Spotify's offline storage; Pixie 1.4 also offers
 separate, explicit audio-export actions.
 
@@ -64,7 +62,7 @@ track URIs, device identifiers and listening/download history: **inspect before 
 Unstructured Eevee debug logs are excluded because their credential safety is unknown.
 Existing About diagnostics remain available and are included through `SGWriteDiagnosticsFile`.
 
-Pixie's `SAPL` uses Vitrine's localization keys and Korean/English resources, following the
+Pixie's `SAPL` uses Retrine's localization keys and Korean/English resources, following the
 app's language with the same checked English fallback. `scripts/check-strings.py` also checks
 Pixie's keys and placeholders. Long-term offline licence renewal remains unverified.
 
@@ -101,8 +99,8 @@ SPOTIFY_TEST_IPA="$PWD/ipa/Spotify-9.1.90.ipa" python3 -B NativeDownloads/tools/
 exact-target admission and frozen-golden checks. These use the clean target IPAs.
 
 The optional UI fixtures need an already booted iPhone simulator:
-`python3 NativeDownloads/tools/test_settings_ui.py` (iOS 26 or newer) and
-`python3 NativeDownloads/tools/test_vitrine_init.py` (Vitrine root rows and init ownership).
+`python3 NativeDownloads/tools/test_retrine_settings_ui.py` (iOS 26 or newer) and
+`python3 NativeDownloads/tools/test_retrine_init.py` (Retrine root rows and init ownership).
 `python3 NativeDownloads/tools/test_trace_platform.py` exercises the production notification
 observers for nonblocking background posts and disabled/stale-generation delivery.
 After simulator checks, run `xcrun simctl shutdown all` and

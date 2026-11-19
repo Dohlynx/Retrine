@@ -4,7 +4,7 @@
 static BOOL fixtureSourceMismatch;
 @implementation SAPSettingsActions
 + (NSDictionary *)snapshot {
-#ifdef SAP_VITRINE_FIXTURE
+#ifdef SAP_RETRINE_FIXTURE
  BOOL unsupported=[NSProcessInfo.processInfo.arguments containsObject:@"--unsupported"];
  return @{@"download_active":@NO,@"key_request_mode":@{@"configured_mode":unsupported?@(-1):@0,@"configuration_source":unsupported?@"unverified":@"verified_direct_instruction"},
    @"jailbreak_bootstrap":@{@"native_patches_ready":@(!unsupported),@"reason":unsupported?@"unsupported_image":@"applied",@"detected_spotify_version":unsupported?@"9.1.92":@"9.1.90"}};

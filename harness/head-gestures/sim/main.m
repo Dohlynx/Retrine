@@ -8,7 +8,7 @@
 // The default assertion run exits with status 0 on success, 1 on failure.
 //
 //     THEOS=$HOME/theos ./build.sh && xcrun simctl install <udid> ../build/sim/HeadGesturesSim.app
-//     xcrun simctl launch --console-pty <udid> com.vitrine.headgesturessim
+//     xcrun simctl launch --console-pty <udid> com.retrine.headgesturessim
 //
 // With an argument it runs no checks and stops on a view to screenshot: `page` (the page, switch on, a nod
 // learned and a try's answer), `sheet` (the sheet at 2 of 5, recording on and off), `done` (All set) or `live`

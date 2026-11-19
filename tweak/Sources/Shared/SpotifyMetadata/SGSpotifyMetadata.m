@@ -4,7 +4,7 @@
 static NSString *const kMetadataHost = @"spclient.wg.spotify.com";
 
 static NSError *metadataError(NSInteger code, NSString *reason) {
-    return [NSError errorWithDomain:@"Vitrine.SpotifyMetadata" code:code userInfo:@{NSLocalizedDescriptionKey: reason}];
+    return [NSError errorWithDomain:@"Retrine.SpotifyMetadata" code:code userInfo:@{NSLocalizedDescriptionKey: reason}];
 }
 
 static NSURL *metadataURL(NSString *path, BOOL post) {

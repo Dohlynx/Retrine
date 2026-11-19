@@ -28,7 +28,7 @@ DEV_ICON ?= docs/icon.png
 .PHONY: build release install quick trees session log flags
 build:    ## FLEX + glass IPA into out/
 	./scripts/pipeline.sh $(IPA) $(PIXIE_ARG) $(NO_PLUGINS_ARG)
-release:  ## glass only, no FLEX
+release:  ## out/retrine-<version>.ipa by default, no FLEX
 	./scripts/pipeline.sh $(IPA) --no-flex $(PIXIE_ARG) $(NO_PLUGINS_ARG)
 install:  ## build, sign with your certificate, push to the phone on USB (FLEX=1 to take FLEX too)
 	./scripts/pipeline.sh $(IPA) --install $(FLEX_ARG) $(PIXIE_ARG) $(NO_PLUGINS_ARG) --name "$(DEV_NAME)" --icon "$(DEV_ICON)" -o out/spoti.dev.ipa

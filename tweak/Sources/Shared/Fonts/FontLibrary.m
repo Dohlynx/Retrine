@@ -1,6 +1,7 @@
 // FontLibrary.h says what this is. The catalog below was read from github.com/google/fonts at the commit kCommit
 // names: every file's size and SHA-256, and each family's OFL.txt. A file that differs from its line is refused.
 #import "Core/SGFileHash.h"
+#import "Core/SGDataRoot.h"
 #import <CoreText/CoreText.h>
 #import <UIKit/UIKit.h>
 #import "Core/SGCore.h"
@@ -156,8 +157,7 @@ static NSArray<NSValue *> *linesOf(SGLibraryFont *font) {
 #pragma mark - on this iPhone
 
 static NSURL *libraryFolder(void) {
-    NSURL *support = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    return [[support URLByAppendingPathComponent:@"Vitrine" isDirectory:YES] URLByAppendingPathComponent:@"Font Library" isDirectory:YES];
+    return [SGDataRoot(NSApplicationSupportDirectory) URLByAppendingPathComponent:@"Font Library" isDirectory:YES];
 }
 
 static NSURL *familyFolder(NSString *identifier) {

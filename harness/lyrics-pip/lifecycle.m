@@ -105,7 +105,7 @@ static UIAlertController *retryAlert;
             lyricsRetry = alert.actions.firstObject;
             return;
         }
-        SGTestAssert([alert.message isEqual:@"Enable Picture in Picture lyrics in Vitrine settings → Lyrics, then restart Spotify."],
+        SGTestAssert([alert.message isEqual:@"Enable Picture in Picture lyrics in Retrine settings → Lyrics, then restart Spotify."],
             @"disabled tap gives exact activation and restart guidance");
         alerts++;
     }

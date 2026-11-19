@@ -1,4 +1,4 @@
-// Remote videos kept as local files in Caches/Vitrine/Motion, named by a hash of their address, and the
+// Remote videos kept as local files in Caches/Retrine/Motion, named by a hash of their address, and the
 // videos the mod makes, named by a hash of their key. A video asked for again while it downloads joins the
 // download in flight. The folder keeps the newest kFiles.
 #import <AVFoundation/AVFoundation.h>
@@ -8,6 +8,7 @@
 #import <stdlib.h>
 #import <string.h>
 #import "Core/SGCore.h"
+#import "Core/SGDataRoot.h"
 #import "AnimatedArtwork.h"
 #import "SGMotionTicket.h"
 
@@ -18,14 +19,13 @@ static _Atomic uint64_t sg_clearGeneration;
 static void trim(void);
 
 static NSURL *folder(void) {
-    NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
-    return [caches URLByAppendingPathComponent:@"Vitrine/Motion" isDirectory:YES];
+    return [SGDataRoot(NSCachesDirectory) URLByAppendingPathComponent:@"Motion" isDirectory:YES];
 }
 
 static dispatch_queue_t storeQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("vitrine.motion.store", DISPATCH_QUEUE_SERIAL); });
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("retrine.motion.store", DISPATCH_QUEUE_SERIAL); });
     return queue;
 }
 
@@ -96,7 +96,7 @@ NSURL *SGMotionMadeFile(NSString *key) {
 void SGMotionMakeFile(NSURL *file, BOOL (^write)(void), void (^done)(BOOL)) {
     uint64_t generation = atomic_load(&sg_clearGeneration);
     dispatch_async(storeQueue(), ^{
-        if (generation != atomic_load(&sg_clearGeneration)) { done(NO); return; }
+        if (!file || generation != atomic_load(&sg_clearGeneration)) { done(NO); return; }
         BOOL ok = [NSFileManager.defaultManager fileExistsAtPath:file.path];
         if (!ok) {
             ok = [NSFileManager.defaultManager createDirectoryAtURL:folder() withIntermediateDirectories:YES attributes:nil error:nil];
@@ -163,7 +163,7 @@ static BOOL transientFailure(NSError *error, NSInteger status) {
     }
     if (self.status != 200) { completion(NSURLSessionResponseAllow); return; }
     // A unique partial outside the cache: trimming cannot remove an active write.
-    NSString *pattern = [NSTemporaryDirectory() stringByAppendingPathComponent:@"vitrine-motion-XXXXXX"];
+    NSString *pattern = [NSTemporaryDirectory() stringByAppendingPathComponent:@"retrine-motion-XXXXXX"];
     char *path = strdup(pattern.fileSystemRepresentation);
     int descriptor = mkstemp(path);
     if (descriptor >= 0) {
@@ -286,7 +286,7 @@ SGMotionTicket *SGMotionRequestFile(NSURL *remote, void (^done)(NSURL *file)) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (sg_downloads[remote] != owner) return;
             owner.local = local;
-            if (!exists) { download(owner); return; }
+            if (local && !exists) { download(owner); return; }
             NSArray *waiting = [owner.waiters copy];
             [owner.waiters removeAllObjects];
             [sg_downloads removeObjectForKey:remote];

@@ -35,9 +35,7 @@
 </p>
 
 > [!NOTE]
-> **Retrine is a fork of [Vitrine](https://github.com/My-Name-Is-Jeff/vitrine).** Only the project is
-> called Retrine. The app, its settings, the build output (`vitrine-<version>.ipa`), the Make targets and
-> the source code still use the name **Vitrine**.
+> **Retrine is a fork of [Vitrine](https://github.com/My-Name-Is-Jeff/vitrine).**
 
 ## About
 
@@ -133,7 +131,7 @@ goes back to Spotify's own look with everything else the mod adds still on top.
 
 ## Build it yourself
 
-You need a decrypted Spotify IPA of a supported version. The result is an unsigned `vitrine-<version>.ipa`
+You need a decrypted Spotify IPA of a supported version. The result is an unsigned `retrine-<version>.ipa`
 that you sign with SideStore, Feather or any certificate signer.
 
 Releases have no `.deb` either: injected by hand, the tweak alone misses the app changes the redesign needs
@@ -145,7 +143,7 @@ Build the IPA instead.
 1. Fork this repository and enable Actions in your fork's **Actions** tab.
 2. Open **Build IPA from your own Spotify IPA** and press **Run workflow**.
 3. Fill in the inputs below and start the run.
-4. When it finishes, download `vitrine.ipa` from the run's **Artifacts**.
+4. When it finishes, download `retrine.ipa` from the run's **Artifacts**.
 
 | Input | Default | Description |
 |---|---|---|
@@ -163,7 +161,7 @@ The downloaded file is checked first, so an HTML login page or a truncated downl
 <br>
 
 Install Theos in `~/theos` and Xcode with an iPhoneOS 26+ SDK (select it with `xcode-select`). An SDK in
-`~/theos/sdks` alone also builds, but without the Live Activity and Open in Vitrine extensions.
+`~/theos/sdks` alone also builds, but without the Live Activity and Open in Retrine extensions.
 
 ```sh
 brew install make ldid dpkg zsign libimobiledevice
@@ -177,7 +175,7 @@ Put the decrypted `.ipa` in `ipa/` (`Spotify-9.2.0.ipa` is picked first if prese
 `IPA=`), then:
 
 ```sh
-make release                 # out/vitrine-<version>.ipa, ready to sign
+make release                 # out/retrine-<version>.ipa, ready to sign
 make release WIREGUARD=0     # without WireGuard (required for 9.1.78 / 9.1.88)
 make release NO_PLUGINS=1    # remove every app extension
 make install                 # build, sign with your certificate and install on the device
@@ -208,7 +206,7 @@ that includes the Watch. `make install` does not do that yet.
   Sideloadly get this right on their own.
 - **Free Apple ID**: a free account can register only a limited number of App IDs, and every app extension
   needs one, so you will usually need **Remove every app extension**. That also drops the Live Activity, the
-  Open in Vitrine share action and Spotify's own widget, Siri and notification extensions.
+  Open in Retrine share action and Spotify's own widget, Siri and notification extensions.
 - A free Apple ID's signature lasts 7 days. Mod Settings shows when it runs out.
 
 ## WireGuard / proxy
@@ -229,9 +227,10 @@ Full coverage and limitations: [docs/wireguard.md](docs/wireguard.md)
 
 ## Pixie native downloads (optional, experimental)
 
-`make release PIXIE=1` adds Pixie's native download manager on top of the Vitrine build, for Spotify 9.2.0 or
-9.1.90 only. 9.2.0 packages are not yet functional-download releases, and default builds never include
-Pixie. Read [docs/pixie.md](docs/pixie.md) for the details and limitations before using it.
+`make release PIXIE=1` adds Pixie's native download manager for Spotify 9.2.0 or 9.1.90 only.
+On 9.2.0, downloads, persistence across a restart and deletion were verified on a real device.
+Long-term offline licence renewal remains unverified. Default builds do not include Pixie.
+See [docs/pixie.md](docs/pixie.md) for supported builds and limitations.
 
 ## Updates
 

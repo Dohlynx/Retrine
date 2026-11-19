@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OUT=$(mktemp -d /tmp/vitrine-ad-settings.XXXXXX)
+OUT=$(mktemp -d /tmp/retrine-ad-settings.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 python3 - "$ROOT/tweak/Sources/Shared/AdBlock/AdBlockSettings.m" "$OUT/page.inc" <<'PY'
 import pathlib, sys

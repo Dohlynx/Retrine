@@ -77,7 +77,7 @@ static bool ready(void) {
 }
 
 #if SAP_JAILBREAK
-// Rebind before Vitrine's constructor, matching the IPA's import chain. Preserve
+// Rebind before Retrine's constructor, matching the IPA's import chain. Preserve
 // any previous import hook as our backend rather than bypassing another tweak.
 extern bool SAPJBRebindImport(const char *,void *,void **);
 bool SAPInstallJailbreakAudioImports(void) {

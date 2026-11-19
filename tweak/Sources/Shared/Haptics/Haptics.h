@@ -76,7 +76,7 @@ void SGInstallVolumeFeedback(UISlider *slider);
 // In the Background reads off below iOS 18, which has no Music Haptics. Main thread.
 BOOL SGMusicHapticsOn(void);
 BOOL SGMusicHapticsInBackground(void);
-// Whether iOS lists this install for Music Haptics: MusicHapticsSupported, which only Vitrine's IPA build writes
+// Whether iOS lists this install for Music Haptics: MusicHapticsSupported, which only Retrine's IPA build writes
 // into Info.plist. Without it In the Background has nothing to hand the song to.
 BOOL SGMusicHapticsListedByInstall(void);
 // The choice of before moved to the switches, once: Generated turns Music Haptics on, Native iOS In the

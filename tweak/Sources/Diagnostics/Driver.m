@@ -878,7 +878,7 @@ static NSDictionary<NSString *, SGCommand> *commands(void) {
                 result[@"tabs"] = where[@"tabs"];
                 return result;
             },
-            // One of Vitrine's settings, for a test that needs a setting changed and Spotify relaunched rather than
+            // One of Retrine's settings, for a test that needs a setting changed and Spotify relaunched rather than
             // a picker driven: --key spotifyglass.x --value 6 (a whole number), or --text for a string, or --remove 1.
             @"pref" : ^NSDictionary *(NSDictionary *p) {
                 NSString *key = p[@"key"];

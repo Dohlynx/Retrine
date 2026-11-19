@@ -155,7 +155,7 @@ static UIView *tipsCard(NSArray<UIView *> *rows) {
 
 #pragma mark - the logo
 
-// Vitrine's icon in live glass: reeds of glass over a warm glow, the shop window of icons/Vitrine.png.
+// Retrine's icon in live glass: reeds of glass over a warm glow, the shop window of icons/Retrine.png.
 // The tour opens on it, each reed flying in and landing beside the last, before the page comes in
 // under it. Glass shows and hides by its effect, never by an alpha (Redesigned/Kit/SGRGlass.h).
 @interface SGTourLogo : UIView
@@ -186,7 +186,7 @@ static const CGFloat kLogoRadius = 22;
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
     self.isAccessibilityElement = YES;
-    self.accessibilityLabel = @"Vitrine";
+    self.accessibilityLabel = @"Retrine";
     self.accessibilityTraits = UIAccessibilityTraitImage;
 
     _pane = [UIView new];
@@ -307,7 +307,7 @@ static const CGFloat kLogoRadius = 22;
 
 #pragma mark - the tour
 
-// One page, the two choices worth making now under Vitrine's logo: the redesign or Spotify's own look, and
+// One page, the two choices worth making now under Retrine's logo: the redesign or Spotify's own look, and
 // Spotify without its ads. Everything else waits in Mod Settings; a card of pointers names what people miss there.
 @interface SGOnboardingController : UIViewController
 @end
@@ -383,7 +383,7 @@ static BOOL adFree(void) {
     return note;
 }
 
-// The redesign is the look Vitrine is built around, so picking it needs no note on iOS 26. Legacy is
+// The redesign is the look Retrine is built around, so picking it needs no note on iOS 26. Legacy is
 // told what it goes without; below 26 the redesign is told it is untested, with the way to report it.
 - (void)updateNote {
     BOOL untested = _redesigned.selected && !SGRedesignAvailable();

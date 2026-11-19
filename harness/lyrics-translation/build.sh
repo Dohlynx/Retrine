@@ -19,5 +19,5 @@ compile -DSG_LYRICS_TEST_STORE \
     "$SRC/Redesigned/Lyrics/AutoTranslation.m" "$SRC/Shared/LyricsTranslation/ConnectionTest.m" "$SRC/Shared/LyricsTranslation/ClaudeTranslate.m" "${AI_SERVICES_SOURCE:-$SRC/Shared/LyricsTranslation/AIServices.m}" \
     "$SRC/Shared/LyricsTranslation/SavedTranslations.m" "$SRC/Shared/LyricsTranslation/TranslatedTitles.m" "$SRC/Shared/LyricsTranslation/CredentialSettings.m" \
     "$SRC/Shared/Lyrics/KaraokeTiming.m" "$SRC/Shared/Lyrics/LyricsLanguage.m" "$SRC/Shared/Lyrics/Romanise.m" "$SRC/Core/SGLocalize.m" "$SRC/Core/SGFileHash.m" "$SRC/Shared/AdBlock/Protobuf.m" "$SRC/Shared/LocalFiles/LocalFiles.m" \
-    -framework NaturalLanguage -framework UIKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework Security -framework Foundation -lz -o "$OUT/check"
+    -framework NaturalLanguage -framework UIKit -framework QuartzCore -framework CoreGraphics -framework ImageIO -framework Security -framework Foundation -lz "$SRC/Core/SGDataRoot.m" -o "$OUT/check"
 "$OUT/check" "$@"

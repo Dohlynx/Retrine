@@ -117,7 +117,7 @@ PROFILES = (V9190, V9200)
 
 def artifact_name(mod_version, profile=None):
     suffix = "" if profile is None else "-pixie" + ("" if profile.primary else f"-spotify-{profile.version}")
-    return f"vitrine-{mod_version}{suffix}.ipa"
+    return f"retrine-{mod_version}{suffix}.ipa"
 
 
 def select_profile(info, main_uuid, shared_uuid, *, require_enabled=True, jailbreak=False):

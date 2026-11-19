@@ -1,4 +1,4 @@
-// Loaded as Vitrine's dependency, before Vitrine installs its own audio hooks.
+// Loaded as Retrine's dependency, before Retrine installs its own audio hooks.
 // DEB only: the IPA continues to use its existing on-disk patches/imports.
 #import <Foundation/Foundation.h>
 #import <mach-o/dyld.h>

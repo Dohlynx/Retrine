@@ -1,7 +1,7 @@
 // Imported lyrics files: the user's own lyrics, for the local files no source has lyrics for (rare or
 // self-made recordings), under either look. A file is .lrc, .ttml or plain text, and what it holds is
 // decided by its content rather than its extension: a TTML document with timed lines, else LRC stamped
-// lines, else one untimed line after another. Kept in Documents/Vitrine/Lyrics as UTF-8, by the name it
+// lines, else one untimed line after another. Kept in Documents/Retrine/Lyrics as UTF-8, by the name it
 // came with under the extension of what it holds. A file is linked to a local file's URI ("Import for
 // current track"), and that file is the track's whatever its tags say; any other track is matched against
 // every file by title and artist, folded (case, diacritics, width and everything but letters and digits

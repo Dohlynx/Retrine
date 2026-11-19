@@ -18,8 +18,8 @@ used by `make quick`. A `WIREGUARD=0` build **drops all enforcement despite any 
 
 When compiled in, it remains off until the user imports a profile or saves a
 proxy, explicitly enables it, then restarts. Import never enables it. It applies
-to both Vitrine looks. Proxy routing needs iOS 17+ and the Network.framework
-proxy APIs; Vitrine's ordinary deployment floor is unchanged.
+to both Retrine looks. Proxy routing needs iOS 17+ and the Network.framework
+proxy APIs; Retrine's ordinary deployment floor is unchanged.
 
 ## Ownership and readiness
 
@@ -66,7 +66,7 @@ All hooks below are omitted when runtime opt-in is off.
 | Core: `+[NSData dataWithContentsOfURL:]`, `dataWithContentsOfURL:options:error:`, applicable real class-cluster `initWithContentsOfURL:` / `initWithContentsOfURL:options:error:` implementations | HTTP(S) uses a guarded session without lyrics provenance. Non-web URLs preserve original behavior. Preserve mutable results, init ownership and errors. Main-thread and armed-unavailable loads fail immediately. Background synchronous loads have one eight-second deadline, independent completion queue, synchronized terminal state and cancellation on timeout. Do not call synchronous loading APIs from a render thread. |
 | Core: `-[NSMutableURLRequest setAssumesHTTP3Capable:]`, `-[NSURLRequest assumesHTTP3Capable]` | Force false only with matching full ABI, including BOOL argument/return. TCP proxying does not carry QUIC. |
 | Core: local-address URL protocol | Reject HTTP(S) literal IPs, localhost/`.localhost`/`.local` names that CFNetwork might exempt. This lexical check is **not an SSRF boundary**. |
-| Core: lyrics direct URL protocol | Intentional, user-chosen uncovered path for marked Vitrine lyrics requests only: default is no exception; “Direct for blocked sources only” allows HTTPS `genius.com` (search and embeds); “All lyrics sources direct” allows only the exact provider hosts in `Shared/LyricsSources/LyricsHosts.m`. Unmarked requests remain guarded. No subdomain inheritance, trailing-dot aliases, HTTP, userinfo, non-443 ports, Spotify or arbitrary response-provided URLs. Exempt requests use a private direct session and are not denied by tunnel readiness. |
+| Core: lyrics direct URL protocol | Intentional, user-chosen uncovered path for marked Retrine lyrics requests only: default is no exception; “Direct for blocked sources only” allows HTTPS `genius.com` (search and embeds); “All lyrics sources direct” allows only the exact provider hosts in `Shared/LyricsSources/LyricsHosts.m`. Unmarked requests remain guarded. No subdomain inheritance, trailing-dot aliases, HTTP, userinfo, non-443 ports, Spotify or arbitrary response-provided URLs. Exempt requests use a private direct session and are not denied by tunnel readiness. |
 | Native: imported `nw_connection_create` in Spotify and SpotifyShared | Copy TCP parameters, attach non-failover proxy context, preserve original endpoint and TLS identity. Unready, non-TCP or missing APIs use a denied loopback endpoint, not the requested remote address. Local discovery is exempt. |
 | Native: imported `getaddrinfo` | Remote names use tunnel DNS only when usable; otherwise fail. Numeric/local names retain the original resolver. External-proxy mode has no engine DNS and denies remote-name lookup. |
 | Native: imported `connect` | **Deny all remote BSD TCP/UDP**, including while the tunnel is healthy. No caller-fd SOCKS handshake, flag mutation or relay remains. Invalid sockaddr lengths return `EINVAL`. Local destinations retain original behavior. |
@@ -107,14 +107,14 @@ design addresses caller-fd ownership and asynchronous semantics.
 
 ## Exact admission
 
-Ordinary Vitrine supports 9.1.78, 9.1.88, 9.1.90 and 9.2.0. Only
+Ordinary Retrine supports 9.1.78, 9.1.88, 9.1.90 and 9.2.0. Only
 `tweak/Sources/Shared/WireGuard/SGWGTargets.inc` admits WireGuard targets:
 
 | Version / build | Evidence |
 | --- | --- |
 | 9.1.78 / 9.1.88 | No WireGuard transport acceptance; rejected by this feature. |
 | 9.1.90 / 919002269 | Local static IPA scan: main `fbce22c17e1b3e0d9be866ff9291943e`, shared `2e074234cfc63f0e9255c9881824167a`. |
-| 9.1.94 / 919401928 | Fork static evidence only: main `1dfddfa139c03735b9a5fdfa475f4700`, shared `2c12ca8c48ad33f8af6569c084a6324f`. Not Vitrine playback certification. |
+| 9.1.94 / 919401928 | Fork static evidence only: main `1dfddfa139c03735b9a5fdfa475f4700`, shared `2c12ca8c48ad33f8af6569c084a6324f`. Not Retrine playback certification. |
 | 9.2.0 / 920002054 | Local static IPA/ABI scan: main `b49e75781d8635d38bb57daf68fed8a8`, shared `30bac55f8361373aad607f0535395641`. |
 
 The 9.2.0 qualification repeats the 9.1.90 source inventory and binary scan.
@@ -134,7 +134,7 @@ WireGuard. Core hooks target Apple Foundation/Network APIs and retain their
 runtime ABI/capability checks; static Spotify qualification cannot certify those
 OS implementations or live import-slot readiness.
 
-On an iOS 26.5 clone of the logged-in Vitrine simulator, the no-Pixie 9.2.0
+On an iOS 26.5 clone of the logged-in simulator, the no-Pixie 9.2.0
 WireGuard build reached a real Proton US exit with a recent handshake,
 `guards: installed; ready: yes`, six delegate hooks and five of five native
 slots guarded (none deferred). Playback advanced on “Coullion (Fool)” and,
@@ -227,7 +227,7 @@ and native rebinding are test doubles in that harness: they are not evidence
 of real Spotify playback. No synthesized WireGuard test peer is retained.
 External-proxy fixtures remain separate from provider testing.
 
-Device/simulator acceptance must use a clone, never the original Vitrine
+Device/simulator acceptance must use a clone, never the original logged-in
 simulator. Import, enable, restart, country check, uncached Free-account
 playback/skip and broken-profile recovery all require actual interaction.
 Go tests and successful compile-only fixtures do not certify those outcomes.

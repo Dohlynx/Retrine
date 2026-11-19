@@ -2,7 +2,7 @@
 # Compile the production capture hooks without the unrelated UIKit page rendering.
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OUT=$(mktemp -d /tmp/vitrine-follow.XXXXXX)
+OUT=$(mktemp -d /tmp/retrine-follow.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 python3 - "$ROOT" "$OUT" "${FOLLOW_SOURCE:-$ROOT/tweak/Sources/Redesigned/Artist/ArtistFollow.x}" <<'PY'
 import pathlib, sys

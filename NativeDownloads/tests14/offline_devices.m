@@ -12,14 +12,14 @@ static NSInteger maximum=5,freeSlots,failHTTP;
 static BOOL nativeMismatch,ignoreDisable,malformedDevices,allowEnable=YES,enabledPlayback,localUnavailable,changeIdentityAfterEnable;
 static NSUInteger commands,postCount;
 static NSInteger failAfterPost=-1;
-static id vitrineHeaderSnapshot;
-static NSUInteger vitrineProviderCalls;
+static id retrineHeaderSnapshot;
+static NSUInteger retrineProviderCalls;
 __attribute__((visibility("default"))) void SGSpclientHeaders(void (^completion)(NSDictionary *)) {
-    vitrineProviderCalls++;
-#ifdef SAP_VITRINE_AUTH_ASYNC
-    dispatch_async(dispatch_get_main_queue(),^{completion(vitrineHeaderSnapshot);});
+    retrineProviderCalls++;
+#ifdef SAP_RETRINE_AUTH_ASYNC
+    dispatch_async(dispatch_get_main_queue(),^{completion(retrineHeaderSnapshot);});
 #else
-    completion(vitrineHeaderSnapshot);
+    completion(retrineHeaderSnapshot);
 #endif
 }
 
@@ -128,22 +128,22 @@ static void enable(BOOL success) {
 }
 int main(void) {@autoreleasepool {
     reset(1);
-    vitrineHeaderSnapshot=@{@"Authorization":@"Bearer TEST_ONLY_NOT_REAL",@"X-Private-Noise":@"do not forward"};
-    vitrineProviderCalls=0;
+    retrineHeaderSnapshot=@{@"Authorization":@"Bearer TEST_ONLY_NOT_REAL",@"X-Private-Noise":@"do not forward"};
+    retrineProviderCalls=0;
     SAPOfflineDevicesTestEnvironment(RegistryProtocol.class,nil);
-    NSDictionary *vitrinePlan=preview(YES);
-    assert(vitrineProviderCalls==1 && requests.count==2);
-    release(vitrinePlan,@[@"old-cache-0"],YES);
-    assert(vitrineProviderCalls==2 && postCount==1 && freeSlots==5);
-    NSData *vitrineAudit=[NSJSONSerialization dataWithJSONObject:events options:0 error:nil];
-    assert(![[[NSString alloc]initWithData:vitrineAudit encoding:NSUTF8StringEncoding]containsString:@"TEST_ONLY_NOT_REAL"]);
-    reset(1);vitrineHeaderSnapshot=@{};
-    SAPOfflineDevicesTestEnvironment(RegistryProtocol.class,nil);
-    preview(NO);assert(requests.count==0 && postCount==0);
-    reset(1);vitrineHeaderSnapshot=@"invalid callback value";
+    NSDictionary *retrinePlan=preview(YES);
+    assert(retrineProviderCalls==1 && requests.count==2);
+    release(retrinePlan,@[@"old-cache-0"],YES);
+    assert(retrineProviderCalls==2 && postCount==1 && freeSlots==5);
+    NSData *retrineAudit=[NSJSONSerialization dataWithJSONObject:events options:0 error:nil];
+    assert(![[[NSString alloc]initWithData:retrineAudit encoding:NSUTF8StringEncoding]containsString:@"TEST_ONLY_NOT_REAL"]);
+    reset(1);retrineHeaderSnapshot=@{};
     SAPOfflineDevicesTestEnvironment(RegistryProtocol.class,nil);
     preview(NO);assert(requests.count==0 && postCount==0);
-    puts("PASS: real Vitrine exported header provider supports preview and verified disable; empty/malformed headers send no requests or mutations");
+    reset(1);retrineHeaderSnapshot=@"invalid callback value";
+    SAPOfflineDevicesTestEnvironment(RegistryProtocol.class,nil);
+    preview(NO);assert(requests.count==0 && postCount==0);
+    puts("PASS: real Retrine exported header provider supports preview and verified disable; empty/malformed headers send no requests or mutations");
     reset(5);NSDictionary *plan=preview(YES);assert([plan[@"active_devices"]count]==5);
     assert([plan[@"active_devices"][0][@"last_seen_at"]longLongValue]==1792520000);
     assert(requests.count==2);

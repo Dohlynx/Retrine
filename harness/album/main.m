@@ -50,7 +50,7 @@ static void pinnedOn(UIView *page,SGRMirrorButton **download,SGRMirrorButton **m
     *download=nil;*more=nil;
     for(UIView *v in page.subviews){
         if(![v isKindOfClass:SGRMirrorButton.class])continue;
-        if([v.accessibilityIdentifier isEqualToString:@"Vitrine.Album.Download"])*download=(id)v;else *more=(id)v;
+        if([v.accessibilityIdentifier isEqualToString:@"Retrine.Album.Download"])*download=(id)v;else *more=(id)v;
     }
 }
 
@@ -173,7 +173,7 @@ static void verifyAlbumActions(UIView *root) {
     // The pinned download: on the page, just under the pinned ⋯ (the page's top subview), the two one capsule.
     SGRMirrorButton *download=nil;[pending setArray:@[root]];
     while(pending.count){UIView *v=pending.lastObject;[pending removeLastObject];
-        if([v.accessibilityIdentifier isEqualToString:@"Vitrine.Album.Download"]){download=(id)v;break;}[pending addObjectsFromArray:v.subviews];}
+        if([v.accessibilityIdentifier isEqualToString:@"Retrine.Album.Download"]){download=(id)v;break;}[pending addObjectsFromArray:v.subviews];}
     HARNESS_CHECK([download isKindOfClass:SGRMirrorButton.class] && !download.hidden && download.source);
     UIView *page=download.superview;
     SGRMirrorButton *more=page.subviews.lastObject;

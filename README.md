@@ -35,9 +35,7 @@
 </p>
 
 > [!NOTE]
-> **Retrine은 [Vitrine](https://github.com/My-Name-Is-Jeff/vitrine)의 포크입니다.** Retrine은 프로젝트
-> 이름일 뿐이고, 앱과 설정, 빌드 결과물(`vitrine-<version>.ipa`), Make 타깃, 소스 코드에서는 여전히
-> **Vitrine**이라는 이름을 씁니다.
+> **Retrine은 [Vitrine](https://github.com/My-Name-Is-Jeff/vitrine)의 포크입니다.**
 
 ## 소개
 
@@ -133,7 +131,7 @@ Spotify 화면을 직접 그리지 않는 기능(광고, 개인정보 보호, �
 
 ## 직접 빌드하기
 
-지원 버전의 복호화된 Spotify IPA가 필요합니다. 빌드하면 서명되지 않은 `vitrine-<version>.ipa`가 나오고,
+지원 버전의 복호화된 Spotify IPA가 필요합니다. 빌드하면 서명되지 않은 `retrine-<version>.ipa`가 나오고,
 이를 SideStore, Feather 등 원하는 서명 도구로 서명하면 됩니다.
 
 릴리스에는 `.deb`도 없습니다. 트윅만 손으로 주입하면 재설계 화면에 필요한 앱 변경(글래스 탭 바),
@@ -144,7 +142,7 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 1. 이 저장소를 포크하고, 포크한 저장소의 **Actions** 탭에서 Actions를 켭니다.
 2. **Build IPA from your own Spotify IPA** 워크플로를 열고 **Run workflow**를 누릅니다.
 3. 아래 입력값을 채우고 실행합니다.
-4. 실행이 끝나면 해당 실행의 **Artifacts**에서 `vitrine.ipa`를 내려받습니다.
+4. 실행이 끝나면 해당 실행의 **Artifacts**에서 `retrine.ipa`를 내려받습니다.
 
 | 입력값 | 기본값 | 설명 |
 |---|---|---|
@@ -162,7 +160,7 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 <br>
 
 Theos를 `~/theos`에 설치하고, iPhoneOS 26 이상 SDK가 있는 Xcode를 `xcode-select`로 선택합니다.
-`~/theos/sdks`의 SDK만으로도 빌드는 되지만 Live Activity와 Open in Vitrine 확장은 빠집니다.
+`~/theos/sdks`의 SDK만으로도 빌드는 되지만 Live Activity와 Open in Retrine 확장은 빠집니다.
 
 ```sh
 brew install make ldid dpkg zsign libimobiledevice
@@ -176,7 +174,7 @@ uv tool install "cyan @ git+https://github.com/asdfzxcvbn/pyzule-rw"
 지정) 다음을 실행합니다.
 
 ```sh
-make release                 # out/vitrine-<version>.ipa, 서명 전 IPA
+make release                 # out/retrine-<version>.ipa, 서명 전 IPA
 make release WIREGUARD=0     # WireGuard 제외 (9.1.78 / 9.1.88에서는 필수)
 make release NO_PLUGINS=1    # 앱 확장 모두 제거
 make install                 # 빌드 후 본인 인증서로 서명해 기기에 설치
@@ -205,7 +203,7 @@ make install                 # 빌드 후 본인 인증서로 서명해 기기�
 - Feather에서는 App ID를 **Identifier**에 붙여 넣고 **PPQ protection**은 꺼 두세요. AltStore, SideStore,
   Sideloadly는 알아서 맞춰 줍니다.
 - **무료 Apple ID**는 등록할 수 있는 App ID 수가 제한되어 있고 앱 확장마다 App ID가 하나씩 필요하므로,
-  대개 **Remove every app extension**을 켜야 합니다. 이 경우 Live Activity, Open in Vitrine 공유 동작,
+  대개 **Remove every app extension**을 켜야 합니다. 이 경우 Live Activity, Open in Retrine 공유 동작,
   Spotify 자체의 위젯·Siri·알림 확장도 함께 빠집니다.
 - 무료 Apple ID 서명은 7일 동안 유효합니다. 만료 날짜는 모드 설정에서 확인할 수 있습니다.
 
@@ -227,10 +225,10 @@ make install                 # 빌드 후 본인 인증서로 서명해 기기�
 
 ## Pixie 네이티브 다운로드 (선택, 실험적)
 
-`make release PIXIE=1`로 빌드하면 Vitrine 빌드 위에 Pixie의 네이티브 다운로드 관리자가 추가됩니다.
-Spotify 9.2.0과 9.1.90만 지원하며, 9.2.0 패키지에서는 아직 다운로드가 실제로 동작하지 않습니다. 기본
-빌드에는 Pixie가 포함되지 않습니다. 사용하기 전에 [docs/pixie.md](docs/pixie.md)(영문)에서 세부 사항과
-한계를 꼭 확인하세요.
+`make release PIXIE=1`로 빌드하면 Pixie의 네이티브 다운로드 관리자가 추가됩니다. Spotify 9.2.0과
+9.1.90만 지원합니다. 9.2.0에서는 다운로드, 앱 재시작 후 다운로드 유지, 삭제를 실기기에서 확인했습니다.
+장기 오프라인 라이선스 갱신은 아직 확인하지 않았습니다. 기본 빌드에는 Pixie가 포함되지 않습니다.
+지원 빌드와 제한 사항은 [docs/pixie.md](docs/pixie.md)(영문)를 참고하세요.
 
 ## 업데이트
 

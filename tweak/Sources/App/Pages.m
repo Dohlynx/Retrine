@@ -33,7 +33,7 @@
 #import "Redesigned/Kit/SGRAccent.h"
 
 NSString *SGRedesignedUIInfoText(void) {
-    return SGL(@"settings.redesign.info", @"Redesigned uses Vitrine's Apple Music-inspired interface. Native keeps Spotify's interface. Appearance settings are separate for each look; shared features work in both. Switching requires a restart.");
+    return SGL(@"settings.redesign.info", @"Redesigned uses Retrine's Apple Music-inspired interface. Native keeps Spotify's interface. Appearance settings are separate for each look; shared features work in both. Switching requires a restart.");
 }
 
 // Below iOS 26 the redesign also needs SGKeyRedesignUntested (Core/SGUIMode.h): whoever calls this has
@@ -135,7 +135,7 @@ UIViewController *SGNavbarPage(void) {
     return SGRedesignedUIStored() ? SGRNavbarSettingsPage() : SGNavbarSettingsPage();
 }
 
-// One shelf for Vitrine's local and open libraries. AutoEq fetches its public index when Headphones opens,
+// One shelf for Retrine's local and open libraries. AutoEq fetches its public index when Headphones opens,
 // and a font still comes from Files. Nothing here depends on a private account or paid catalog.
 UIViewController *SGWorkshopPage(void) {
     NSMutableArray<SGModSection *> *sections = [NSMutableArray array];
@@ -162,8 +162,8 @@ UIViewController *SGWorkshopPage(void) {
     if (fonts.count) [sections addObject:SGSection(SGL(@"settings.workshop.type.header", @"Type"), fonts)];
 
     NSString *intro = SGRedesignedUIStored()
-        ? SGL(@"settings.workshop.intro.redesigned.v2", @"Built-in and open libraries Vitrine can use without an account. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.")
-        : SGL(@"settings.workshop.intro.native.v2", @"Built-in and open libraries Vitrine can use without an account. Visualizers appear here when Redesigned UI is selected. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.");
+        ? SGL(@"settings.workshop.intro.redesigned.v2", @"Built-in and open libraries Retrine can use without an account. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.")
+        : SGL(@"settings.workshop.intro.native.v2", @"Built-in and open libraries Retrine can use without an account. Visualizers appear here when Redesigned UI is selected. Headphone corrections come from AutoEq, free fonts from Google Fonts. Presets can be shared as files.");
     SGModPage *page = [[SGModPage alloc] initWithTitle:SGL(@"settings.workshop.title", @"Libraries & presets") intro:intro sections:sections footer:nil];
     page.tiles = YES;
     return page;

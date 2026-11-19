@@ -16,5 +16,5 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -framework Network -Wl,-undefined,dynamic_lookup \
     clear-check.m "${STORE:-$ART/SGMotionStore.m}" "${CATALOG:-$ART/SGMotionCatalog.m}" "${SETTINGS:-$ART/AnimatedArtworkSettings.m}" \
     $ART/SGMotionTicket.m $ART/SGMotionClip.m $SRC/Shared/AdBlock/Protobuf.m $SRC/Core/SGLog.m \
-    -o "$OUT/artwork-clear-check"
+    "$SRC/Core/SGDataRoot.m" -o "$OUT/artwork-clear-check"
 "$OUT/artwork-clear-check"

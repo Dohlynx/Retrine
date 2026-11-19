@@ -3,7 +3,7 @@
 // controls and no didSelect, as on the phone), and the system menu checked as it comes up.
 //
 //     THEOS=$HOME/theos ./build.sh && xcrun simctl install <udid> build/SystemMenuHarness.app
-//     xcrun simctl launch --console-pty <udid> com.vitrine.systemmenuharness <scenario>
+//     xcrun simctl launch --console-pty <udid> com.retrine.systemmenuharness <scenario>
 //
 // The ⋯ is the mod's own pull-down button over Spotify's ⋯, and a tap on it is a finger's touch (../tabbar/touch.m),
 // down and up, at its middle: UIKit opens the button's menu on the touch down. (Tapped with -performPrimaryAction

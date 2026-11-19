@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from pixie_target import V9190, V9200
 from generate_target import generate_headers, validate_headers
-from build_vitrine_9190 import prepare_foundation, verify_caves, reject_native_overlay
+from build_retrine_9190 import prepare_foundation, verify_caves, reject_native_overlay
 from patch_native_restrictions import layout
 import patch_export
 import patch_imports

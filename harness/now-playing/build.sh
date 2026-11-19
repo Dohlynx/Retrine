@@ -23,7 +23,7 @@ xcrun clang -target arm64-apple-ios26.0-macabi -isysroot "$SDK" -iframework "$SD
     "$SRC/Shared/Player/SGLastTrack.m" "$SRC/Core/SGFileHash.m" \
     "$SRC/Shared/LyricsBackground/LyricsBackground.m" \
     "$SRC/Shared/Lyrics/KaraokeTiming.m" "$SRC/Shared/Lyrics/Romanise.m" "$SRC/Shared/AdBlock/Protobuf.m" \
-    -framework UIKit -framework MediaPlayer -framework CoreGraphics -framework Accelerate -framework Network -o "$OUT/now-playing"
+    -framework UIKit -framework MediaPlayer -framework CoreGraphics -framework Accelerate -framework Network "$SRC/Core/SGDataRoot.m" -o "$OUT/now-playing"
 
 "$OUT/now-playing"
 LSL=1 "$OUT/now-playing"

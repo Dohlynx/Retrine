@@ -22,7 +22,7 @@ xcrun -sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator -fobjc-ar
     "$FX"/SGDSPConvolver.m "$FX"/SGDSPTone.m "$FX"/SGDSPDynamics.m "$FX"/SGDSPCrossfeed.m "$FX"/SGDSPReverb.m "$FX"/SGDSPLiveprog.m \
     "$SRC/Core/SGRebind.m" "$SRC/Core/SGLog.m" "$SRC/Core/SGPrefs.m" "$SRC/Core/SGUIMode.m" "$SRC/Core/SGFlagForce.m" "$SRC/Core/SGLocalize.m" "$VENDOR/build/sim/libsgaudio.a" \
     -framework UIKit -framework AudioToolbox -framework AVFoundation -framework Accelerate -framework Foundation \
-    -o "$OUT/AudioEffectsHarness.app/AudioEffectsHarness"
+    "$SRC/Core/SGDataRoot.m" -o "$OUT/AudioEffectsHarness.app/AudioEffectsHarness"
 cat > "$OUT/AudioEffectsHarness.app/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

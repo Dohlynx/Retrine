@@ -107,7 +107,7 @@ compile -target arm64-apple-ios17.0-simulator -fobjc-arc -g -O0 \
     "$SRC"/Core/TranslationStore/SGTranslationFiles.m "$SRC"/Core/TranslationStore/SGTranslationTransfer.m \
     "$SRC"/Redesigned/Lyrics/AutoTranslatorName.m "$SRC"/Shared/LyricsTranslation/CredentialSettings.m "$SRC"/Shared/LyricsSources/SGTTML.m \
     -framework UIKit -framework IOKit -framework QuartzCore -framework Metal -framework CoreGraphics -framework CoreImage -framework Foundation -framework NaturalLanguage -framework Symbols -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework Accelerate -framework PhotosUI -framework Security -framework MediaPlayer -framework Network -framework CoreText \
-    -lz -o "$OUT/PlayerHarness.app/PlayerHarness"
+    -lz "$SRC/Core/SGDataRoot.m" -o "$OUT/PlayerHarness.app/PlayerHarness"
 
 cat > "$OUT/PlayerHarness.app/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

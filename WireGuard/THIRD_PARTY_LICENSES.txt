@@ -1,4 +1,4 @@
-Third-party licenses for Vitrine's app-local WireGuard engine (from YTMusicUltimate)
+Third-party licenses for Retrine's app-local WireGuard engine (from YTMusicUltimate)
 (statically linked into the tweak when built with WIREGUARD=1).
 Generated from the Go module cache for the exact versions pinned in go.mod/go.sum.
 

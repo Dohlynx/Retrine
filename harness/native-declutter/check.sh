@@ -3,7 +3,7 @@
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 SRC=${SRC:-$(cd "$HERE/../../tweak/Sources" && pwd)}
-OUT=$(mktemp -d "${TMPDIR:-/tmp}/vitrine-native-declutter.XXXXXX")
+OUT=$(mktemp -d "${TMPDIR:-/tmp}/retrine-native-declutter.XXXXXX")
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 xcrun clang -fobjc-arc -O0 -g -target arm64-apple-macos13.0 \
     -I "$HERE/shim" -I "$SRC" \

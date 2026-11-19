@@ -1,7 +1,7 @@
-"""Build complete Pixie + Vitrine DEBs for the guarded Spotify 9.1.90 image.
+"""Build complete Pixie + Retrine DEBs for the guarded Spotify 9.1.90 image.
 
-The bootstrap is a dependency of Vitrine so its native patches/import bindings
-run before Vitrine's audio constructors, just as in the IPA. No postinst writes
+The bootstrap is a dependency of Retrine so its native patches/import bindings
+run before Retrine's audio constructors, just as in the IPA. No postinst writes
 to Spotify, account material, or bundled copy of the hook framework.
 """
 import argparse
@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 from zipfile import ZipFile
 
-from build_vitrine_9190 import input_profile
+from build_retrine_9190 import input_profile
 from companion_build import sources, include_directories, FRAMEWORKS
 from build_native_share import build_native_share
 from pixie_target import V9190
@@ -74,8 +74,8 @@ def add_dependency(path, name):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('ipa', type=Path, help='Original decrypted Vitrine Spotify 9.1.90 IPA')
-    parser.add_argument('--vitrine-dylib', required=True, type=Path)
+    parser.add_argument('ipa', type=Path, help='Original decrypted Spotify 9.1.90 IPA')
+    parser.add_argument('--retrine-dylib', required=True, type=Path)
     parser.add_argument('--theos', type=Path, default=PROJECT / '.build-tools/theos')
     parser.add_argument('--output', type=Path, default=ROOT / 'outputs/pixie-9.1.90-deb')
     args = parser.parse_args()
@@ -150,24 +150,24 @@ def _build_packages(args, original, profile, build):
         substrate = '/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate'
         if substrate in companion_dependencies:
             run('install_name_tool', '-change', substrate, '@rpath/CydiaSubstrate.framework/CydiaSubstrate', companion)
-        vitrine = libs / 'spotifyglass.dylib'
-        shutil.copy2(args.vitrine_dylib, vitrine)
-        dependencies = subprocess.check_output(['otool', '-L', str(vitrine)], text=True)
+        retrine = libs / 'spotifyglass.dylib'
+        shutil.copy2(args.retrine_dylib, retrine)
+        dependencies = subprocess.check_output(['otool', '-L', str(retrine)], text=True)
         for line in dependencies.splitlines()[1:]:
             dependency = line.strip().split(' (')[0]
             if dependency.endswith('/CydiaSubstrate.framework/CydiaSubstrate'):
-                run('install_name_tool', '-change', dependency, '@rpath/CydiaSubstrate.framework/CydiaSubstrate', vitrine)
-        commands = subprocess.check_output(['otool', '-l', str(vitrine)], text=True)
+                run('install_name_tool', '-change', dependency, '@rpath/CydiaSubstrate.framework/CydiaSubstrate', retrine)
+        commands = subprocess.check_output(['otool', '-l', str(retrine)], text=True)
         if 'path '+framework_path+' (offset' not in commands:
-            run('install_name_tool', '-add_rpath', framework_path, vitrine)
-        run('install_name_tool', '-id', '@rpath/spotifyglass.dylib', vitrine)
-        add_dependency(vitrine, '@loader_path/SpotifyAudioProbe.dylib')
-        for lib in [companion, vitrine]:
+            run('install_name_tool', '-add_rpath', framework_path, retrine)
+        run('install_name_tool', '-id', '@rpath/spotifyglass.dylib', retrine)
+        add_dependency(retrine, '@loader_path/SpotifyAudioProbe.dylib')
+        for lib in [companion, retrine]:
             lib.chmod(0o755)
             run('codesign', '--force', '--sign', '-', '--timestamp=none', lib)
             run('codesign', '--verify', '--strict', lib)
             run('xcrun', 'dyld_info', '-validate_only', lib)
-        # One injected image. Its required dependency loads Pixie before Vitrine's constructors.
+        # One injected image. Its required dependency loads Pixie before Retrine's constructors.
         (libs/'spotifyglass.plist').write_text('{ Filter = { Executables = ( "Spotify" ); }; }\n')
         control = stage/'DEBIAN'
         control.mkdir()
@@ -175,13 +175,14 @@ def _build_packages(args, original, profile, build):
 Name: Spotify Pixie
 Version: 9.1.90-1
 Architecture: {architecture}
-Description: Vitrine UI and Pixie downloads for Spotify 9.1.90
+Description: Retrine UI and Pixie downloads for Spotify 9.1.90
 Maintainer: Pixie
-Author: Vitrine and Pixie contributors
+Author: Retrine and Pixie contributors
 Section: Tweaks
 Depends: firmware (>= 16.1), mobilesubstrate
-Conflicts: com.vitrine.tweak
-Replaces: com.vitrine.tweak
+Conflicts: com.retrine.tweak, com.vitrine.tweak
+Replaces: com.retrine.tweak, com.vitrine.tweak
+Provides: com.retrine.tweak, com.vitrine.tweak
 ''')
         documentation = stage/(prefix.lstrip('/')+'/usr/share/doc/com.pixie.spotify').lstrip('/')
         documentation.mkdir(parents=True)
@@ -189,9 +190,9 @@ Replaces: com.vitrine.tweak
             (documentation/name).write_bytes(content)
         (documentation/'README').write_text('Spotify Pixie 9.1.90\nInstall exactly one DEB matching your jailbreak layout.\n'
             'Requires Spotify 9.1.90 (UUID fbce22c1-7e1b-3e0d-9be8-66ff9291943e).\n'
-            'Use the original Spotify app, not an IPA with Vitrine/Pixie already injected.\n'
+            'Use the original Spotify app, not an IPA with Retrine/Pixie already injected.\n'
             'Restart Spotify after installation. This is a jailbreak tweak, not a LiveContainer import.\n'
-            'Includes Vitrine, Pixie Download Manager (English), native offline patches, and the local artwork crash fix.\n'
+            'Includes Retrine, Pixie Download Manager (English), native offline patches, and the local artwork crash fix.\n'
             'WAV capture is compiled out. Spotify files and account data are not modified on disk.\n'
             'Unsupported executable fingerprints are refused before Pixie installs hooks.\n'
             'The custom Live Activity widget/App Intents extension requires IPA integration; it is not installed by this tweak DEB.\n')
@@ -210,9 +211,9 @@ Replaces: com.vitrine.tweak
         'rootless: Spotify-9.1.90-Pixie-rootless.deb (iphoneos-arm64, /var/jb)\n'
         'rootful: Spotify-9.1.90-Pixie-rootful.deb (iphoneos-arm)\n'
         'Install ONE matching your jailbreak, then close and reopen Spotify.\n'
-        'Use the original Spotify app, not an IPA with Vitrine/Pixie already injected.\n'
+        'Use the original Spotify app, not an IPA with Retrine/Pixie already injected.\n'
         'These are not IPA/LiveContainer installation files.\n'
-        'Includes Vitrine + Pixie, English-only menu, downloads and local-cover fix.\n'
+        'Includes Retrine + Pixie, English-only menu, downloads and local-cover fix.\n'
         'Targets the exact Spotify 9.1.90 executable. Newer versions need adaptation.\n'
         'The custom Live Activity widget/App Intents extension requires IPA integration and is not included.\n'
         'Package/signature/guard checks were run locally; execution on a jailbroken iPhone has not been tested.\n')

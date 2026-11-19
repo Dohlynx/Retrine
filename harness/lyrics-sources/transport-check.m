@@ -353,7 +353,7 @@ static void checkSameTrackCancellation(void) {
 }
 int main(void) {
     @autoreleasepool {
-        NSString *suite = [@"vitrine.lyrics.probe." stringByAppendingString:NSUUID.UUID.UUIDString];
+        NSString *suite = [@"retrine.lyrics.probe." stringByAppendingString:NSUUID.UUID.UUIDString];
         probeSuite = suite;
         probeDefaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
         atexit(clearProbeDefaults);

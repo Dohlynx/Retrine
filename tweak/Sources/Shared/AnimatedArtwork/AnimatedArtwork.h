@@ -120,7 +120,7 @@ void SGMotionMakeFile(NSURL *file, BOOL (^write)(void), void (^done)(BOOL));
 void SGMotionStoreBytes(void (^done)(uint64_t bytes));
 void SGMotionStoreClear(void (^done)(BOOL complete));
 
-// Everything downloaded for covers and artist photos that Vitrine can fetch again (SGMotionCatalog.m): the store's
+// Everything downloaded for covers and artist photos that Retrine can fetch again (SGMotionCatalog.m): the store's
 // clips and the catalog's answers, in memory and on disk. `done` runs on main. Clearing is main queue; `complete` is NO
 // when something could not be removed. Lookups and downloads started before a clear leave nothing behind after it.
 void SGMotionCacheBytes(void (^done)(uint64_t bytes));

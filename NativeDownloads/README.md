@@ -18,8 +18,8 @@ Changing the profile's enabled flag is not runtime-layout verification.
 Pixie is opt-in: default builds never include it, on any Spotify version.
 Use `PIXIE=1` with Make, or `--pixie` (`--require-pixie` alias) with the pipeline,
 to require an enabled exact profile. The primary 9.2.0 artifact is
-`out/vitrine-<version>-pixie.ipa`; the compatibility artifact is
-`out/vitrine-<version>-pixie-spotify-9.1.90.ipa`. Make's Pixie default input follows
+`out/retrine-<version>-pixie.ipa`; the compatibility artifact is
+`out/retrine-<version>-pixie-spotify-9.1.90.ipa`. Make's Pixie default input follows
 the JSON primary target unless `IPA` was explicitly supplied.
 An unsupported version, build or UUID is fatal when Pixie is requested.
 `PIXIE=0` / `--no-pixie` explicitly excludes it. WireGuard admission is independent
@@ -56,6 +56,11 @@ that the DEB bootstrap reports readiness only after both patches and imports suc
 They are also included in the
 native suite where applicable. If a supplied IPA exists, failures to extract,
 assemble or validate it are failures, not skips.
+
+On a booted disposable iPhone simulator, set `SIMULATOR_UDID` to its UUID.
+`tools/test_retrine_init.py` opens Pixie from both the old and new mod roots
+and checks init ownership. `tools/test_retrine_settings_ui.py` exercises the
+localized settings UI on iOS 26 or newer.
 
 The 1.4 host runner is `tools/test14.py`: 57 compiled fixtures plus eight script
 fixtures, selected individually with `--fixture`. Its default runs all 65, not
@@ -131,7 +136,7 @@ The host-test drivers and `signing_metadata.py` / `fix_sideload_dependencies.py`
 also derive from the pinned Vitrine-Pixie source. The packager uses these helpers
 instead of duplicate inline signing/dependency rewrites: embedded XML entitlements
 are retained even when `codesign -d` cannot read an ldid signature, and an optional
-replacement Vitrine dylib resolves Substrate relative to its own loader.
+replacement Retrine dylib resolves Substrate relative to its own loader.
 
 `companion_build.build_companion` consumes `pixie_target.PROFILES` / `load_target(path)` and passes a
 target explicitly to `generate_target.generate_headers(folder, target)` and
@@ -144,7 +149,7 @@ Native patch headers plus `ExportObservationV2Patch.h` and
 `ExportMediaUnsealPatch.h` are emitted together. Export window facts are
 available as `target.export_windows` for the later companion layout headers.
 
-`build_vitrine_9190.prepare_foundation(native, target)` produces an in-memory
+`build_retrine_9190.prepare_foundation(native, target)` produces an in-memory
 static 1.4 image and report, including export observations. It is **not** a
 packaging bypass: callers must first admit the IPA's complete identity tuple.
 The packager installs the native overlay and export observations together with

@@ -33,7 +33,7 @@ NSString *SGSponsorBlockEpisodeID(NSString *uri) {
     return identifier.length == 22 && [identifier rangeOfCharacterFromSet:base62.invertedSet].location == NSNotFound ? identifier : nil;
 }
 
-// Same six-second bound as Vitrine's lyrics-source requests; this independent transport sends no
+// Same six-second bound as Retrine's lyrics-source requests; this independent transport sends no
 // Spotify headers, cookies or credentials, and refuses redirects.
 static const NSTimeInterval kRequestTimeoutSeconds = 6;
 
@@ -54,7 +54,7 @@ NSURLRequest *SGSponsorBlockRequest(NSString *episodeID, NSSet<NSString *> *cate
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url.URL
         cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:kRequestTimeoutSeconds];
     request.HTTPShouldHandleCookies = NO;
-    [request setValue:@"Vitrine-SponsorBlock/1" forHTTPHeaderField:@"X-CLIENT-NAME"];
+    [request setValue:@"Retrine-SponsorBlock/1" forHTTPHeaderField:@"X-CLIENT-NAME"];
     return request;
 }
 

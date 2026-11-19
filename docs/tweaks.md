@@ -69,7 +69,7 @@ the feature logs once and stays disabled rather than skipping without Undo.
 Privacy: an ephemeral HTTPS GET to `sponsor.ajay.app/api/skipSegments/<prefix>` sends only
 the first **five hexadecimal characters of SHA-256 of the bare Spotify episode ID**,
 `service=Spotify`, selected category identifiers as JSON, and the `X-CLIENT-NAME:
-Vitrine-SponsorBlock/1` header, plus normal HTTP/TLS metadata (including the network IP).
+Retrine-SponsorBlock/1` header, plus normal HTTP/TLS metadata (including the network IP).
 Neither the full episode ID nor account tokens, title, playback position, cookies or Spotify
 headers are sent. The response's full `videoID` is matched locally, so hash-prefix collisions
 cannot select another episode's segments. Requests and parsing run off main with a six-second
@@ -214,7 +214,7 @@ Shared:
                   (Romanise.m; checked on the simulator by harness/lyrics' -romanise and on the Mac by
                   harness/hangul-pronunciation/), and the Lyrics page's parts. Lines are kept in time order
                   whatever order a source lists them in. LyricsStore.m also keeps received non-local lyrics and their
-                  provider in binary versioned plists under Library/Application Support/Vitrine/Lyrics, keyed by
+                  provider in binary versioned plists under Library/Application Support/Retrine/Lyrics, keyed by
                   SHA-256 of the track ID and excluded from iCloud backup. The default-on “Keep lyrics for offline
                   listening” reads these before asking any source, across relaunches and without a connection;
                   a provider's own translation lines and its credit links are kept with them (registered only once a
@@ -508,7 +508,7 @@ Shared:
                   changes the editor's draft; Save applies it and Cancel discards it.
                   Switching service replaces generated translations as answers arrive, while source translations and
                   the previous answer to a failed line stay. Durable storage now uses the same JSON filenames in
-                  Application Support/Vitrine/{Translations,AI}, with backup-eligible, after-first-unlock protection.
+                  Application Support/Retrine/{Translations,AI}, with backup-eligible, after-first-unlock protection.
                   There is no record-count eviction: active records, recovery copies and metadata share a 512 MiB
                   admission ceiling. No-ops remain allowed, and legacy migration is grandfathered. A save is durable
                   only after validated temporary-file write, flush, rename and parent-directory flush; failed saves
@@ -576,7 +576,7 @@ Shared:
                   credentials, addresses or upstream free text. An unsent check remains unknown, not unreachable.
                   Service/target changes clear the UI results and cancel stale requests; completing after
                   leaving the page shows no popup.
-                  Both AI results are kept per song in Caches/Vitrine/AI beside the saved translations, which the Saved
+                  Both AI results are kept per song in Caches/Retrine/AI beside the saved translations, which the Saved
                   translations row counts and deletes with them. AI completion refreshes every open view of that song,
                   including views sharing the same line objects. Failed writes keep the answer in the shared
                   32-entry memory cache; deleting saved results also clears it and cancels pending jobs.
@@ -731,7 +731,7 @@ Shared:
                   length. A rename gives a new key (a cover alone does not), asked for at once while the file plays.
                   A miss is asked again a few times, in case it was a lost request. The user's own lyrics files
                   (LocalLyrics.m, the Imported lyrics files page under Lyrics' sources), .lrc, .ttml or plain text and
-                  kept as UTF-8 in Documents/Vitrine/Lyrics, come before any source: a file linked to the local file
+                  kept as UTF-8 in Documents/Retrine/Lyrics, come before any source: a file linked to the local file
                   playing (Import for current track, or Paste for the clipboard's lyrics) is its lyrics whatever its
                   tags say, and any other is matched by
                   [ti:] and [ar:], or a name of "Artist - Title", folded; an import or a delete has the engine forget
@@ -759,12 +759,12 @@ Shared:
                   Import audio files (LocalAudioImport.h, LocalAudioPage.m), on the Local files page under Player
                   settings in either look: a multiple-selection Files picker for audio (asCopy), whose picks are
                   copied, never moved, into the app's Documents folder at the top level, where Spotify scans its own
-                  Local Files, so Vitrine only copies and Spotify indexes and plays once its setting for showing audio
+                  Local Files, so Retrine only copies and Spotify indexes and plays once its setting for showing audio
                   files from this device is on in Spotify's settings (the footer says so). A file is never overwritten:
                   the copy itself refuses a taken name and the next is tried, "song 2.mp3", "song 3.mp3"…, with the
                   number before the extension. The copies run off main with security-scoped access around each; one
                   alert says "Imported N files" and, below it, the names that failed. The names imported are kept in
-                  Vitrine's defaults (SGKeyLocalAudioImported) with each file's identity (device, inode and size, read
+                  Retrine's defaults (SGKeyLocalAudioImported) with each file's identity (device, inode and size, read
                   right after the copy); the Imported files page lists only those whose file in Documents still has
                   that identity, dropping a name whose file is gone or was replaced, and a swipe asks before it deletes
                   that one file with a single non-recursive unlink on the Documents-anchored name, after checking the
@@ -791,8 +791,8 @@ Shared:
     Navigation/   the page transition fix (PageTransition.x), opening a spotify: link (Links.x), and either look's
                   Add a Tab sheet (AddTabSheet.m) with the icons a tab can wear, Encore's glyphs or SF Symbols
                   (TabIcons.m). The sheet runs in the simulator in harness/addtab/
-                  Inbound links use the vitrine: scheme: vitrine:track:<id>, vitrine://track/<id>,
-                  vitrine://open.spotify.com/track/<id>, or vitrine://https://<Spotify share URL>.
+                  New links use retrine:; legacy vitrine: links are still accepted. Forms include retrine:track:<id>, retrine://track/<id>,
+                  retrine://open.spotify.com/track/<id>, or retrine://https://<Spotify share URL>.
                   The public-page allowlist is track, album, artist, playlist, show, episode (22-character
                   base62 IDs) and user profiles (user/<id>, one URI-unreserved token, up to 255 characters).
                   HTTPS open.spotify.com paths may have an intl-xx locale prefix or embed prefix; page
@@ -804,13 +804,13 @@ Shared:
                   open.spotify.com, spotify.link or spotify.app.link at every hop. Only one resolution
                   runs at a time: a newer inbound URL cancels and supersedes the older one. No link history
                   is kept. URLs are limited to 4 KiB UTF-8 and shared text to 64 KiB; the source-built
-                  Open in Vitrine share action scans off main and processes at most eight shared items
+                  Open in Retrine share action scans off main and processes at most eight shared items
                   and eight providers. Its links use the same public allowlist as the app. Unsupported
                   dispatcher versions retain Spotify's original handlers and cold-start inputs.
                   A plain HTTPS link opened in Safari shows Spotify's web page, whose "Open app" button
                   cannot reach a re-signed app: use the share sheet or a Safari Open-in-Spotify extension.
                   The share-sheet handoff relies on iOS behavior that must be confirmed on a device.
-                  A different app can register vitrine: too; sideload signing does not reliably provide
+                  A different app can register retrine: too; sideload signing does not reliably provide
                   app groups, so this scheme does not authenticate which app receives the handoff.
     Player/       the player's open and close announced (PlayerEvents.x), what the player is doing read through
                   one hook for every feature that wants it (PlayerState.x, which also names the up-next track, SGPlayerUpNextIn, and tells its
@@ -956,11 +956,11 @@ Shared:
                   reads it, switch on or off (SGAudioSetOutputReader: the player's Visualizer). The buffers are in the unit's output format, the
                   hardware's, not the client format Spotify sets. The effects are the SGDSP*.m files, on Accelerate,
                   Apple's Reverb2 unit, libbs2b and EEL2 (vendor/audio). Settings apply as they change, on a queue of
-                  its own; the file effects read their files from Documents/Vitrine/Audio effects
+                  its own; the file effects read their files from Documents/Retrine/Audio effects
                   (AudioEffectsFiles.m). Presets and Headphones (AudioEffectsPresets.h lists their files): seven
                   built-in presets over a reset that keep the Graphic EQ, the user's own as a copy of every dsp key, the
                   settings from before the page's first pick saved as one of them, Before presets, and AutoEq's
-                  corrections, its INDEX.md fetched from GitHub and cached a month in Caches/Vitrine/AutoEq, a
+                  corrections, its INDEX.md fetched from GitHub and cached a month in Caches/Retrine/AutoEq, a
                   headphone's GraphicEQ file put into the Graphic EQ (AutoEq.m), None taking it off; a pick turns the
                   master switch on. A pick can be kept per output (spotifyglass.audioOutputs, by the port's UID): on
                   every AVAudioSessionRouteChangeNotification to another output (AudioEffects.x), a remembered output
@@ -977,8 +977,8 @@ Shared:
                   (SGDSPEffectiveValues). AutoEq's search filters by All, In-ear, Over-ear and Earbuds from the
                   entry's path. Checked on the Mac by `harness/audio-effects/build.sh route` (two-process kill cases)
                   and `harness/autoeq/`. A preset of the
-                  user's is shared from a swipe or a long press as a file (`<name>.vitrine-preset.json`:
-                  {"format": "vitrine.audio-preset", "version": 1, "name", "values"}) through the share sheet, and
+                  user's is shared from a swipe or a long press as a file (`<name>.retrine-preset.json`:
+                  {"format": "retrine.audio-preset", "version": 1, "name", "values"}) through the share sheet, and
                   Import preset file… reads one from Files on a queue of its own: another format, a later version,
                   over 256 KB or nothing usable is refused, values are kept to this build's dsp keys and types (never
                   the master switch, a file name with a path or a leading dot dropped), and it is saved under Yours,
@@ -1018,7 +1018,7 @@ Shared:
                   .show-queue (a line above Playing Next naming the blend into the next song) and .artwork (the two
                   covers handed over during the window), all three in Redesigned/Player/PlayerMix.x, drawn only for
                   known times (harness/player/automix-check.sh). Spotify keeps no transition fields written into its
-                  queue from outside (seen on a 9.1.90 phone), so Vitrine plans no transitions of its own
+                  queue from outside (seen on a 9.1.90 phone), so Retrine plans no transitions of its own
     SpotifyMetadata/ Spotify's metadata service for features that ask it themselves (SGSpotifyMetadata.h): the signed-in app's own
                   spclient headers, kept only from its requests to https spclient.wg.spotify.com (KaraokeSource.x's
                   rememberHeaders; any other host or http is never kept), sent only back to that host by an ephemeral session
@@ -1220,13 +1220,13 @@ Shared:
                   then tells Siri to open Spotify. Checked in the simulator against harness/shortcuts/
 
                   Install limitation: LiveContainer runs Spotify as a guest, not a separately installed app, and
-                  upstream LiveContainer does not register guest app extensions with SpringBoard. Vitrine cannot
+                  upstream LiveContainer does not register guest app extensions with SpringBoard. Retrine cannot
                   register its Live Activity widget or change the installed host's capabilities from inside that guest;
                   even its install check reads NSBundle.mainBundle, which LiveContainer replaces with the guest bundle.
-                  Use Vitrine's IPA installed directly, retaining its Live Activity extension, and enable Live Activities
-                  for that installed app. Updating Vitrine inside LiveContainer alone cannot supply the missing widget.
+                  Use Retrine's IPA installed directly, retaining its Live Activity extension, and enable Live Activities
+                  for that installed app. Updating Retrine inside LiveContainer alone cannot supply the missing widget.
                   The lock screen's now-playing lyrics/artwork is a separate feature, not this ActivityKit card.
-                  NSSupportsLiveActivitiesFrequentUpdates, written by Vitrine's IPA overlay, raises the remote push
+                  NSSupportsLiveActivitiesFrequentUpdates, written by Retrine's IPA overlay, raises the remote push
                   update budget; this card uses local updates with pushType nil, so that key is not a fix for delayed
                   local lyrics. Actual locked-screen delivery and any system throttling still require a device check.
 
@@ -1237,7 +1237,7 @@ Shared:
                   a play in progress is also written down when Spotify terminates or a setting's Restart now quits it, via
                   SGWillRestartNotification, while one cut off by Spotify being killed is lost),
                   Spotify's data export read in, either shape, loose, zipped or from a
-                  selected folder, and Vitrine's own versioned JSON history imported or exported without an account. Plays
+                  selected folder, and Retrine's own versioned JSON history imported or exported without an account. Plays
                   already there are skipped (SGPlayLog.m); input is bounded to 64 MiB per JSON, 256 MiB total and one million
                   plays. Its page leads with the current and best day streak and their dates, then a calendar week, month or
                   year stepped through one at a time (the calendar's first weekday), with a bar per day or month, the time
@@ -1249,7 +1249,7 @@ Shared:
                   days with plays as seven cards (time, top artist, song and album, discoveries, active days and the
                   longest streak, peak hour and month), each shareable as a 9:16 picture; a year belongs by each play's
                   end. From 1 to 14 January the year just ended is announced once (`spotifyglass.stats.recap.announce`:
-                  in Vitrine Settings by default, when Spotify opens, or off; the year announced is kept as its number).
+                  in Retrine Settings by default, when Spotify opens, or off; the year announced is kept as its number).
                   File parsing, traversal,
                   aggregation and serialization stay off the main thread. Tested on the Mac against harness/listening-stats/,
                   the page and the recorder in the simulator against its sim/
@@ -1929,8 +1929,8 @@ App:
                    A missing Live Activity extension alone does not trigger this warning: signing can strip extensions,
                    and LiveContainer cannot register them. The Live Activity page's missing-install row explains
                    keeping extensions when signing and installing the IPA directly, without implying that the rest
-                   of Vitrine is broken; all but
-                   the third stay as red rows at the top of Mod Settings. What Chroma left in Spotify's storage when Vitrine
+                   of Retrine is broken; all but
+                   the third stay as red rows at the top of Mod Settings. What Chroma left in Spotify's storage when Retrine
                    replaced it (its Karaoke model and saved lock screen videos, never its listening history or audio
                    effects) is offered for deleting once, and stays a row there until it goes. Laid out on the simulator by harness/onboarding/
 
@@ -1984,7 +1984,7 @@ Documents/Lossless folder (Files app › Spotify › Lossless) plays in place of
 
 ## Make targets
 
-    make build      # out/vitrine-<version>.ipa with FLEX in it
+    make build      # out/retrine-<version>.ipa with FLEX in it
     make release    # the same without FLEX
     make install    # build without FLEX, sign with your certificate, install over USB or Wi-Fi
     make install FLEX=1   # the same with FLEX, which is what make trees reads through
@@ -2096,7 +2096,7 @@ redesign), San Francisco, SF Rounded, New York and SF Mono. Nothing stored is Sp
 Francisco in the redesign, whose own text is San Francisco (Fonts.x, SGAppFontChosen); a stored choice, Spotify's
 included, wins, and a font whose files go away removes the stored choice so that default applies again; More fonts, the families iOS carries of a fixed few (Avenir Next to American
 Typewriter), each weight taken as the family's nearest face; and Your fonts, the files of one family (.ttf, .otf, .ttc or .otc, picked
-together) added from Files, refused when their faces name more than one family, copied to Application Support/Vitrine/Font
+together) added from Files, refused when their faces name more than one family, copied to Application Support/Retrine/Font
 and registered again at each launch, each weight taken as the family's nearest face, Spotify's font coming back when
 the files are gone. Swiping the row deletes the family. An import from before families (one file under
 spotifyglass.font.file) moves to spotifyglass.font.files and the family name on first use. Free fonts, between More fonts and Your fonts, lists
@@ -2105,7 +2105,7 @@ files are registered (opening the page or finishing a download never waits for C
 SGFontLibraryRegisteredFamily give the names the Lyrics PiP font choices use; the launch registers them synchronously
 in Fonts.x, as the global font hook needs them first), and opens the free fonts page (Shared/Fonts/FontLibraryPage.m, also in Libraries & presets): sixteen SIL Open
 Font License families from github.com/google/fonts pinned to one commit, Korean first, each file and its OFL.txt checked against its
-size and SHA-256 (FontLibrary.m) before the family moves from a hidden folder into Application Support/Vitrine/Font Library, one
+size and SHA-256 (FontLibrary.m) before the family moves from a hidden folder into Application Support/Retrine/Font Library, one
 download at a time with its progress on the row and a tap stopping it. A family downloaded becomes the app's font
 (spotifyglass.font 7, spotifyglass.font.library) and is registered again at each launch; a swipe deletes it or opens its license, and
 Spotify's font comes back when its files are gone. Then the App icon. Everything on the page applies after a restart. Redesigned UI, the main page's
@@ -2144,7 +2144,7 @@ the player and haptics harnesses cover slider routing, signature rejection, curr
 With Volume shown, the controls keep Spotify's vertical position rather than lifting 10 pt into the time row;
 `harness/player/volume-layout-check.sh` runs real placement at 402×874 and 375×667 (SE), checking unobstructed
 time/playback controls and clean omission when there is no room.
-Libraries & presets collects Vitrine's existing local and open libraries: audio presets,
+Libraries & presets collects Retrine's existing local and open libraries: audio presets,
 shared as files, public AutoEq headphone corrections, free fonts to download and on-device custom fonts
 under either look, plus visualizer styles when Redesigned UI is selected. Lyrics looks stay on Lyrics. Tab bar: the tab editor of the stored look, each with
 its own list of tabs. Lyrics, on the main page of its own: in the redesign a live preview of the lyrics first, with the presets of their look
@@ -2195,7 +2195,7 @@ under it a segmented control of the five backgrounds (Still, Colors, Fluid, Anim
 with a note on what the one picked does, and a Behind the Player menu (Artwork, Black, Your Photo) that lays pure
 black or a photo of the user's own over the field instead (PlayerBackdrop.m, kinds 5 and 6 of
 `spotifyglass.redesign.player.background`; Artwork goes back to the last segment, `...background.artwork`). The photo
-comes from PHPicker, is kept as a JPEG of 2048 px at most in Library/Application Support/Vitrine, fills the screen
+comes from PHPicker, is kept as a JPEG of 2048 px at most in Library/Application Support/Retrine, fills the screen
 from its middle and is dimmed by its brightness as the Animated clip is, more with a blur behind the lyrics; it
 applies at the player's next layout, no restart; while Visualizer is chosen, its local style menu offers Hills (the default),
 mirrored Bars with a waveform, a bass-driven Nebula and an artwork Halo, then the lyric styles: Lyrics, Poster and Cut. The selection is stored under the existing
@@ -2332,12 +2332,12 @@ hide switches against harness/tabbar/ (`navsettings`), Apple symbols against har
 
 ## Localization
 
-For `make build`, `make release` or `make install`, `NO_PLUGINS=1` (pipeline `--no-plugins`, CI `remove_plugins`, default off) skips building the Live Activity and Open in Vitrine extensions and removes all PlugIns and .appex bundles before signing, including Spotify's widgets, Siri intents and notification service; leave it off to retain those features.
+For `make build`, `make release` or `make install`, `NO_PLUGINS=1` (pipeline `--no-plugins`, CI `remove_plugins`, default off) skips building the Live Activity and Open in Retrine extensions and removes all PlugIns and .appex bundles before signing, including Spotify's widgets, Siri intents and notification service; leave it off to retain those features.
 
-After injection and extension handling, `scripts/pipeline.sh` runs `scripts/patch-infoplist-ko.py` before signing to set the overlay's Korean motion prompt inside existing `ko*.lproj` directories only, preserving other entries and binary/text format; an app with no Korean localization is left unchanged with a warning, and the Connect/Cast prompt is added only when Spotify has no base or localized local-network wording. Live Activity requires both the Info.plist declaration and Vitrine's bundled extension; without the extension, its switch is hidden and its runtime polling stays off even with a saved enabled preference.
+After injection and extension handling, `scripts/pipeline.sh` runs `scripts/patch-infoplist-ko.py` before signing to set the overlay's Korean motion prompt inside existing `ko*.lproj` directories only, preserving other entries and binary/text format; an app with no Korean localization is left unchanged with a warning, and the Connect/Cast prompt is added only when Spotify has no base or localized local-network wording. Live Activity requires both the Info.plist declaration and Retrine's bundled extension; without the extension, its switch is hidden and its runtime polling stays off even with a saved enabled preference.
 
-Mod Settings and every page, sheet and alert it opens read their words from `Vitrine.bundle`
-(`tweak/layout/Library/Application Support/Vitrine.bundle`): `en.lproj` and `ko.lproj`, each a `Localizable.strings`.
+Mod Settings and every page, sheet and alert it opens read their words from `Retrine.bundle`
+(`tweak/layout/Library/Application Support/Retrine.bundle`): `en.lproj` and `ko.lproj`, each a `Localizable.strings`.
 Theos puts the bundle in the .deb, so a jailbreak installs it under `/Library/Application Support` (or `/var/jb`), and
 cyan copies every `.bundle` of a .deb into the app, so the IPA has it beside Spotify's own.
 `Core/SGLocalize.h` has the one way in: `SGL(@"settings.player.title", @"Player")`, a key named for what the text means
@@ -2348,11 +2348,11 @@ System keeps Spotify's language (the iPhone's, or the one set for Spotify in Set
 one without a table, a missing bundle or key, and a translation whose format specifiers read differently from the
 English all give the English, so System on an English iPhone sees exactly the text in the sources. `NSBundle` is left alone.
 Pixie's companion uses `SAPL(@"settings.pixie.<what>", @"English")` in `NativeDownloads/src/`.
-It resolves Vitrine's `SGL` export at runtime and uses these same resources, falling back to
-English when Vitrine is not loaded. `scripts/check-strings.py` includes both source trees.
+It resolves Retrine's `SGL` export at runtime and uses these same resources, falling back to
+English when Retrine is not loaded. `scripts/check-strings.py` includes both source trees.
 
 What is not translated: preference keys and `spotifyglass.*` values, logs, URLs, file names, Spotify's own words,
-track and artist names, and the names Vitrine, Spotify, AutoMix, AutoEq, Gemini and the like. A text that is also
+track and artist names, and the names Retrine, Spotify, AutoMix, AutoEq, Gemini and the like. A text that is also
 stored or compared (a preset saved under "Before presets", the ad counters' labels, the equalizer preset a built-in
 preset reads) stays English in code and is translated only where a row shows it. A text `SGL` reads must be made at
 run time: a file-scope `static NSString *const` cannot call it, so such texts are functions or macros

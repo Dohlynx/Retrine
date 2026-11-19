@@ -19,7 +19,7 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     state-check.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionFollower.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m ../../tweak/Sources/Core/SGLog.m \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionCatalog.m \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
-    -o "$OUT/state-check"
+    ../../tweak/Sources/Core/SGDataRoot.m -o "$OUT/state-check"
 "$OUT/state-check"
 xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
@@ -34,5 +34,5 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
     -iframework "$(xcrun --sdk macosx --show-sdk-path)/System/iOSSupport/System/Library/Frameworks" \
     -fobjc-arc -I ../../tweak/Sources -framework UIKit -framework Foundation -framework AVFoundation -framework CoreMedia \
-    store-check.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionStore.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m -o "$OUT/store-check"
+    store-check.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionStore.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m ../../tweak/Sources/Core/SGDataRoot.m -o "$OUT/store-check"
 "$OUT/store-check" "$OUT/store-data"

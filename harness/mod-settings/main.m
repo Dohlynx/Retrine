@@ -4,7 +4,7 @@
 // actions, one every 0.9 s from 1 s in; screenshot after.
 //
 //     THEOS=$HOME/theos ./build.sh && xcrun simctl install <udid> build/ModSettingsHarness.app
-//     xcrun simctl launch <udid> com.vitrine.modsettingsharness [setup...] [action...]
+//     xcrun simctl launch <udid> com.retrine.modsettingsharness [setup...] [action...]
 //
 // Setup: redesign (Redesigned UI stored on), warning (a red environment row at the top), keep (the stored
 // look stays; otherwise it is cleared first).
@@ -231,7 +231,7 @@ static void refactorChecks(void) {
     UIViewController *home = [UIViewController new];
     UINavigationController *root = [[UINavigationController alloc] initWithRootViewController:home];
     SGOpenModSettings(home.view);
-    HARNESS_CHECK([root.topViewController.title isEqualToString:@"Vitrine"]);
+    HARNESS_CHECK([root.topViewController.title isEqualToString:@"Retrine"]);
 
     // A deeper stack in the first child's subtree wins over a shallower later sibling.
     UIViewController *container = [UIViewController new], *wrapper = [UIViewController new];
@@ -244,7 +244,7 @@ static void refactorChecks(void) {
     [container addChildViewController:later];
     [later didMoveToParentViewController:container];
     SGOpenModSettings(container.view);
-    HARNESS_CHECK([first.topViewController.title isEqualToString:@"Vitrine"]);
+    HARNESS_CHECK([first.topViewController.title isEqualToString:@"Retrine"]);
     NSLog(@"[harness] refactor checks PASS");
 }
 

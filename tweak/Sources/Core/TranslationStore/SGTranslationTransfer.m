@@ -52,7 +52,7 @@ static BOOL output(NSOutputStream *stream, NSData *data, NSError **error) {
     return YES;
 }
 // The ZIP field codec derives from ciowfreshh SGTranslationArchive (d829851).
-// The manifest, stricter feature policy, staging and partial-progress contract are Vitrine's.
+// Keep the v1 manifest discriminator: archives travel between old and new installs.
 static BOOL writeZIP(NSArray *records, NSURL *url, SGTranslationFiles *store, NSError **error) {
     NSMutableArray *manifest = [NSMutableArray array];
     for (NSDictionary *record in records) [manifest addObject:@{@"name":record[@"name"], @"sha256":record[@"sha256"]}];
@@ -243,7 +243,7 @@ static BOOL writeZIP(NSArray *records, NSURL *url, SGTranslationFiles *store, NS
     }
     NSError *cleanup = nil;
     if (![NSFileManager.defaultManager removeItemAtURL:ok ? snapshot : directory error:&cleanup]) { failure = cleanup; ok = NO; }
-    if (!ok && error) *error = [NSError errorWithDomain:@"Vitrine.TranslationStorage" code:1 userInfo:@{
+    if (!ok && error) *error = [NSError errorWithDomain:@"Retrine.TranslationStorage" code:1 userInfo:@{
         NSLocalizedDescriptionKey:selection ? (failure.localizedDescription ?: @"Could not write export.") :
             [NSString stringWithFormat:@"Full export could not read all records in %@: %@", store.root.path, failure.localizedDescription ?: @"Export failed."],
         NSUnderlyingErrorKey:failure ?: SGTranslationStorageError(@"Could not write export.")}];

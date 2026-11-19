@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit Vitrine's service hook coverage against inspected decrypted Spotify IPAs."""
+"""Audit Retrine's service hook coverage against inspected decrypted Spotify IPAs."""
 import argparse
 import importlib.util
 import json

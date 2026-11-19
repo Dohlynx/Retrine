@@ -83,7 +83,7 @@ BOOL SAPShouldOfferNativeDownloadQuality(void){
     if(current!=SAPQualityUnknown)return current==SAPQualityOffer;
     typedef id(*PreferencesProvider)(void);static PreferencesProvider provider;
     if(!provider)provider=(PreferencesProvider)dlsym(RTLD_DEFAULT,"SGSpotifyPreferences");
-    // Vitrine's existing weak capture returns nil until playbackSpeed>0 proves
+    // Retrine's existing weak capture returns nil until playbackSpeed>0 proves
     // native user preferences loaded. It never changes the download preference.
     id preferences=provider?provider():nil;Class cls=NSClassFromString(preferencesClassName);
     SEL getter=NSSelectorFromString(@"audioSyncBitrate");

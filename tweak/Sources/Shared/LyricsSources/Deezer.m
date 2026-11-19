@@ -13,6 +13,7 @@ static BOOL sg_arlLoaded;
 static NSTimeInterval sg_authRefusedUntil;
 
 static NSDictionary *keyQuery(void) {
+    // Both lookup and reset must use the original Keychain service to reach existing credentials.
     return @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
              (__bridge id)kSecAttrService: @"Vitrine.Deezer", (__bridge id)kSecAttrAccount: @"arl"};
 }

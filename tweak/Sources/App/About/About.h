@@ -88,7 +88,7 @@ void SGExportDiagnosticsToURL(NSURL *url, void (^completion)(NSError *error));
 
 UIViewController *SGAboutPage(void);   // the Mod page
 
-// Report.m: "Report a problem". A report is kept in Application Support/Vitrine/Reports/<uuid>/ —
+// Report.m: "Report a problem". A report is kept in Application Support/Retrine/Reports/<uuid>/ —
 // report.json (created and shared dates, the text, the versions), diagnostics.txt (SGWriteDiagnosticsFile's
 // copy, refreshed each time the report is opened and before each send), and a .mov for each screen
 // recording. Send hands the text, the diagnostics and the recordings to the share sheet; the report

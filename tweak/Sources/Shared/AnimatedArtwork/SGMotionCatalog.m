@@ -2,6 +2,7 @@
 // token Apple Music's web player carries, so the token is read out of the web player's script and
 // kept until it is about to expire. Answers are kept for the launch, and an album's for a week on disk.
 #import "Core/SGCore.h"
+#import "Core/SGDataRoot.h"
 #import "AnimatedArtwork.h"
 #import "SGMotionTicket.h"
 #import "SGMotionCatalog.h"
@@ -37,8 +38,7 @@ static NSURL *albumAnswersFile(void) {
     extern NSURL *SGMotionTestAlbumAnswersFile(void);
     return SGMotionTestAlbumAnswersFile();
 #else
-    NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
-    return [caches URLByAppendingPathComponent:@"Vitrine/Motion/album answers.plist"];
+    return [SGDataRoot(NSCachesDirectory) URLByAppendingPathComponent:@"Motion/album answers.plist"];
 #endif
 }
 
@@ -113,12 +113,15 @@ static void keepAlbumAnswer(NSString *key, id value) {
 }
 
 static void setUp(void) {
+    if (sg_kept) return;
+    NSURL *file = albumAnswersFile();
+    if (!file) return;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         sg_kept = [NSMutableDictionary dictionary];
         sg_keptOrder = [NSMutableArray array];
         sg_albumAnswers = [NSMutableDictionary dictionary];
-        NSDictionary *stored = sg_answersCleared ? nil : [NSDictionary dictionaryWithContentsOfURL:albumAnswersFile()];
+        NSDictionary *stored = sg_answersCleared ? nil : [NSDictionary dictionaryWithContentsOfURL:file];
         for (NSString *key in stored) {
             NSDictionary *answer = stored[key];
             NSDate *at = [answer isKindOfClass:NSDictionary.class] ? answer[@"at"] : nil;
@@ -566,6 +569,7 @@ static void search(NSString *type, NSString *term, NSString *extend, BOOL renew,
 // worth asking again.
 static void lookUp(NSString *key, void (^done)(id value), void (^look)(void (^answer)(id value, BOOL keep))) {
     setUp();
+    if (!sg_kept) { done(nil); return; }
     id kept = sg_kept[key];
     if (kept) {
         done(kept == NSNull.null ? nil : kept);
@@ -975,6 +979,7 @@ void SGMotionCacheClear(void (^done)(BOOL complete)) {
         dispatch_async(dispatch_get_main_queue(), ^{ SGMotionCacheClear(done); });
         return;
     }
+    if (!albumAnswersFile()) { done(NO); return; }
     sg_answersCleared = YES;   // a clear before the first lookup: the launch need not read what the clear removes
     setUp();
     sg_generation++;

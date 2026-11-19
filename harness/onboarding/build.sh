@@ -31,7 +31,7 @@ cat > "$OUT/OnboardingHarness.app/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>OnboardingHarness</string>
-<key>CFBundleIdentifier</key><string>com.vitrine.onboardingharness</string>
+<key>CFBundleIdentifier</key><string>com.retrine.onboardingharness</string>
 <key>CFBundleName</key><string>OnboardingHarness</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleShortVersionString</key><string>1.0</string>

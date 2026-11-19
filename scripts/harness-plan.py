@@ -36,6 +36,10 @@ TWEAK = "tweak/Sources"
 # Explicit weights estimate CI minutes. Mutation checks prove a check catches its
 # bug while it is written; they run by hand, not on every push.
 HARNESSES = [
+    {"name": "Data migration", "dir": "data-migration",
+     "run": "bash harness/data-migration/build.sh"},
+    {"name": "Unavailable clip storage", "dir": "data-migration", "theos": True,
+     "run": "bash harness/data-migration/clip-unavailable.sh"},
     {"name": "Page zoom", "dir": "page-zoom", "theos": True,
      "run": "python3 harness/page-zoom/check.py"},
     {"name": "AutoMix facts", "dir": "automix",

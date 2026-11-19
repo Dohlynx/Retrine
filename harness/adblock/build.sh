@@ -3,7 +3,7 @@
 set -eu
 cd "$(dirname "$0")"
 SRC=$(cd ../../tweak/Sources && pwd)
-OUT=$(mktemp -d /tmp/vitrine-adblock.XXXXXX)
+OUT=$(mktemp -d /tmp/retrine-adblock.XXXXXX)
 trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 "${THEOS:-$HOME/theos}/bin/logos.pl" -c generator=internal "${1:-$SRC/Shared/AdBlock/AdHubs.x}" > "$OUT/AdHubs.m"
 xcrun clang -fobjc-arc -O0 -Wall -Werror -I shim -I ../shared/foundation -I "$SRC/Shared/AdBlock" \

@@ -81,7 +81,7 @@ static SPTPlayerTrack *song(NSString *uri, NSString *title, NSString *image) {
     SPTPlayerTrack *track = [SPTPlayerTrack new];
     [track setValue:uri forKey:@"URI"];
     [track setValue:title forKey:@"trackTitle"];
-    [track setValue:@"Vitrine harness" forKey:@"artistName"];
+    [track setValue:@"Retrine harness" forKey:@"artistName"];
     NSMutableDictionary *metadata = [@{@"title": title} mutableCopy];
     if (image) metadata[@"image_xlarge_url"] = image;
     [track setValue:metadata forKey:@"metadata"];
