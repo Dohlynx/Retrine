@@ -2,8 +2,9 @@
 // the song's actions first and Retrine's after them. Share, Add to playlist and Add to queue in a row at its top, then
 // the title row's own buttons, which the ⋯ takes the place of -- the add button (★: Save to Your Library, or Change
 // Where It's Saved once saved) and Spotify's X when it shows one (feedback_headunit_right_ban_button, "Don't play
-// this") -- each fired as a tap on it would be; then the rest of Spotify's rows, and then the player's own items here, which take over what Speed and
-// pitch's block is on Spotify's sheet:
+// this") -- each fired as a tap on it would be, and each left out while Spotify's rows have its action (Add to Liked
+// Songs for a song not saved yet, Hide in this playlist or album); then the rest of Spotify's rows, and then the
+// player's own items here, which take over what Speed and pitch's block is on Spotify's sheet:
 //
 //     Speed, Pitch & Reverb   opens the sliders in a popover from the ⋯ (SGPlayerShowSpeedPitchPanel): speed,
 //                             pitch, reverb and Pitch follows speed, as on Spotify's sheet (issue #14)
@@ -295,8 +296,16 @@ static BOOL shownBySpotify(UIView *button, UIView *row) {
     return YES;
 }
 
-static UIAction *titleRowAction(UIControl *button, NSString *title, NSString *symbol) {
-    UIAction *action = [UIAction actionWithTitle:title image:[UIImage systemImageNamed:symbol] identifier:nil
+// The rows of Spotify's sheet that do what the title row's buttons do, by their identifiers (Spotify's item numbers,
+// read off 9.1.90's and 9.2.0's sheets): Add to Liked Songs, which the sheet has for a song not saved yet, as the add
+// button saves it (a saved song's sheet has no such row; an episode's is Add to Your Episodes, the same item); and
+// Hide in this playlist, or album, which the X does there
+// (outside one the sheet has none, and a hidden song's has Show in this playlist, 8, instead). The menu leaves a
+// button's item out while it shows its row (ContextMenu.h).
+static NSString *const kLikedSongsRow = @"18", *const kHideRow = @"7";
+
+static UIAction *titleRowAction(UIControl *button, NSString *title, NSString *symbol, NSString *spotifyRow) {
+    UIAction *action = [UIAction actionWithTitle:title image:[UIImage systemImageNamed:symbol] identifier:spotifyRow
                                          handler:^(UIAction *picked) { SGRFireControl(button); }];
     if (!button.enabled) action.attributes = UIMenuElementAttributesDisabled;
     return action;
@@ -306,7 +315,8 @@ static UIAction *titleRowAction(UIControl *button, NSString *title, NSString *sy
 // opens Spotify's Saved in sheet to change where it is saved. Spotify marks a saved song by selecting the button, in
 // any playlist, so the selection is not read as Liked Songs (Spotify's Like row in the menu is its own). Its glyph as
 // the player drew it: a star (Star add button), filled once saved, else Spotify's plus and circled tick. Then
-// Spotify's X, in Spotify's words, while Spotify shows it. Each fires its button.
+// Spotify's X, in Spotify's words, while Spotify shows it. Each fires its button, and stands aside for Spotify's row
+// that does the same.
 static NSArray<UIMenuElement *> *titleRowItems(void) {
     NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
     UIControl *add = sg_addButton, *ban = sg_banButton;
@@ -315,9 +325,10 @@ static NSArray<UIMenuElement *> *titleRowItems(void) {
         BOOL saved = add.isSelected;
         NSString *title = saved ? SGL(@"player.menu.add.saved", @"Change Where It's Saved") : SGL(@"player.menu.add.save", @"Save to Your Library");
         NSString *symbol = SGRStarAddOn() ? (saved ? @"star.fill" : @"star") : (saved ? @"checkmark.circle.fill" : @"plus.circle");
-        [items addObject:titleRowAction(add, title, symbol)];
+        [items addObject:titleRowAction(add, title, symbol, kLikedSongsRow)];
     }
-    if (ban && shownBySpotify(ban, row) && ban.accessibilityLabel.length) [items addObject:titleRowAction(ban, ban.accessibilityLabel, @"xmark.circle")];
+    if (ban && shownBySpotify(ban, row) && ban.accessibilityLabel.length)
+        [items addObject:titleRowAction(ban, ban.accessibilityLabel, @"xmark.circle", kHideRow)];
     return items;
 }
 

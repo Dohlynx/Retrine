@@ -42,6 +42,7 @@ static const NSTimeInterval kRequestWindow = 3;
 static NSString *const kSheetClass = @"_TtC24ContextMenu_InternalImpl25ContextMenuViewController";
 static NSString *const kTopMenu = @"com.retrine.systemmenu.top";
 static NSString *const kQuickMenu = @"com.retrine.systemmenu.quick";
+static NSString *const kLeadMenu = @"com.retrine.systemmenu.lead";
 static NSString *const kMoreMenu = @"com.retrine.systemmenu.more";
 // The last complete set of Spotify's rows for each kind of sheet, for More to show before the live ones come.
 static NSString *const kStoredRowsKey = @"spotifyglass.redesign.player.menuRows";
@@ -412,8 +413,9 @@ static void raiseHost(UIWindow *window) {
     NSMutableArray<dispatch_block_t> *_whenRead;
     // A quick pick is waiting for the rows, which keeps the poll going after the menu has gone.
     BOOL _waiting;
-    // The quick row as the menu shows it, to know whether the rows changed it.
-    NSString *_quickShown;
+    // The quick row and the lead items as the menu shows them, to know whether the rows changed them.
+    NSString *_quickShown, *_leadShown;
+    NSArray<UIMenuElement *> *_leadItems;
     NSTimer *_poll;
     BOOL _rowsActive, _rowsRequested, _rowsExhausted, _readingRows;
     NSUInteger _rowAttempts;
@@ -595,6 +597,7 @@ static void raiseHost(UIWindow *window) {
         SGLog(@"system menu: Spotify's sheet did not come %.0f s after it was asked for", kRequestWindow);
         session->_waiting = NO;
         [session completeRowWaiters];
+        [session refreshLead];
     });
 }
 
@@ -646,8 +649,8 @@ static void raiseHost(UIWindow *window) {
     NSMutableArray<UIMenuElement *> *children = [NSMutableArray array];
     UIMenu *quick = [self quickRow];
     if (quick) [children addObject:quick];
-    NSArray<UIMenuElement *> *lead = self.lead ? self.lead() : nil;
-    if (lead.count) [children addObject:inlineGroup(lead)];
+    UIMenu *lead = [self leadGroup];
+    if (lead) [children addObject:lead];
     [children addObject:[UIMenu menuWithTitle:@"" image:nil identifier:kMoreMenu options:UIMenuOptionsDisplayInline children:@[[self deferredRows]]]];
     NSArray<UIMenuElement *> *ours = self.items();
     if (ours.count) [children addObject:inlineGroup(ours)];
@@ -780,6 +783,7 @@ static NSString *storedKey(NSString *kind) {
             if (row.quick || !row.title.length) continue;
             NSMutableDictionary *stored = [@{@"title": row.title, @"enabled": @(row.enabled)} mutableCopy];
             if (row.subtitle.length) stored[@"subtitle"] = row.subtitle;
+            if (row.identifier.length) stored[@"identifier"] = row.identifier;
             NSData *glyph = row.image ? [NSKeyedArchiver archivedDataWithRootObject:row.image requiringSecureCoding:YES error:nil] : nil;
             if (glyph.length && glyph.length < 32 * 1024) stored[@"image"] = glyph;
             [rows addObject:stored];
@@ -844,6 +848,76 @@ static NSString *storedKey(NSString *kind) {
     return row;
 }
 
+// The lead items, made once, as the menu opened.
+- (NSArray<UIMenuElement *> *)leadItems {
+    if (!_leadItems) _leadItems = self.lead ? self.lead() : @[];
+    return _leadItems;
+}
+
+// The identifiers of the enabled rows of Spotify's the menu shows: the sheet's once read; before that the stored
+// ones the player's menu shows in their place (storedElements), a pick of which fires the live row of its title or
+// shows Spotify's sheet (fireTitle); none while it shows the loading row, or once the rows are given up on.
+- (NSSet<NSString *> *)enabledRowIdentifiers {
+    NSMutableSet<NSString *> *identifiers = [NSMutableSet set];
+    if (_groups) {
+        for (NSArray<SGRSheetRow *> *group in _groups) {
+            for (SGRSheetRow *row in group) if (row.enabled && row.identifier.length) [identifiers addObject:row.identifier];
+        }
+        return identifiers;
+    }
+    if (!self.direct || _failed || _rowsExhausted) return identifiers;
+    NSArray *groups = [NSUserDefaults.standardUserDefaults arrayForKey:storedKey(self.kind)];
+    for (NSArray *group in groups) {
+        if (![group isKindOfClass:NSArray.class]) continue;
+        for (NSDictionary *row in group) {
+            if (![row isKindOfClass:NSDictionary.class] || [row[@"enabled"] isEqual:@NO]) continue;
+            NSString *identifier = row[@"identifier"];
+            if ([identifier isKindOfClass:NSString.class]) [identifiers addObject:identifier];
+        }
+    }
+    return identifiers;
+}
+
+// The lead items as one group but for those whose action Spotify's rows in the menu already offer: an item that does
+// what a row of Spotify's does carries that row's identifier as its own (ContextMenu.h), and is left out while the
+// menu shows that row enabled, so the action is there once and never missing.
+- (UIMenu *)leadGroup {
+    NSSet<NSString *> *rows = [self enabledRowIdentifiers];
+    NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
+    NSMutableString *shown = [NSMutableString string];
+    for (UIMenuElement *item in [self leadItems]) {
+        if ([item isKindOfClass:UIAction.class] && [rows containsObject:((UIAction *)item).identifier]) continue;
+        [items addObject:item];
+        [shown appendFormat:@"%@; ", item.title];
+    }
+    _leadShown = shown;
+    return items.count ? [UIMenu menuWithTitle:@"" image:nil identifier:kLeadMenu options:UIMenuOptionsDisplayInline children:items] : nil;
+}
+
+static NSUInteger groupIndex(NSArray<UIMenuElement *> *children, NSString *identifier) {
+    return [children indexOfObjectPassingTest:^BOOL(UIMenuElement *child, NSUInteger index, BOOL *stop) {
+        return [child isKindOfClass:UIMenu.class] && [((UIMenu *)child).identifier isEqualToString:identifier];
+    }];
+}
+
+// The player's menu on screen with its group `identifier` made `group`: replaced, taken out for nil, or put in after
+// the group `after` (first for nil, or where that is not there). Only the top level, never a submenu that happens
+// to be showing.
+- (void)showGroup:(UIMenu *)group as:(NSString *)identifier after:(NSString *)after {
+    [self.anchor.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
+        if (![visible.identifier isEqualToString:kTopMenu]) return visible;
+        NSMutableArray<UIMenuElement *> *children = [visible.children mutableCopy];
+        NSUInteger at = groupIndex(children, identifier);
+        if (at != NSNotFound && group) children[at] = group;
+        else if (at != NSNotFound) [children removeObjectAtIndex:at];
+        else if (group) {
+            NSUInteger previous = after ? groupIndex(children, after) : NSNotFound;
+            [children insertObject:group atIndex:previous == NSNotFound ? 0 : previous + 1];
+        }
+        return [visible menuByReplacingChildren:children];
+    }];
+}
+
 // The rows came in while the menu is up: the quick row is put right if they changed it.
 - (void)refreshQuickRow {
     if (!self.items || !self.displayed || self.ended) return;
@@ -851,18 +925,19 @@ static NSString *storedKey(NSString *kind) {
     UIMenu *quick = [self quickRow];
     if ([before isEqualToString:_quickShown]) return;
     SGLog(@"system menu: the quick row is now %@(was %@)", _quickShown.length ? _quickShown : @"empty ", before.length ? before : @"empty");
-    [self.anchor.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
-        // Only the top level, never a submenu that happens to be showing.
-        if (![visible.identifier isEqualToString:kTopMenu]) return visible;
-        NSMutableArray<UIMenuElement *> *children = [visible.children mutableCopy];
-        NSUInteger at = [children indexOfObjectPassingTest:^BOOL(UIMenuElement *child, NSUInteger index, BOOL *stop) {
-            return [child isKindOfClass:UIMenu.class] && [((UIMenu *)child).identifier isEqualToString:kQuickMenu];
-        }];
-        if (at != NSNotFound && quick) children[at] = quick;
-        else if (at != NSNotFound) [children removeObjectAtIndex:at];
-        else if (quick) [children insertObject:quick atIndex:0];
-        return [visible menuByReplacingChildren:children];
-    }];
+    [self showGroup:quick as:kQuickMenu after:nil];
+}
+
+// The rows came in, or were given up on, while the menu is up: the lead items are put right if the rows offer other
+// actions than the stored ones (another context: a song out of a playlist has no Hide in this playlist; the row
+// grayed out), or every lead item back with no rows to stand for them.
+- (void)refreshLead {
+    if (!self.items || !self.displayed || self.ended) return;
+    NSString *before = _leadShown;
+    UIMenu *lead = [self leadGroup];
+    if ([before isEqualToString:_leadShown]) return;
+    SGLog(@"system menu: the lead items are now %@(was %@)", _leadShown.length ? _leadShown : @"none ", before.length ? before : @"none");
+    [self showGroup:lead as:kLeadMenu after:kQuickMenu];
 }
 
 #pragma mark the rows
@@ -886,6 +961,7 @@ static NSString *storedKey(NSString *kind) {
                 if (!session->_groups && session->_rowAttempts >= (NSUInteger)ceil(kQuickWait / kRowsPoll)) {
                     session->_rowsExhausted = YES;
                     [session completeRowWaiters];
+                    [session refreshLead];
                 }
             }
         }
@@ -942,6 +1018,7 @@ static NSString *storedKey(NSString *kind) {
 
     [self completeRowWaiters];
     [self refreshQuickRow];
+    [self refreshLead];
     [self refreshMore];
     return YES;
 }

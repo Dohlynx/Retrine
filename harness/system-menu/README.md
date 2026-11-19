@@ -25,9 +25,9 @@ lines (`SGLog`) go to the unified log.
 
 The ordinary sheet scenarios first check the top level: the menu is on screen (within 1 s, the simulator's
 first menu of a launch being slow), the mod's ⋯ takes touches, the quick row (Share, Add to Playlist, Add to
-Queue) is in it, and its first level reads, in order, the quick row, the add button (Save to Your Library), Spotify's
-rows laid out in place (or the loading row), then the player's own (Speed, Pitch & Reverb ... Show Animated
-Artwork), with no More submenu. "Shows" means a label on screen or an item laid out in the visible menu below the
+Queue) is in it, and its first level reads, in order, the quick row, the add button (Save to Your Library, where it
+is sure to be: Spotify's rows held back, or a saved song's, with no Like row), Spotify's rows laid out in place (or
+the loading row), then the player's own (Speed, Pitch & Reverb ... Show Animated Artwork), with no More submenu. "Shows" means a label on screen or an item laid out in the visible menu below the
 screen's fold, the menu being taller than the screen; then that Spotify's ⋯ action ran once, from code, after the menu was up, that Speed and pitch was told the
 sheet is the player's, and that the sheet is in the mod's window under the app's, unseen, with the menu still up.
 The delayed and timeout scenarios instead hold the Spotify presentation while checking the real menu's
@@ -37,10 +37,22 @@ selection or dismissal, then deliver or withhold Spotify's sheet.
   X put away (alpha 0, hidden from VoiceOver), VoiceOver reading it with Spotify's ⋯'s words; a touch in the slot
   reaches it, nothing opens before the finger, a finger sends its touch down and opens the menu, and the press
   holds while the menu is up and is let go as it ends.
-- `titleitems`: a saved song with Spotify's X shown: the add button (Spotify's words "Added to playlist") is in the
-  menu as Change Where It's Saved, not checked, with a filled star, beside the quick row's Add to Playlist and
-  Spotify's own Add to Liked Songs row (18, in the mock sheet), and Don't play this is a plain item; picking the X
-  fires Spotify's X (not the add button) and the sheet goes.
+- `titleitems`: a saved song out of a playlist with Spotify's X shown, its sheet with neither a Like row nor Hide in
+  this playlist (as 9.1.90's and 9.2.0's): once Spotify's rows are in, the add button (Spotify's words "Added to
+  playlist") is still in the menu as Change Where It's Saved, not checked, with a filled star, beside the quick row's
+  Add to Playlist, and Don't play this is a plain item; picking the X fires Spotify's X (not the add button) and the
+  sheet goes.
+- `playlist`: a song not saved yet in a playlist with the X shown, its sheet with Add to Liked Songs (18) and Hide in
+  this playlist (7), held back: both title row items are in the menu until the rows come, then go, Spotify's two rows
+  standing for them. A second menu leaves them out at once from the stored rows; its live rows, out of the playlist,
+  have no Hide, so Don't play this comes back after the quick row (Save to Your Library stays out for the Like row),
+  and picking it fires Spotify's X.
+- `stalecache`: a song not saved yet out of a playlist with the X shown, the rows stored from a playlist's sheet
+  (Like and Hide in this playlist) and the live ones held back: the menu opens as the last one did, the stored Hide
+  standing for the X. Picking the stored Hide shows Spotify's sheet once the live rows come without Hide, and again
+  in a second menu whose rows never come (after 4 s); neither the X, the add button nor a row fires. In a third menu
+  left up with no rows coming, Don't play this comes back after the quick row once they are given up on. In a
+  fourth, in a playlist whose Hide is grayed out, the X's item stays once the live rows are in.
 - `timing`: one cold opening and one warm opening after the menu and backing sheet dismiss.
   Checks the one-second cold and 250 ms warm limits, without repeated screenshot/timing rehearsals.
 - `rows`: the menu lays out Go to album, the grayed-out Lyrics and Sleep timer (below the sheet's fold), not the
@@ -111,5 +123,7 @@ For the ownership mutation check, make a temporary copy of `ContextMenu.x`, chan
 and pass its absolute path as `CONTEXT_MENU_SOURCE` to `build.sh` with a separate temporary output
 directory. `delayed-pick` must fail because the outstanding request no longer survives menu ending.
 For presentation recognition, restore the any-non-alert predicate: `delayed-mod-panel` must fail its panel
-visibility check. Mutate only a temporary source copy, never the working source.
+visibility check. For the title row items, drop the line in `leadGroup` that leaves out an item whose identifier
+is a shown row's: `playlist` must fail; make `fireTitle:` fire the first lead item that carries an identifier where
+its live rows lack the title, or drop `refreshLead` where the row poll gives up: `stalecache` must fail. Mutate only a temporary source copy, never the working source.
 Remove only those temporary build/source directories after the runs.

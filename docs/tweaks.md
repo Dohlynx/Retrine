@@ -1417,7 +1417,18 @@ Redesigned:
                   It's Saved for a saved song, which opens Spotify's sheet of where it is saved; never read as Liked
                   Songs, Spotify's own Like row staying in the menu), drawn as the player drew it (Star add button's
                   star), and Spotify's X where the
-                  row has one, the rest of Spotify's rows laid out in the menu, then the player's own items, waiting on
+                  row has one, each left out while Spotify's rows in the menu offer its action, matched by the row's
+                  identifier (Spotify's item number, the same on 9.1.90 and 9.2.0), never by its words: Add to Liked
+                  Songs (18; Add to Your Episodes for an episode), which a song not saved yet has, for the add button, and Hide in this playlist or album
+                  (7) for the X, which hides the song there. Out of a playlist or album (a song played from Search), in
+                  Liked Songs, or for a saved song, the sheet has no such row and the item stays. Until Spotify's
+                  rows are read this goes by the stored rows the menu shows (their identifiers stored with them), so
+                  the menu opens as the last one did; the live rows put it right while the menu is up (the item back
+                  if they lack the row or have it grayed out), and so does giving up on them, so an action is never
+                  missing. A stored row picked that stands for an item is any stored row: Spotify's live row of its
+                  title if enabled, else Spotify's own sheet; never the item, which could act on another song or do
+                  another thing. Then the rest of
+                  Spotify's rows laid out in the menu, then the player's own items, waiting on
                   nothing of Spotify's (the button holds a stand-in menu from the start, since UIKit opens
                   a button's menu on touch down only while it holds one, and the session's replaces it as the touch
                   asks); Spotify's ⋯ action is then run from code and its sheet presented
@@ -1477,7 +1488,7 @@ Redesigned:
                   end; a sideways drag starting anywhere else on its row moves the volume by the finger's distance, as
                   iOS 26's thumbless slider did, and a tap there moves nothing. Its ⋯, beside the title and artist where the add button was
                   (PlayerMenu.m), opens the system
-                  menu (ContextMenu/), Spotify's rows with the add button and X first and then Speed, Pitch & Reverb, which opens the sliders, Pitch
+                  menu (ContextMenu/), Spotify's rows with the add button and X first (each but where Spotify's rows have its action) and then Speed, Pitch & Reverb, which opens the sliders, Pitch
                   follows speed and Keep for This Song in a popover from the ⋯ (SpeedPitchMenu.x, Shared/Player), then Audio effects, which
                   opens the Audio effects page in a sheet with its summary under the name (SGDSPShowSettingsSheet, Shared/AudioEffects), and the backgrounds it can switch
                   to (PlayerMenu.m), and a hold on either side of the

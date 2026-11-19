@@ -179,13 +179,29 @@ static UIMenu *recordMenu(id self, SEL _cmd, NSString *title, UIImage *image, NS
 
 #pragma mark - Spotify's sheet
 
+// Whether the song plays in a playlist, whose sheet has Hide in this playlist (`playlist` switches it off between menus),
+// and whether that row is grayed out (`stalecache`'s last menu).
+static BOOL sg_inPlaylist, sg_hideGrayed;
+
+// Rows as a playlist's sheet leaves them stored: Spotify's Like row and Hide in this playlist, enabled.
+static void storePlaylistRows(void) {
+    [NSUserDefaults.standardUserDefaults setObject:@[@[@{@"title": @"Add to Liked Songs", @"enabled": @YES, @"identifier": @"18"},
+                                                       @{@"title": @"Hide in this playlist", @"enabled": @YES, @"identifier": @"7"},
+                                                       @{@"title": @"Go to album", @"enabled": @YES, @"identifier": @"1"}]]
+                                           forKey:@"spotifyglass.redesign.player.menuRows.track"];
+}
+
 // The rows of 9.1.78's player sheet, with their item numbers; Sleep timer last, below what the sheet shows.
 static NSArray<NSArray<NSString *> *> *spotifyRows(void) {
     if (is(@"podcast")) return @[@[@"text.badge.plus", @"Add to queue", @"11"], @[@"square.stack", @"Go to show", @"40"], @[@"square.and.arrow.up", @"Share", @"9"]];
-    // Spotify's own Like row (18), as 9.2.0's sheet has it beside Add to playlist.
     NSMutableArray *rows = [@[@[@"plus.circle", @"Add to playlist", @"19"], @[@"text.badge.plus", @"Add to queue", @"11"],
-                              @[@"square.and.arrow.up", @"Share", @"9"], @[@"heart", @"Add to Liked Songs", @"18"],
-                              @[@"square.stack", @"Go to album", @"1"], @[@"quote.bubble", @"Lyrics", @"28"]] mutableCopy];
+                              @[@"square.and.arrow.up", @"Share", @"9"]] mutableCopy];
+    // Spotify's own Like row (18), as 9.1.90's and 9.2.0's sheets have it for a song not saved yet; a saved one's
+    // (titleitems') has none.
+    if (!is(@"titleitems")) [rows addObject:@[@"heart", @"Add to Liked Songs", @"18"]];
+    // Hide in this playlist (7), the X's action, as those sheets have it in a playlist.
+    if (sg_inPlaylist) [rows addObject:@[@"eye.slash", @"Hide in this playlist", @"7"]];
+    [rows addObjectsFromArray:@[@[@"square.stack", @"Go to album", @"1"], @[@"quote.bubble", @"Lyrics", @"28"]]];
     for (int i = 0; i < 8; i++) [rows addObject:@[@"circle", [NSString stringWithFormat:@"Row %d", i + 1], [NSString stringWithFormat:@"%d", 60 + i]]];
     [rows addObject:@[@"moon", @"Sleep timer", @"44"]];
     return rows;
@@ -320,7 +336,8 @@ static SGHarnessPlayer *sg_player;
     UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(56, 0, 280, 64)];
     title.text = row[1];
     // Lyrics grayed out, as for a track no source has them for.
-    title.textColor = [row[1] isEqualToString:@"Lyrics"] ? [UIColor colorWithWhite:1 alpha:0.3] : UIColor.whiteColor;
+    BOOL grayed = [row[1] isEqualToString:@"Lyrics"] || (sg_hideGrayed && [row[1] isEqualToString:@"Hide in this playlist"]);
+    title.textColor = grayed ? [UIColor colorWithWhite:1 alpha:0.3] : UIColor.whiteColor;
     [control addSubview:title];
     [cell.contentView addSubview:control];
     cell.backgroundColor = UIColor.clearColor;
@@ -742,7 +759,7 @@ static NSArray<NSString *> *quickTitles(void) {
         NSLog(@"[harness] done");
         exit(0);
     };
-    sg_rowsHeld = is(@"loading") || is(@"quick") || is(@"quicklate") || is(@"podcast") || is(@"stored");
+    sg_rowsHeld = is(@"loading") || is(@"quick") || is(@"quicklate") || is(@"podcast") || is(@"stored") || is(@"playlist") || is(@"stalecache");
     sg_rowsNever = is(@"quicklate");
     sg_rowsAfter = is(@"quick") ? 1.2 : is(@"loading") || is(@"podcast") ? 1.5 : 0;
 
@@ -898,6 +915,18 @@ static NSArray<NSString *> *quickTitles(void) {
         self.banElement.hidden = NO;
         [self.view layoutIfNeeded];
     }
+    if ([run isEqualToString:@"playlist"]) {
+        // A song not saved yet, in a playlist, Spotify offering its X.
+        sg_inPlaylist = YES;
+        self.banElement.hidden = NO;
+        [self.view layoutIfNeeded];
+    }
+    if ([run isEqualToString:@"stalecache"]) {
+        // A song not saved yet out of a playlist, Spotify offering its X, the rows stored from a playlist's sheet.
+        storePlaylistRows();
+        self.banElement.hidden = NO;
+        [self.view layoutIfNeeded];
+    }
 
     if ([run isEqualToString:@"timing"]) {
         [self tap:^(CFTimeInterval cold) {
@@ -924,10 +953,15 @@ static NSArray<NSString *> *quickTitles(void) {
         NSUInteger rows = [order indexOfObjectPassingTest:^BOOL(NSString *title, NSUInteger index, BOOL *stop) {
             return [title isEqualToString:@"<loading>"] || [spotifyRowTitles() containsObject:title];
         }];
-        // The add button named for what its tap does: titleitems' song is saved.
-        NSString *add = [run isEqualToString:@"titleitems"] ? @"Change Where It's Saved" : @"Save to Your Library";
-        check(rows != NSNotFound && inOrder(order, @[@"Share", @"Add to Playlist", @"Add to Queue", add, order[MIN(rows, order.count - 1)],
-                                                     @"Speed, Pitch & Reverb", @"Show Animated Artwork"]) && ![order containsObject:@"[More]"],
+        // The add button named for what its tap does (titleitems' song is saved), where it is sure to be: Spotify's
+        // rows held back, or with no Like row (titleitems'). Rows that come at once with Spotify's Like row take it
+        // out, as do rows stored with it (stalecache's).
+        NSString *add = [run isEqualToString:@"titleitems"] ? @"Change Where It's Saved"
+                      : sg_rowsHeld && ![run isEqualToString:@"stalecache"] ? @"Save to Your Library" : nil;
+        NSMutableArray<NSString *> *want = [quickTitles() mutableCopy];
+        if (add) [want addObject:add];
+        if (rows != NSNotFound) [want addObjectsFromArray:@[order[rows], @"Speed, Pitch & Reverb", @"Show Animated Artwork"]];
+        check(rows != NSNotFound && inOrder(order, want) && ![order containsObject:@"[More]"],
               [NSString stringWithFormat:@"the quick row, the add button, Spotify's rows, then the player's own: %@", [order componentsJoinedByString:@" | "]]);
         // Spotify's sheet is asked for once the menu is up, into the mod's window, under the app's.
         waitFor(^BOOL { return self.sheetWindow != nil; }, 2, ^{
@@ -940,6 +974,21 @@ static NSArray<NSString *> *quickTitles(void) {
             [self run:run finish:finish];
         });
     }];
+}
+
+// `stalecache`'s next menu, a second after the last and its sheet went, on rows stored from a playlist's sheet again;
+// `then` once Spotify's sheet is in the mod's window (its view loaded, so rows given then are kept).
+- (void)nextStaleMenu:(dispatch_block_t)then {
+    waitFor(^BOOL { return self.sheetGone && !openMenu(); }, 3, ^{
+        check(self.sheetGone && !openMenu(), @"the last menu and its sheet went");
+        after(1, ^{
+            storePlaylistRows();
+            [self tap:^(CFTimeInterval took) {
+                check(took >= 0, @"the next menu opened");
+                waitFor(^BOOL { return self.sheetWindow != nil; }, 2, then);
+            }];
+        });
+    });
 }
 
 // Waits for the sheet and the menu to go, then reports.
@@ -1112,17 +1161,114 @@ static NSArray<NSString *> *quickTitles(void) {
     if ([run isEqualToString:@"titleitems"]) {
         // The title row's buttons as items, after the quick row: a saved song's add button named for what its tap does
         // (not Spotify's "Added to playlist", nor a Liked Songs checkmark), its star filled, beside the quick row's
-        // playlist picker and Spotify's own Like row; and Spotify's X while Spotify shows it; a pick fires the button.
-        UIMenuElement *add = sg_elements[@"Change Where It's Saved"], *ban = sg_elements[@"Don't play this"];
-        check(menuShowsAll(@[@"Change Where It's Saved", @"Don't play this"]) && !menuShows(@"Added to playlist") && !menuShows(@"Save to Your Library"),
-              @"the saved song's add button and the X are in the menu");
-        check([add isKindOfClass:UIAction.class] && ((UIAction *)add).state == UIMenuElementStateOff && [((UIAction *)add).image.description containsString:@"star.fill"],
-              [NSString stringWithFormat:@"the saved song's add button: not checked, a filled star (%@)", ((UIAction *)add).image]);
-        check(menuShowsAll(@[@"Add to Playlist", @"Add to Liked Songs"]), @"the quick row's playlist picker and Spotify's Like row stay their own");
-        check([ban isKindOfClass:UIAction.class] && ((UIAction *)ban).state == UIMenuElementStateOff, @"the X is a plain item");
-        pick(@"Don't play this");
-        check(self.banTaps == 1 && self.addTaps == 0, [NSString stringWithFormat:@"picking the X fired Spotify's X (%lu, add %lu)", (unsigned long)self.banTaps, (unsigned long)self.addTaps]);
-        [self gone:@"picked the X" selected:nil from:CACurrentMediaTime() finish:finish];
+        // playlist picker; and Spotify's X while Spotify shows it; a pick fires the button. Out of a playlist, a saved
+        // song's sheet has neither a Like row nor Hide in this playlist, so both stay once Spotify's rows are in.
+        waitFor(^BOOL { return menuShows(@"Go to album"); }, 3, ^{
+            UIMenuElement *add = sg_elements[@"Change Where It's Saved"], *ban = sg_elements[@"Don't play this"];
+            check(menuShows(@"Go to album") && menuShowsAll(@[@"Change Where It's Saved", @"Don't play this"]) && !menuShows(@"Added to playlist")
+                  && !menuShows(@"Save to Your Library"), @"with Spotify's rows in, the saved song's add button and the X are in the menu");
+            check([add isKindOfClass:UIAction.class] && ((UIAction *)add).state == UIMenuElementStateOff && [((UIAction *)add).image.description containsString:@"star.fill"],
+                  [NSString stringWithFormat:@"the saved song's add button: not checked, a filled star (%@)", ((UIAction *)add).image]);
+            check(menuShows(@"Add to Playlist"), @"the quick row's playlist picker stays its own");
+            check([ban isKindOfClass:UIAction.class] && ((UIAction *)ban).state == UIMenuElementStateOff, @"the X is a plain item");
+            pick(@"Don't play this");
+            check(self.banTaps == 1 && self.addTaps == 0, [NSString stringWithFormat:@"picking the X fired Spotify's X (%lu, add %lu)", (unsigned long)self.banTaps, (unsigned long)self.addTaps]);
+            [self gone:@"picked the X" selected:nil from:CACurrentMediaTime() finish:finish];
+        });
+        return;
+    }
+    if ([run isEqualToString:@"playlist"]) {
+        // In a playlist Spotify's rows have the add button's action (Add to Liked Songs) and the X's (Hide in this
+        // playlist): their items go once the rows are in, and the next menu leaves them out at once from the stored
+        // rows. Out of the playlist the live rows have no Hide, and the X's item comes back and fires the X.
+        check(menuShowsAll(@[@"Save to Your Library", @"Don't play this"]), @"before Spotify's rows are in, both items are in the menu");
+        [self.mockSheet giveRows];
+        waitFor(^BOOL { return menuShows(@"Hide in this playlist") && !menuShowsAny(@[@"Save to Your Library", @"Don't play this"]); }, 3, ^{
+            check(menuShowsAll(@[@"Add to Liked Songs", @"Hide in this playlist"]) && !menuShowsAny(@[@"Save to Your Library", @"Don't play this"]),
+                  [NSString stringWithFormat:@"with Spotify's rows in, Spotify's Like and Hide rows stand for the add button and the X: %@",
+                   [shownOrder(self.front) componentsJoinedByString:@" | "]]);
+            [self.front.contextMenuInteraction dismissMenu];
+            waitFor(^BOOL { return self.sheetGone && !openMenu(); }, 3, ^{
+                check(self.sheetGone, @"the first menu closed with no pick took its sheet with it");
+                after(1, ^{
+                    [self tap:^(CFTimeInterval took) {
+                        check(took >= 0, @"the second menu opened");
+                        after(0.15, ^{
+                            check(!self.mockSheet.loaded && menuShowsAll(@[@"Add to Liked Songs", @"Hide in this playlist"])
+                                  && !menuShowsAny(@[@"Save to Your Library", @"Don't play this"]),
+                                  @"before its live rows, the stored rows' Like and Hide stand for the add button and the X");
+                            sg_inPlaylist = NO;
+                            [self.mockSheet giveRows];
+                            // The menu's views follow the update with an animation, the old row's label going with it.
+                            waitFor(^BOOL { return menuShows(@"Don't play this") && !menuShows(@"Hide in this playlist"); }, 3, ^{
+                                check(menuShows(@"Don't play this") && !menuShows(@"Hide in this playlist"),
+                                      @"out of the playlist the live rows have no Hide: the X's item is back");
+                                check(menuShows(@"Add to Liked Songs") && !menuShows(@"Save to Your Library"), @"Spotify's Like row still stands for the add button");
+                                check(inOrder(shownOrder(self.front), @[@"Add to Queue", @"Don't play this", @"Add to Liked Songs"]),
+                                      [NSString stringWithFormat:@"the X's item is back after the quick row: %@", [shownOrder(self.front) componentsJoinedByString:@" | "]]);
+                                pick(@"Don't play this");
+                                check(self.banTaps == 1 && self.addTaps == 0, [NSString stringWithFormat:@"picking it fired Spotify's X (%lu, add %lu)",
+                                                                               (unsigned long)self.banTaps, (unsigned long)self.addTaps]);
+                                [self gone:@"picked the X" selected:nil from:CACurrentMediaTime() finish:finish];
+                            });
+                        });
+                    }];
+                });
+            });
+        });
+        return;
+    }
+    if ([run isEqualToString:@"stalecache"]) {
+        // Rows stored from a playlist's sheet, the song now out of one: the stored Hide in this playlist stands for the
+        // X until the live rows are in, so the menu opens as the last one did. Picked, it is any stale stored row:
+        // Spotify's sheet is shown once the live rows come without Hide, or once they never come, and the X is never
+        // fired for it; with the menu up and no rows coming, the X's item comes back; and a live Hide grayed out
+        // leaves the X's item in.
+        check(menuShowsAll(@[@"Add to Liked Songs", @"Hide in this playlist"]) && !menuShowsAny(@[@"Save to Your Library", @"Don't play this"]),
+              @"before the live rows, the stored Like and Hide rows stand for the add button and the X");
+        pick(@"Hide in this playlist");
+        after(0.3, ^{
+            check(self.banTaps == 0 && sg_selectionCount == 0, @"the stored Hide waits for the live rows");
+            [self.mockSheet giveRows];
+            waitFor(^BOOL { return self.sheetShown; }, 3, ^{
+                check(self.sheetShown && self.banTaps == 0 && self.addTaps == 0 && sg_selectionCount == 0,
+                      [NSString stringWithFormat:@"the live rows have no Hide: Spotify's sheet is shown, neither the X (%lu) nor the add button (%lu) nor a row (%lu) fired",
+                       (unsigned long)self.banTaps, (unsigned long)self.addTaps, (unsigned long)sg_selectionCount]);
+                [self.sheet.presentingViewController dismissViewControllerAnimated:NO completion:nil];
+                [self nextStaleMenu:^{
+                    pick(@"Hide in this playlist");
+                    waitFor(^BOOL { return self.sheetShown; }, 6, ^{
+                        check(self.sheetShown && self.banTaps == 0 && self.addTaps == 0 && sg_selectionCount == 0,
+                              [NSString stringWithFormat:@"no live rows in time: Spotify's sheet is shown, neither the X (%lu) nor the add button (%lu) fired",
+                               (unsigned long)self.banTaps, (unsigned long)self.addTaps]);
+                        [self.sheet.presentingViewController dismissViewControllerAnimated:NO completion:nil];
+                        [self nextStaleMenu:^{
+                            check(!menuShows(@"Don't play this"), @"the next menu opens as the last did, the stored Hide standing for the X");
+                            waitFor(^BOOL { return menuShows(@"Don't play this"); }, 6, ^{
+                                check(menuShows(@"Don't play this") && inOrder(shownOrder(self.front), @[@"Add to Queue", @"Don't play this", @"Add to Liked Songs"]),
+                                      [NSString stringWithFormat:@"the rows given up on, the X's item is back after the quick row: %@",
+                                       [shownOrder(self.front) componentsJoinedByString:@" | "]]);
+                                pick(@"Don't play this");
+                                check(self.banTaps == 1, @"picking it fired Spotify's X");
+                                sg_inPlaylist = sg_hideGrayed = YES;
+                                [self nextStaleMenu:^{
+                                    [self.mockSheet giveRows];
+                                    // The menu's views follow the update with an animation, the stored rows' labels going with it.
+                                    waitFor(^BOOL { return menuShowsAll(@[@"Don't play this", @"Hide in this playlist"]); }, 3, ^{
+                                        check(menuShowsAll(@[@"Don't play this", @"Hide in this playlist"]) && !menuShows(@"Save to Your Library"),
+                                              [NSString stringWithFormat:@"a live Hide grayed out leaves the X's item in; the enabled Like row still stands for the add button: %@",
+                                               [shownOrder(self.front) componentsJoinedByString:@" | "]]);
+                                        pick(@"Don't play this");
+                                        check(self.banTaps == 2 && sg_selectionCount == 0, @"picking it fired Spotify's X, no row of Spotify's");
+                                        [self gone:@"picked the X" selected:nil from:CACurrentMediaTime() finish:finish];
+                                    });
+                                }];
+                            });
+                        }];
+                    });
+                }];
+            });
+        });
         return;
     }
     if ([run isEqualToString:@"animated"]) {
