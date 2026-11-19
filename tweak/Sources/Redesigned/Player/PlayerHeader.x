@@ -12,10 +12,16 @@
 // Spotify's, on glass while Header glass is on, and the grabber is only drawn, as the header was before.
 //
 // The grabber is a button of the mod's: a tap on it, VoiceOver's activation of it (it reads as the arrow's own words,
-// a button) and VoiceOver's escape on it close the player through the arrow's action. It is a subview of the header
-// unit's view, so it fades with the row while the lyrics have the player to themselves (PlayerLyrics.x fades that
-// view by its alpha) and comes back with it. Its whole touch area lies inside the row, which takes touches only
-// within its bounds, and the pill is placed in it on its own, where the Music app has it.
+// a button) and VoiceOver's escape on it close the player through the arrow's action. It stands in the player's own
+// view, just above the header row's branch of it, so the row decides neither where it is drawn nor where it takes a
+// touch: the pill is pinned where the Music app has it and the whole touch area is centered on the pill, wherever
+// Spotify then moves the row. Spotify 9.2.0 places the row by its top constraint, and a move of it lays the header out
+// again only across the safe area's edge; a pill inside the row rode along to 115pt on the phone, one row height
+// low, and one pinned there alone would sit outside the row's touches.
+// It takes the row's look: the row and each view between it and the player are watched for their alpha and hidden,
+// which every fade of the row sets (the lyrics on their own, PlayerLyrics.x, the AI DJ's row with them; Spotify's
+// own), inside its animation, so the grabber goes and comes back with the row in the same animation, Reduce
+// Motion's included. The row holds it, and it leaves the player when the row goes.
 //
 // The AI DJ's circles: glass is the control layer floating over the field, so it goes behind the round buttons only.
 // Each circle is a subview of the button it sits behind (SGRGlassInside), below what the button draws and taking no
@@ -199,16 +205,42 @@ static void putButtonsAway(UIView *header, UIView *close, UIControl *route) {
 #pragma mark - the grabber
 
 // The Music app's grabber over its full screen player (measured on its screenshot: a 60 x 4 pill, 7pt under the safe
-// area's top), in a touch area of at least 44pt.
+// area's top), centered in a touch area of at least 44pt.
 static const CGSize kGrabberSize = {60, 4};
 static const CGFloat kGrabberTop = 7, kGrabberTouch = 44;
+static char kRowLookContext;
 
 @interface SGRPlayerGrabber : UIControl
 @property (nonatomic, weak) UIControl *close;
 @property (nonatomic, readonly) UIView *pill;
+// The header row it stands for, whose look it takes.
+@property (nonatomic, weak, readonly) UIView *row;
+- (void)follow:(UIView *)row in:(UIView *)player;
+- (void)detach;
+- (void)updateTopInset;
 @end
 
-@implementation SGRPlayerGrabber
+// A full-window view receives inset changes even while the header is stationary or the player is sliding.
+@interface SGRGrabberInsetObserver : UIView
+@property (nonatomic, weak) SGRPlayerGrabber *grabber;
+@end
+@implementation SGRGrabberInsetObserver
+- (void)safeAreaInsetsDidChange {
+    [super safeAreaInsetsDidChange];
+    [self.grabber updateTopInset];
+}
+@end
+
+// The row's hold on its grabber: the row keeps it, and the grabber leaves the player once the row has gone.
+@interface SGRGrabberHold : UIView
+@property (nonatomic, readonly) SGRPlayerGrabber *grabber;
+@end
+
+@implementation SGRPlayerGrabber {
+    NSHashTable<UIView *> *_watched;   // the row and each view between it and the player
+    NSLayoutConstraint *_pin, *_middle, *_edge;
+    SGRGrabberInsetObserver *_insets;
+}
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
@@ -217,14 +249,128 @@ static const CGFloat kGrabberTop = 7, kGrabberTouch = 44;
     _pill.layer.cornerRadius = kGrabberSize.height / 2;
     _pill.layer.cornerCurve = kCACornerCurveContinuous;
     [self addSubview:_pill];
+    self.translatesAutoresizingMaskIntoConstraints = NO;
+    _pill.translatesAutoresizingMaskIntoConstraints = NO;
+    NSLayoutConstraint *center = [self.centerYAnchor constraintEqualToAnchor:_pill.centerYAnchor];
+    center.priority = UILayoutPriorityRequired - 1; // Keep all 44pt reachable when the window has no top inset.
+    [NSLayoutConstraint activateConstraints:@[
+        [self.widthAnchor constraintEqualToConstant:kGrabberSize.width + kGrabberTouch], [self.heightAnchor constraintEqualToConstant:kGrabberTouch],
+        center, [_pill.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+        [_pill.widthAnchor constraintEqualToConstant:kGrabberSize.width], [_pill.heightAnchor constraintEqualToConstant:kGrabberSize.height],
+    ]];
+    _watched = [NSHashTable weakObjectsHashTable];
     self.isAccessibilityElement = YES;
     self.accessibilityTraits = UIAccessibilityTraitButton;
     [self addTarget:self action:@selector(sgr_close) forControlEvents:UIControlEventTouchUpInside];
     return self;
 }
 
+- (void)dealloc {
+    [self unwatch];
+    [_insets removeFromSuperview];
+}
+
+- (void)unwatch {
+    for (UIView *view in _watched) {
+        [view removeObserver:self forKeyPath:@"alpha" context:&kRowLookContext];
+        [view removeObserver:self forKeyPath:@"hidden" context:&kRowLookContext];
+    }
+    [_watched removeAllObjects];
+}
+
+// In the player just above the row's branch of it, the pill pinned `top` under the player's top and centered over
+// the row, and the row and each view between it and the player watched for their look. Taking the row out of the
+// player takes the two constraints across with it; a row put in again gets them anew.
+- (void)detach {
+    [self unwatch];
+    _close = nil;
+    _row = nil;
+    _pin.active = NO;
+    _edge.active = NO;
+    _middle.active = NO;
+    [_insets removeFromSuperview];
+    [self removeFromSuperview];
+}
+
+- (void)updateTopInset {
+    UIWindow *window = _insets.window;
+    CGFloat top = window.safeAreaInsets.top + kGrabberTop;
+    if (window && _pin.constant != top) _pin.constant = top;
+}
+
+- (void)follow:(UIView *)row in:(UIView *)player {
+    _row = row;
+    NSMutableArray<UIView *> *chain = [NSMutableArray array];
+    for (UIView *view = row; view.superview != player; view = view.superview) [chain addObject:view.superview];
+    UIView *branch = chain.lastObject ?: row;
+    [chain insertObject:row atIndex:0];
+    if (self.superview != player || [player.subviews indexOfObject:self] < [player.subviews indexOfObject:branch]) [player insertSubview:self aboveSubview:branch];
+    UIWindow *window = player.window;
+    if (!_insets) {
+        _insets = [SGRGrabberInsetObserver new];
+        _insets.grabber = self;
+        _insets.userInteractionEnabled = NO;
+        _insets.accessibilityElementsHidden = YES;
+        _insets.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    }
+    if (_insets.superview != window) {
+        _insets.frame = window.bounds;
+        [window insertSubview:_insets atIndex:0];
+    }
+    if (!_pin.active || _edge.secondItem != player) {
+        _pin.active = NO;
+        _edge.active = NO;
+        _pin = [_pill.topAnchor constraintEqualToAnchor:player.topAnchor constant:window.safeAreaInsets.top + kGrabberTop];
+        _edge = [self.topAnchor constraintGreaterThanOrEqualToAnchor:player.topAnchor];
+        [NSLayoutConstraint activateConstraints:@[_pin, _edge]];
+    }
+    [self updateTopInset];
+    if (!_middle.active || _middle.secondItem != row) {
+        _middle = [self.centerXAnchor constraintEqualToAnchor:row.centerXAnchor];
+        _middle.active = YES;
+    }
+    BOOL same = chain.count == _watched.count;
+    for (UIView *view in chain) same = same && [_watched containsObject:view];
+    if (!same) {
+        [self unwatch];
+        for (UIView *view in chain) {
+            [view addObserver:self forKeyPath:@"alpha" options:0 context:&kRowLookContext];
+            [view addObserver:self forKeyPath:@"hidden" options:0 context:&kRowLookContext];
+            [_watched addObject:view];
+        }
+    }
+    [self takeRowsLook];
+}
+
+// The row's alpha and hidden as the player draws it. A fade sets them inside its animation, where the observer is
+// told at once, so the grabber's are set in the same animation.
+- (void)takeRowsLook {
+    UIView *row = _row;
+    CGFloat alpha = 1;
+    BOOL hidden = !row || !self.superview || ![row isDescendantOfView:self.superview];
+    for (UIView *view in _watched) {
+        alpha *= view.alpha;
+        hidden = hidden || view.hidden;
+    }
+    if (self.alpha != alpha) self.alpha = alpha;
+    if (self.hidden != hidden) self.hidden = hidden;
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context != &kRowLookContext) {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+        return;
+    }
+    [self takeRowsLook];
+}
+
 // YES once the arrow's action has been sent: the arrow still has one to send.
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    return _row && self.superview && [_row isDescendantOfView:self.superview] && [super pointInside:point withEvent:event];
+}
+
 - (BOOL)sgr_close {
+    if (!_row || !self.superview || ![_row isDescendantOfView:self.superview]) return NO;
     UIControl *close = self.close;
     BOOL routed = close && (SGRControlActionEvents(close) & kCloseEvents);
     NSString *how = routed ? SGRFireControl(close) : @"nothing: the down arrow has no action to close by";
@@ -243,15 +389,47 @@ static const CGFloat kGrabberTop = 7, kGrabberTouch = 44;
 
 @end
 
+@implementation SGRGrabberHold
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (!(self = [super initWithFrame:frame])) return nil;
+    self.userInteractionEnabled = NO;
+    self.accessibilityElementsHidden = YES;
+    _grabber = [SGRPlayerGrabber new];
+    return self;
+}
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    UIView *row = self.superview;
+    if (!self.window || (_grabber.superview && ![row isDescendantOfView:_grabber.superview])) [_grabber detach];
+    if (self.window) [row setNeedsLayout];
+}
+@end
+
 // `route`: the arrow to close by, or nil, when the grabber is only drawn; `close`: the arrow, whose words it reads.
 static void placeGrabber(UIView *header, UIView *close, UIControl *route) {
     UIWindow *window = header.window;
     if (!window) return;
-    SGRPlayerGrabber *grabber = objc_getAssociatedObject(header, &kGrabberKey);
-    if (!grabber) {
-        grabber = [SGRPlayerGrabber new];
-        objc_setAssociatedObject(header, &kGrabberKey, grabber, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // The player's own full screen view (SPTNowPlayingView), whose top is the screen's once the player is up, under
+    // the window's safe area: the player's own safe area and the window's coordinates both take in the player's open
+    // as it slides up (9.2.0, 2026-11-18: the grabber 500pt over the screen).
+    UIView *player = nil;
+    for (UIView *v = header.superview; v && v != window; v = v.superview) {
+        if ([v.nextResponder isKindOfClass:%c(_TtC19NowPlaying_ViewImpl24NowPlayingViewController)]) {
+            player = v;
+            break;
+        }
     }
+    SGRGrabberHold *hold = objc_getAssociatedObject(header, &kGrabberKey);
+    if (!player) {
+        [hold.grabber detach];
+        return;
+    }
+    if (!hold) {
+        hold = [[SGRGrabberHold alloc] initWithFrame:CGRectZero];
+        objc_setAssociatedObject(header, &kGrabberKey, hold, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [header addSubview:hold];
+    }
+    SGRPlayerGrabber *grabber = hold.grabber;
     grabber.close = route;
     grabber.userInteractionEnabled = route != nil;
     grabber.isAccessibilityElement = route != nil;
@@ -260,37 +438,15 @@ static void placeGrabber(UIView *header, UIView *close, UIControl *route) {
     NSString *label = close.accessibilityLabel.length ? close.accessibilityLabel : SGL(@"player.grabber.close", @"Close Player");
     if (![grabber.accessibilityLabel isEqualToString:label]) grabber.accessibilityLabel = label;
     grabber.pill.backgroundColor = [UIColor colorWithWhite:1 alpha:SGRIncreaseContrast() ? 0.5 : 0.3];
-    if (grabber.superview != header) [header addSubview:grabber];
-    else if (header.subviews.lastObject != grabber) [header bringSubviewToFront:grabber];
-
-    // Measured in the player's own full screen view (SPTNowPlayingView), whose top is the screen's once the player
-    // is up, under the window's safe area: the player's own safe area and the window's coordinates both take in the
-    // player's open as it slides up, and the header is not laid out again once it is up (9.2.0, 2026-11-18: the
-    // grabber 500pt over the screen).
-    UIView *player = nil;
-    for (UIView *v = header.superview; v && v != window; v = v.superview) {
-        if ([v.nextResponder isKindOfClass:%c(_TtC19NowPlaying_ViewImpl24NowPlayingViewController)]) {
-            player = v;
-            break;
-        }
-    }
-    if (!player) return;
-    CGFloat top = window.safeAreaInsets.top + kGrabberTop;   // in the player
-    CGFloat pillY = [header convertPoint:CGPointMake(0, top) fromView:player].y;
-    // The touch area centered on the pill as far as the row lets it, and never past the row's edges, where the row's
-    // own hit test would cut it off.
-    CGFloat rowHeight = header.bounds.size.height;
-    CGSize touch = CGSizeMake(kGrabberSize.width + kGrabberTouch, MIN(kGrabberTouch, rowHeight));
-    CGFloat touchY = MIN(MAX(0, pillY + kGrabberSize.height / 2 - touch.height / 2), rowHeight - touch.height);
-    CGRect frame = CGRectMake(round(CGRectGetMidX(header.bounds) - touch.width / 2), round(touchY), touch.width, touch.height);
-    if (!CGRectEqualToRect(grabber.frame, frame)) grabber.frame = frame;
-    CGRect pill = CGRectMake((touch.width - kGrabberSize.width) / 2, round(pillY) - frame.origin.y, kGrabberSize.width, kGrabberSize.height);
-    if (!CGRectEqualToRect(grabber.pill.frame, pill)) grabber.pill.frame = pill;
+    // Constraints, not a place worked out here: Spotify moves the row by its top constraint with no layout of the
+    // header (9.2.0 simulator, 2026-11-19: the row one row lower carried a pill placed in it to 114pt, where the phone
+    // had it), and the engine keeps the grabber where it is pinned.
+    [grabber follow:header in:player];
 
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        SGLog(@"redesign player: grabber at %.0f in %@ (safe top %.0f, header row at %.0f, touch area %@ in it), %@", top, NSStringFromClass(player.class),
-              window.safeAreaInsets.top, [header convertPoint:CGPointZero toView:player].y, NSStringFromCGRect(frame),
+        SGLog(@"redesign player: grabber pinned at %.0f in %@ (safe top %.0f, header row at %.0f), %@", window.safeAreaInsets.top + kGrabberTop, NSStringFromClass(player.class),
+              window.safeAreaInsets.top, [header convertPoint:CGPointZero toView:player].y,
               route ? @"closing by the down arrow" : close ? @"drawn only, the down arrow has no action to close by" : @"drawn only, no down arrow");
     });
 }

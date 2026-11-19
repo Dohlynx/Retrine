@@ -4008,6 +4008,22 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
 // Music app's 60 x 4 pill 7pt under the safe area's top, a button VoiceOver reads with the arrow's words, whose
 // activation, escape and a finger's tap anywhere in its 44pt touch area each close the player by the arrow's action.
 // header-noroute: the arrow has no action to close by, so it stays drawn, touched and read, and the grabber is only drawn.
+// The grabber stands in the player apart from the row: kept one row height lower by Spotify, the row leaves the pill
+// where it is, in the middle of the touch area, and a finger on the pill still closes; and it fades with the row
+// while the lyrics are alone and comes back with it.
+
+// The grabber standing for a header row (PlayerHeader.x's SGRPlayerGrabber, in the row's player; inside the row itself
+// in sources from before it moved out, which SRC can build).
+static UIControl *grabberIn(UIView *header) {
+    __block UIControl *found = nil;
+    SGForEachView(header.window, ^(UIView *view) {
+        if (![NSStringFromClass(view.class) isEqualToString:@"SGRPlayerGrabber"]) return;
+        BOOL stands = [view respondsToSelector:NSSelectorFromString(@"row")] ? [view valueForKey:@"row"] == header : view.superview == header;
+        if (stands) found = (UIControl *)view;
+    });
+    return found;
+}
+
 - (void)runHeaderChecks {
     BOOL routed = [scenario() isEqualToString:@"header"];
     UIViewController *headerUnit = _units.firstObject;
@@ -4036,6 +4052,18 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
     [_host layoutIfNeeded];
     [headerUnit viewDidLayoutSubviews];
     _host.frame = up;
+    // Spotify then moves the row one row height lower and back, with no layout of the header (9.2.0 simulator: by the
+    // row's top constraint, which carried the pill to 114pt, where the phone had it); the display pass after each
+    // move lays out the rest.
+    CGRect row = header.frame;
+    UIView *movedPill = grabberIn(header).subviews.firstObject;
+    header.frame = CGRectOffset(row, 0, row.size.height);
+    [self.window layoutIfNeeded];
+    CGRect movedDrawn = [movedPill convertRect:movedPill.bounds toView:_host];
+    [self expect:movedPill && fabs(CGRectGetMinY(movedDrawn) - (safeTop + 7)) <= 0.5 step:@"the grabber stays when Spotify moves the row"
+          detail:[NSString stringWithFormat:@"%@ in the player with the row at %.0f, safe top %.0f", NSStringFromCGRect(movedDrawn), CGRectGetMinY(header.frame), safeTop]];
+    header.frame = row;
+    [self.window layoutIfNeeded];
     // Spotify gives the ⋯ its alpha back as playback starts, with no layout of the header.
     more.alpha = 1;
     for (UIControl *button in @[arrow ?: (id)NSNull.null, more ?: (id)NSNull.null]) {
@@ -4056,8 +4084,7 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
     }
     extern __weak UIView *SGRHarnessWatchedMore;
     [self expect:more && SGRHarnessWatchedMore == more step:@"the ⋯ handed to the menu" detail:NSStringFromClass(SGRHarnessWatchedMore.class)];
-    UIControl *grabber = nil;
-    for (UIView *view in header.subviews) if ([NSStringFromClass(view.class) isEqualToString:@"SGRPlayerGrabber"]) grabber = (UIControl *)view;
+    UIControl *grabber = grabberIn(header);
     UIView *pill = grabber.subviews.firstObject;
     CGRect drawn = [pill convertRect:pill.bounds toView:_host];
     [self expect:grabber && CGSizeEqualToSize(pill.bounds.size, CGSizeMake(60, 4)) && fabs(CGRectGetMinY(drawn) - (safeTop + 7)) <= 0.5
@@ -4090,12 +4117,82 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
     // A finger at the touch area's top edge, which lies over the pill.
     CGPoint finger = CGPointMake(CGRectGetMidX(inner), CGRectGetMinY(inner));
     SGHarnessTap(self.window, finger);
+    // Where the pill is drawn in the window, and whether a touch at its middle reaches the grabber.
+    CGPoint (^onPill)(void) = ^CGPoint {
+        CGRect shown = [pill convertRect:pill.bounds toView:nil];
+        return CGPointMake(CGRectGetMidX(shown), CGRectGetMidY(shown));
+    };
+    BOOL (^pillTakesTouch)(void) = ^BOOL { return [self.window hitTest:onPill() withEvent:nil] == grabber; };
+    __block id hideBefore = nil;
     after(0.6, ^{
         [self expect:closes == 3 step:@"a finger on the grabber closes the player"
               detail:[NSString stringWithFormat:@"at %@, the arrow's action ran %lu times", NSStringFromCGPoint(finger), (unsigned long)closes]];
-        NSLog(@"[harness] header checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
-              self->_failures ? @"FAIL" : @"PASS");
-        exit(self->_failures ? 1 : 0);
+        // Spotify keeps the row one row height lower.
+        header.frame = CGRectOffset(row, 0, row.size.height);
+        [self.window layoutIfNeeded];
+        CGRect drawnPill = [pill convertRect:pill.bounds toView:nil], touch = [grabber convertRect:grabber.bounds toView:nil];
+        CGFloat expectedCenter = MAX(CGRectGetMidY(drawnPill), CGRectGetMinY([self->_host convertRect:self->_host.bounds toView:nil]) + touch.size.height / 2);
+        [self expect:CGRectContainsRect(touch, drawnPill) && fabs(CGRectGetMidY(touch) - expectedCenter) <= 0.5 && touch.size.height >= 44 && pillTakesTouch()
+                step:@"the pill over the moved row in the middle of its touch area"
+              detail:[NSString stringWithFormat:@"pill %@, touch area %@, the row at %.0f", NSStringFromCGRect(drawnPill), NSStringFromCGRect(touch), CGRectGetMinY(header.frame)]];
+        CGPoint there = onPill();
+        SGHarnessTap(self.window, there);
+        after(0.6, ^{
+            [self expect:closes == 4 step:@"a finger on the pill over the moved row closes the player"
+                  detail:[NSString stringWithFormat:@"at %@, the arrow's action ran %lu times", NSStringFromCGPoint(there), (unsigned long)closes]];
+            header.frame = row;
+            [self.window layoutIfNeeded];
+            // The lyrics alone fade everything with the row, and a tap brings it back. The choice goes back as it was
+            // before the app exits, so later scenarios on this simulator read their own.
+            hideBefore = [NSUserDefaults.standardUserDefaults objectForKey:SGRKeyLyricsAutoHide];
+            SGSetInt(SGRKeyLyricsAutoHide, SGRLyricsHideAll);
+            SGRPlayerToggleLyrics();
+        });
+        UIGestureRecognizer *wake = nil;
+        for (UIGestureRecognizer *recognizer in self->_host.gestureRecognizers) {
+            if ([NSStringFromClass(recognizer.class) isEqualToString:@"SGRPlayerWake"]) wake = recognizer;
+        }
+        // The pill's alpha as the window draws it.
+        CGFloat (^shown)(void) = ^CGFloat {
+            CGFloat alpha = 1;
+            for (UIView *view = pill; view; view = view.superview) alpha *= view.hidden ? 0 : view.alpha;
+            return alpha;
+        };
+        NSString *(^look)(void) = ^NSString * {
+            return [NSString stringWithFormat:@"lyrics %@, row alpha %.2f, the pill drawn at alpha %.2f, a touch on the pill %@", SGRPlayerLyricsOpen() ? @"up" : @"down",
+                    header.alpha, shown(), pillTakesTouch() ? @"reaches it" : @"does not"];
+        };
+        after(2.5, ^{
+            [self expect:SGRPlayerLyricsOpen() && header.alpha == 1 && shown() == 1 && pillTakesTouch()
+                    step:@"the lyrics up, the grabber with the row" detail:look()];
+        });
+        // kRest is 4 s from the open.
+        after(7.5, ^{
+            [self expect:SGRPlayerLyricsOpen() && header.alpha == 0 && shown() == 0 && !pillTakesTouch()
+                    step:@"the lyrics alone, the grabber faded with the row" detail:look()];
+            // Back in the same turn as the row, inside its animation, with no layout of the header.
+            [wake sgr_woke];
+            [self expect:header.alpha == 1 && shown() == 1 && pillTakesTouch() step:@"woken, the grabber back with the row" detail:look()];
+        });
+        after(8.5, ^{ SGRPlayerToggleLyrics(); });
+        after(9.5, ^{
+            [self expect:!SGRPlayerLyricsOpen() && header.alpha == 1 && shown() == 1 && pillTakesTouch()
+                    step:@"the lyrics closed, the grabber with the row" detail:look()];
+            if (hideBefore) [NSUserDefaults.standardUserDefaults setObject:hideBefore forKey:SGRKeyLyricsAutoHide];
+            else [NSUserDefaults.standardUserDefaults removeObjectForKey:SGRKeyLyricsAutoHide];
+            SGPrefsChanged();
+            // A direct reparent need not leave the window. Even before header layout the old target must be inert.
+            [self.window addSubview:header];
+            [self expect:![grabber pointInside:CGPointMake(CGRectGetMidX(grabber.bounds), CGRectGetMidY(grabber.bounds)) withEvent:nil]
+                        && ![grabber accessibilityActivate] && closes == 4
+                    step:@"the old player cannot route a tap after a same-window move" detail:@"row moved outside player"];
+            [headerUnit viewDidLayoutSubviews];
+            [self expect:!grabber.superview && ![grabber accessibilityActivate] && closes == 4
+                    step:@"a retained detached row leaves no close button" detail:NSStringFromClass(grabber.superview.class) ?: @"detached"];
+            NSLog(@"[harness] header checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
+                  self->_failures ? @"FAIL" : @"PASS");
+            exit(self->_failures ? 1 : 0);
+        });
     });
 }
 
@@ -4117,13 +4214,6 @@ static UIView *standInIn(UIView *drawn) {
     return nil;
 }
 
-// The grabber over a header row (PlayerHeader.x's SGRPlayerGrabber).
-static UIView *grabberIn(UIView *header) {
-    for (UIView *sub in header.subviews) {
-        if ([NSStringFromClass(sub.class) isEqualToString:@"SGRPlayerGrabber"]) return sub;
-    }
-    return nil;
-}
 
 static NSUInteger metalLayersIn(CALayer *layer) {
     NSUInteger count = [layer isKindOfClass:CAMetalLayer.class];

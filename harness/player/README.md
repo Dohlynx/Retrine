@@ -220,12 +220,18 @@ come late, out of order, or not at all.
   the ⋯ is handed to the menu; the grabber is the Music app's 60x4 pill 7pt under the safe area's top, centered, a
   button VoiceOver reads with the arrow's words, whose whole touch area of at least 44x44 takes touches (each corner
   and its middle hit-tested in the window), and its activation, its escape and a finger's tap at the area's top edge
-  (`../tabbar/touch.m`) each close the player by the arrow's action. The log ends with
-  `header checks: n of 8 right -- PASS` or `FAIL`, and the app exits with it. The ⋯ beside the title is the menu's
+  (`../tabbar/touch.m`) each close the player by the arrow's action. The grabber stands in the player apart from the
+  row: with the row moved one row height lower with no layout of the header, as Spotify 9.2.0 moves it by its top
+  constraint (a pill in the row rode along to 114pt, where the phone had it), the pill stays, sits in the middle of
+  its 44pt touch area and a finger on it closes the player. With the lyrics up and left alone (Everything), the
+  pill fades with the row and takes no touch, and the waking tap brings it back in the same turn as the row. The log
+  also checks that removing a retained row detaches the grabber and disables its close action. It
+  covers a direct move within the same window before the next layout and
+  ends with `header checks: n of 17 right -- PASS` or `FAIL`, and the app exits with it. The ⋯ beside the title is the menu's
   button, which this harness does not build; `harness/system-menu`'s `beside` run covers it.
 - `header-noroute` is the same header with an arrow that has no action to close by: the arrow stays drawn, read by
   VoiceOver and touched, the ⋯ is still put away, and the grabber is only drawn (not read, not touched, its
-  activation and escape answering NO). `header checks: n of 5 right`.
+  activation and escape answering NO). `header checks: n of 6 right`.
 
 - `timerow` is the time row under the progress bar (`PlayerControls.x`, `Shared/Player/AudioQuality.x`) on a mock
   of Spotify's bar (trees/clean: a 17pt slider, 11pt digits in 15.33pt Encore labels), Spotify reporting High. It
