@@ -1276,7 +1276,7 @@ static void applyHeader(UIView *header, UIView *page) {
     CGFloat top = cover ? CGRectGetMinY([cover convertRect:cover.bounds toView:header]) : 0;
     available.origin.y = top;
     available.size.height -= top + SGRHeaderInfoBottom;
-    CGRect beside = [info sgr_coverBesideIn:header available:cover ? available : CGRectZero
+    CGRect beside = [info sgr_coverBesideIn:header available:cover ? available : CGRectZero fitHeight:NO
         direction:page.effectiveUserInterfaceLayoutDirection
         stackedParent:header stackedFrame:header.bounds
         more:objc_getAssociatedObject(page, &kPinnedMoreKey) download:objc_getAssociatedObject(page, &kPinnedDownloadKey)

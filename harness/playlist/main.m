@@ -3,6 +3,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "../download-mock.h"
+#import "Core/SGPrefs.h"
 #import "Redesigned/Kit/SGRHeaderInfo.h"
 #import "Redesigned/Kit/SGRActionRow.h"
 #import "../harness-fail.h"
@@ -1006,6 +1007,59 @@ static void buildLikedSongs(UIViewController *page, CGFloat W) {
               fullbleed.layer.hidden ? @"concealed" : @"still drawn");
     }
 
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"tablet-entry"]) {
+        // Don't mount a portrait header before the first landscape pass. The readable
+        // column, content layout and clipped background have different coordinate spaces.
+        [header removeFromSuperview];
+        [self.window makeKeyAndVisible];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            for (NSNumber *wide in @[@YES, @NO, @YES]) {
+                BOOL landscape = wide.boolValue;
+                CGFloat width = landscape ? 1194 : 834, height = landscape ? 316 : 505;
+                header.frame = CGRectMake(0, 0, width, height);
+                for (UIView *v in @[headerLayout, clipping, background, wash, safeArea, contentContainer, contentView])
+                    v.frame = header.bounds;
+                layout.frame = CGRectOffset(header.bounds, landscape ? 90 : 0, 0);
+                cover.frame = CGRectMake(20, 64, 182, 182);
+                block.frame = landscape ? CGRectMake(360, 70, 620, 234) : CGRectMake(0, 267, width - 16, 238);
+                UIView *track = SGFindIdentifier(list, @"Playlist.ItemCell", NULL);
+                HARNESS_CHECK(track);
+                track.frame = CGRectMake(0, height, width, 64);
+                BOOL entry = !header.superview;
+                if (entry) [page.view addSubview:header];
+                [layout setNeedsLayout];
+                [layout layoutIfNeeded];
+                SGRHeaderInfo *info = (id)besideFind(header, @"SGRHeaderInfo");
+                UIView *hero = besideFind(header, @"SGRPlaylistHero");
+                HARNESS_CHECK(info.sgr_coverBeside && hero);
+                [info layoutIfNeeded];
+                CGRect art = [hero convertRect:hero.bounds toView:header];
+                CGRect text = [info convertRect:info.bounds toView:header];
+                HARNESS_CHECK(((UIImageView *)[hero valueForKey:@"picture"]).image && !CGRectIsEmpty(art));
+                HARNESS_CHECK(CGRectContainsRect(header.bounds, art) && fabs(art.size.width - art.size.height) < 1);
+                HARNESS_CHECK(CGRectContainsRect(header.bounds, text) && !CGRectIntersectsRect(art, text));
+                for (UIView *v in info.subviews) {
+                    if (v.hidden || !([v isKindOfClass:UIControl.class] || [v isKindOfClass:UILabel.class])) continue;
+                    CGRect visible = [v convertRect:v.bounds toView:header];
+                    HARNESS_CHECK(CGRectContainsRect(text, visible));
+                    HARNESS_CHECK(CGRectGetMaxY(visible) <= [track convertPoint:CGPointZero toView:header].y);
+                }
+                if (entry) {
+                    UIImageView *picture = [hero valueForKey:@"picture"];
+                    HARNESS_CHECK(cover.layer.hidden && !picture.hidden);
+                    SGSetEnabled(SGRKeyCoverBeside, NO);
+                    [layout setNeedsLayout];
+                    [layout layoutIfNeeded];
+                    HARNESS_CHECK(!info.sgr_coverBeside && !cover.layer.hidden && !cover.layer.mask);
+                    HARNESS_CHECK(picture.hidden);
+                    SGSetEnabled(SGRKeyCoverBeside, YES);
+                }
+            }
+            NSLog(@"[harness] PASS playlist landscape entry, portrait and rotation back to landscape");
+            exit(0);
+        });
+        return YES;
+    }
     [self.window makeKeyAndVisible];
 
     if ([NSProcessInfo.processInfo.arguments containsObject:@"cover-beside"]) {

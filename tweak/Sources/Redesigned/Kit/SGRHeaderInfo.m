@@ -292,7 +292,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     _measuredWidth = -1;
 }
 
-- (CGRect)sgr_coverBesideIn:(UIView *)space available:(CGRect)available
+- (CGRect)sgr_coverBesideIn:(UIView *)space available:(CGRect)available fitHeight:(BOOL)fitHeight
                  direction:(UIUserInterfaceLayoutDirection)direction
              stackedParent:(UIView *)parent stackedFrame:(CGRect)frame
                       more:(UIView *)more download:(UIView *)download
@@ -326,6 +326,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     // Fit the whole row, including the existing download/More capsule, before committing either column.
     const CGFloat gap = 28, maximumCover = 320, coverShare = 0.4;
     CGFloat side = MIN(maximumCover, available.size.width * coverShare);
+    if (fitHeight) side = MIN(side, available.size.height);
     CGFloat column = available.size.width - side - gap;
     CGFloat extra = ((!more.hidden && more) ? SGRGlassCircleSize : 0) +
                     ((!download.hidden && download) ? SGRGlassCircleSize : 0);
