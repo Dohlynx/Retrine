@@ -30,8 +30,9 @@ void SGAudioQualitySettingChanged(void);
 // it does not fit between them. Returns at once while the switch is off; nothing is added to a unit while there is
 // nothing to show.
 void SGAudioQualityPlaceBadge(UIView *unitView);
-// The same for the redesign's badge, whose text stands on the times' baseline. `timesDrop` is how far the redesign
-// lowers the times at rest by a translation of theirs, which the badge follows; a scrub's further drop it does not.
+// The same for the redesign's badge, whose text stands on the times' baseline, and which an iPad shows in landscape
+// too. `timesDrop` is how far the redesign lowers the times at rest by a translation of theirs, which the badge
+// follows; a scrub's further drop it does not.
 void SGAudioQualityPlaceRedesignedBadge(UIView *unitView, CGFloat timesDrop);
 // The badge in `unitView` while it draws (shown, and neither it nor any view above it hidden or faded out), else nil:
 // a tap there is the badge's, not a seek.

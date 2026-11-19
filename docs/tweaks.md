@@ -931,7 +931,8 @@ Shared:
                   asked for or the highest available. Nothing shows for level 0 or 7 (petrel, unknown), anything but a
                   spotify:track: (a podcast, an ad, a local file), while another device plays
                   (SGPlayerPlaybackIsLocal), while the window scene is landscape (an iPad's regular-height landscape
-                  too), while the times are hidden (the lyrics' Hide the controls fades it with them) or where it does
+                  too, except under the redesign on an iPad, whose player keeps the time row as it turns), while the
+                  times are hidden (the lyrics' Hide the controls fades it with them) or where it does
                   not fit between them. Off, the looks' layout passes return at once and remember nothing; switched on,
                   the units on screen holding the times are laid out once again so the badge comes without a restart. The tier is the one reported with the
                   track's own URI, and in 9.1.90 a skipped-to track first reports 0, so the badge goes until its own

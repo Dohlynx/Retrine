@@ -3534,7 +3534,7 @@ static UISlider *spotifyBar(UIView *unit, NSArray<UILabel *> **labels) {
     [durationUnit viewDidLayoutSubviews];
     [unit layoutIfNeeded];
 
-    UIView *badge = SGAudioQualityShownBadge(unit);
+    __block UIView *badge = SGAudioQualityShownBadge(unit);
     UILabel *elapsed = labels.firstObject;
     UIFont *digits = [elapsed.attributedText attribute:NSFontAttributeName atIndex:0 effectiveRange:NULL];
     CGFloat track = CGRectGetMaxY([unit convertRect:[slider trackRectForBounds:slider.bounds] fromView:slider]);
@@ -3554,6 +3554,56 @@ static UISlider *spotifyBar(UIView *unit, NSArray<UILabel *> **labels) {
     CGFloat fill = middleAlpha([slider minimumTrackImageForState:UIControlStateNormal]), rest = middleAlpha([slider maximumTrackImageForState:UIControlStateNormal]);
     [self expect:fill > 0.5 && fill < 0.7 && rest > 0.15 && rest < 0.25 step:@"the bar translucent"
           detail:[NSString stringWithFormat:@"fill %.2f (want 0.5 to 0.7), track %.2f (want 0.15 to 0.25)", fill, rest]];
+
+    if (getenv("HARNESS_LANDSCAPE")) {
+        UIWindowScene *scene = unit.window.windowScene;
+        HARNESS_CHECK(scene && UIInterfaceOrientationIsPortrait(scene.interfaceOrientation) && badge);
+        // The fixture uses measured frames instead of Spotify's constraints. Pin the controls to
+        // the bottom so this same row stays on screen while UIKit resizes the player.
+        UIView *bottom = SGRFindByIdentifier(_host, @"npv.bottomStackView", NULL);
+        bottom.autoresizingMask |= UIViewAutoresizingFlexibleTopMargin;
+        for (UIView *v = _host; v && v != self.window.rootViewController.view; v = v.superview)
+            v.autoresizingMask |= UIViewAutoresizingFlexibleHeight | UIViewAutoresizingFlexibleWidth;
+        [scene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc]
+            initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscapeRight]
+            errorHandler:^(NSError *error) { HARNESS_FAIL(@"timerow rotation: %@", error); }];
+        runScript(@[
+            @[^BOOL {
+                return UIInterfaceOrientationIsLandscape(scene.interfaceOrientation) &&
+                    self.window.bounds.size.width > self.window.bounds.size.height && !self.window.rootViewController.transitionCoordinator;
+            }, ^{
+                [durationUnit viewDidLayoutSubviews];
+                [unit layoutIfNeeded];
+                if (unit.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
+                    HARNESS_CHECK(!SGAudioQualityShownBadge(unit));
+                    NSLog(@"[harness] PASS phone landscape badge hidden");
+                    exit(self->_failures ? 1 : 0);
+                }
+                HARNESS_CHECK(unit.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPad);
+                badge = SGAudioQualityShownBadge(unit);
+                HARNESS_CHECK(badge != nil);
+                CGRect frame = [badge convertRect:badge.bounds toView:self.window];
+                HARNESS_CHECK(CGRectContainsRect(self.window.bounds, frame));
+                HARNESS_CHECK(fabs(badgeBaseline() - uikitBaseline(elapsed, unit)) <= 0.5);
+                HARNESS_CHECK(CGRectGetMaxX(elapsed.superview.frame) < CGRectGetMinX(badge.frame) &&
+                              CGRectGetMaxX(badge.frame) < CGRectGetMinX(labels.lastObject.superview.frame));
+                HARNESS_CHECK(!SGRSeekTapLands(unit, slider, badge.center));
+                HARNESS_CHECK([badge accessibilityActivate]);
+                NSLog(@"[harness] landscape %@, badge %@", NSStringFromCGRect(self.window.bounds), NSStringFromCGRect(frame));
+            }],
+            @[^BOOL { return [self.window.rootViewController.presentedViewController isKindOfClass:NSClassFromString(@"SGAudioQualityPanel")]; }, ^{
+                [self.window.rootViewController dismissViewControllerAnimated:NO completion:nil];
+                SGAudioQualityPlaceBadge(unit);
+                HARNESS_CHECK(!SGAudioQualityShownBadge(unit));
+                labels.lastObject.superview.center = elapsed.superview.center;
+                [durationUnit viewDidLayoutSubviews];
+                HARNESS_CHECK(!SGAudioQualityShownBadge(unit));
+                NSLog(@"[harness] PASS landscape timerow: details opened; native and crowded rows hidden");
+                exit(self->_failures ? 1 : 0);
+            }],
+        ], 0);
+        return;
+    }
 
     // A finger scrubbing: the fill lit whole and the times a step lower; the badge stays where it is.
     CGFloat badgeAt = CGRectGetMinY(badge.frame);

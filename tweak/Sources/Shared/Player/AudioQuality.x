@@ -511,7 +511,10 @@ static void placeBadge(UIView *unit, BOOL redesigned, CGFloat timesDrop) {
 
     BOOL wasShown = badge.alpha > 0;
     BOOL retitled = tier != SGAudioTierNone && tier != badge.tier;
-    BOOL shown = tier != SGAudioTierNone && !landscape(unit) && timeShown(take, unit) && timeShown(remaining, unit);
+    // The redesign's iPad player keeps this time row when it turns (PlayerLyrics.x's control column or the single
+    // one), so there its times and their room decide; the native look and a phone's landscape screens hide it.
+    BOOL rowTurns = redesigned && unit.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPad;
+    BOOL shown = tier != SGAudioTierNone && (rowTurns || !landscape(unit)) && timeShown(take, unit) && timeShown(remaining, unit);
     if (shown) {
         CGRect a = untransformedIn(take, unit), b = untransformedIn(remaining, unit);
         CGRect leading = CGRectGetMidX(a) <= CGRectGetMidX(b) ? a : b, trailing = CGRectGetMidX(a) <= CGRectGetMidX(b) ? b : a;
