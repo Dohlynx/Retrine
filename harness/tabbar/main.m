@@ -361,6 +361,7 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
     // `five` adds a fifth tab, `long` gives two tabs long names, as tabs of the user's own can have.
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
     BOOL longNames = [args containsObject:@"long"];
+    BOOL regular = [args containsObject:@"regular"];
     NSMutableArray<UIView *> *tabs = [NSMutableArray arrayWithArray:@[
         item(_TtC23NavigationUI_TabBarImpl21TabBarItemElementView.class, @"Home", @"house.fill", YES),
         item(_TtC23NavigationUI_TabBarImpl21TabBarItemElementView.class, @"Search", @"magnifyingglass", NO),
@@ -388,8 +389,11 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
         [page.view.bottomAnchor constraintEqualToAnchor:view.bottomAnchor],
         [self.compactGuide.topAnchor constraintEqualToAnchor:view.safeAreaLayoutGuide.bottomAnchor constant:-49],
         [self.compactGuide.bottomAnchor constraintEqualToAnchor:view.bottomAnchor],
-        [stack.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
-        [stack.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
+        // `regular`: Spotify's regular width bar, 8 pt in and 648 of the container's 1016 pt, leaving the rest to the
+        // now playing capsule (9.2.0, iPad Pro 13-inch).
+        [stack.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:regular ? 8 : 0],
+        regular ? [stack.widthAnchor constraintEqualToAnchor:view.widthAnchor multiplier:648.0 / 1016]
+                : [stack.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
         [stack.bottomAnchor constraintEqualToAnchor:view.bottomAnchor],
         [stack.heightAnchor constraintEqualToAnchor:self.compactGuide.heightAnchor],
         [self.bar.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
@@ -644,23 +648,27 @@ static void setFade(SGHarnessChrome *chrome, BOOL on) {
     [chrome.tabs.bar layoutIfNeeded];
 }
 
-// The fade there once, behind the glass, from SGRBarFadeAbovePt over the glass bar's top to its foot, taking no
-// touches; or no fade of the redesign's anywhere in the window. Either way Spotify's own stays clear, and a finger in
-// the fade's band over the now playing card lands on the page.
+// The fade there once, behind the glass, from SGRBarFadeAbovePt over the glass bar's top to its foot and across the
+// tab bar container's whole width (with `regular` wider than Spotify's bar), taking no touches; or no fade of the
+// redesign's anywhere in the window. Either way Spotify's own stays clear, and a finger in the fade's band over the
+// now playing card lands on the page.
 static void expectFade(SGHarnessChrome *chrome, BOOL on, NSString *moment) {
     UIWindow *window = chrome.view.window;
     UIView *stock = chrome.tabs.bar;
     NSArray<UIView *> *fades = viewsNamed(window, @"SGRBarFade");
     UIView *host = viewsNamed(stock, @"SGRTabBarHost").firstObject;
     CGRect glass = [host convertRect:host.bounds toView:window];
+    CGRect across = [chrome.tabs.view convertRect:chrome.tabs.view.bounds toView:window];
     if (on) {
         UIView *fade = fades.firstObject;
         CGRect frame = [fade convertRect:fade.bounds toView:window];
         if (fades.count != 1 || fade.superview != stock || stock.subviews.firstObject != fade || fade.userInteractionEnabled
-            || fabs(CGRectGetMinY(frame) - (CGRectGetMinY(glass) - SGRBarFadeAbovePt)) > 0.5 || fabs(CGRectGetMaxY(frame) - CGRectGetMaxY(glass)) > 0.5) {
-            HARNESS_FAIL(@"%@: %lu fades, the first %@ under %@ (first subview %d, touches %d), glass %@", moment, (unsigned long)fades.count,
-                         NSStringFromCGRect(frame), NSStringFromClass(fade.superview.class), stock.subviews.firstObject == fade,
-                         fade.userInteractionEnabled, NSStringFromCGRect(glass));
+            || fabs(CGRectGetMinY(frame) - (CGRectGetMinY(glass) - SGRBarFadeAbovePt)) > 0.5 || fabs(CGRectGetMaxY(frame) - CGRectGetMaxY(glass)) > 0.5
+            || fabs(CGRectGetMinX(frame) - CGRectGetMinX(across)) > 0.5 || fabs(CGRectGetMaxX(frame) - CGRectGetMaxX(across)) > 0.5) {
+            HARNESS_FAIL(@"%@: %lu fades, the first %@ under %@ (first subview %d, touches %d), glass %@, container %@", moment,
+                         (unsigned long)fades.count, NSStringFromCGRect(frame), NSStringFromClass(fade.superview.class),
+                         stock.subviews.firstObject == fade, fade.userInteractionEnabled, NSStringFromCGRect(glass),
+                         NSStringFromCGRect(across));
         }
     } else if (fades.count) {
         HARNESS_FAIL(@"%@: %lu fades left with the fade off", moment, (unsigned long)fades.count);
@@ -679,7 +687,8 @@ static void expectFade(SGHarnessChrome *chrome, BOOL on, NSString *moment) {
 }
 
 // `fade toggle`: the switch flipped live, over and over, minimized and with the bar hidden; nothing kept from a
-// fade switched off. With `split` the bar has a split tab.
+// fade switched off. With `split` the bar has a split tab; with `regular` it is Spotify's regular width bar, which
+// never minimizes, so the minimized steps are left out.
 static void runFadeChecks(SGHarnessChrome *chrome) {
     expectFade(chrome, YES, @"on");
     __weak UIView *first = viewsNamed(chrome.tabs.bar, @"SGRBarFade").firstObject;
@@ -705,16 +714,18 @@ static void runFadeChecks(SGHarnessChrome *chrome) {
     if (alive) HARNESS_FAIL(@"%lu fades switched off are still alive", (unsigned long)alive);
     printf("PASS no fade kept after 20 turns\n");
 
-    SGRSetTabBarMinimized(YES, NO);
-    [chrome.view layoutIfNeeded];
-    if (!SGRTabBarMinimized()) HARNESS_FAIL(@"the bar did not minimize");
-    expectFade(chrome, YES, @"minimized");
-    setFade(chrome, NO);
-    expectFade(chrome, NO, @"minimized, switched off");
-    setFade(chrome, YES);
-    expectFade(chrome, YES, @"minimized, switched on");
-    SGRSetTabBarMinimized(NO, NO);
-    [chrome.view layoutIfNeeded];
+    if (chrome.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact) {
+        SGRSetTabBarMinimized(YES, NO);
+        [chrome.view layoutIfNeeded];
+        if (!SGRTabBarMinimized()) HARNESS_FAIL(@"the bar did not minimize");
+        expectFade(chrome, YES, @"minimized");
+        setFade(chrome, NO);
+        expectFade(chrome, NO, @"minimized, switched off");
+        setFade(chrome, YES);
+        expectFade(chrome, YES, @"minimized, switched on");
+        SGRSetTabBarMinimized(NO, NO);
+        [chrome.view layoutIfNeeded];
+    }
 
     // A page that hides the bar: the switch still takes the fade away and brings it back.
     chrome.tabs.bar.hidden = YES;

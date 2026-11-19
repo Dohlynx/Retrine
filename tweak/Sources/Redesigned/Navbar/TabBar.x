@@ -516,8 +516,13 @@ void SGRStyleBarFade(CAGradientLayer *layer) {
     layer.locations = @[@0, @0.5, @1];
 }
 
+static UIViewController *containerOf(UIView *stockBar);
+
 // Switched off (SGRKeyNavbarFade), the fade leaves the bar and is let go, so the bar holds no fade of the redesign's
-// at all, and switching it on again makes one anew.
+// at all, and switching it on again makes one anew. Across, it spans TabBarContainerImpl's view, as Spotify's own
+// TabBarGradientView does: in a regular width Spotify's bar is narrower than that view (648 of 1016 pt beside the
+// now playing capsule, 9.2.0 on an iPad Pro 13-inch), and a fade only as wide as the bar dimmed the page under it as
+// a rectangle with hard sides. In a compact width the bar is as wide as the view.
 static void placeFade(UIView *stockBar, CGRect glass) {
     SGRBarFade *fade = objc_getAssociatedObject(stockBar, &kFadeKey);
     if (!SGEnabled(SGRKeyNavbarFade)) {
@@ -532,8 +537,11 @@ static void placeFade(UIView *stockBar, CGRect glass) {
         SGRStyleBarFade((CAGradientLayer *)fade.layer);
         objc_setAssociatedObject(stockBar, &kFadeKey, fade, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    UIView *container = containerOf(stockBar).view;
+    if (!container) return;
+    CGRect across = [stockBar convertRect:container.bounds fromView:container];
     CGFloat top = CGRectGetMinY(glass) - SGRBarFadeAbovePt;
-    CGRect frame = CGRectMake(0, top, stockBar.bounds.size.width, CGRectGetMaxY(glass) - top);
+    CGRect frame = CGRectMake(CGRectGetMinX(across), top, CGRectGetWidth(across), CGRectGetMaxY(glass) - top);
     if (!CGRectEqualToRect(fade.frame, frame)) fade.frame = frame;
     if (fade.superview != stockBar || stockBar.subviews.firstObject != fade) [stockBar insertSubview:fade atIndex:0];
 }

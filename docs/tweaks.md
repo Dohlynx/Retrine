@@ -1348,7 +1348,9 @@ Redesigned:
     Navbar/       the glass tab bar (TabBar.x) over its own composition (Navbar.x, NavbarLayout.m) and editor, the glass search field.
                   Spotify is made to leave the glass bar its height where its own bar is shorter (a phone with a home button,
                   Offline or Private Session under the bar), so the now playing bar and the pages move up with it. Under both
-                  bars the pages fade to half black (SGRBarFade, the stock bar's own subview; Fade under the bar on the Tab bar
+                  bars the pages fade to half black (SGRBarFade, the stock bar's own subview, across the tab bar container's
+                  width as Spotify's own fade under its bar is, so in a regular width, where Spotify's bar is narrower than the
+                  screen beside the iPad capsule, it has no sides of its own; Fade under the bar on the Tab bar
                   page, spotifyglass.redesign.navbar.fade, on until switched off, applies as the bar lays out again and
                   lets the fade go altogether, and the page's preview draws the same ramp, 88 pt above the bar, over rows
                   of its own). Apple symbols on the Tab bar page (spotifyglass.redesign.navbar.symbols, on until

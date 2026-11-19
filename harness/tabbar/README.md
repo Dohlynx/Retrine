@@ -127,9 +127,13 @@ and the glass bar stood the difference above it, over the now playing bar.
 
 `fade-check.sh` checks the fade under the bars (`spotifyglass.redesign.navbar.fade`) in a simulator of its own:
 `fade toggle` (and `fade toggle split`) switches it off and on live the way the Tab bar page does, and asserts one
-`SGRBarFade` behind the glass from `SGRBarFadeAbovePt` over the glass bar's top to its foot taking no touches (a
-finger in its band lands on the page), none at all when off, none kept alive after 20 turns, the same minimized and
-with the bar hidden, and Spotify's own `TabBarGradientView` left clear throughout. `fade`, `fade off` and
+`SGRBarFade` behind the glass from `SGRBarFadeAbovePt` over the glass bar's top to its foot and across the tab bar
+container's whole width, taking no touches (a finger in its band lands on the page), none at all when off, none
+kept alive after 20 turns, the same minimized and with the bar hidden, and Spotify's own `TabBarGradientView` left
+clear throughout. `fade toggle regular` does it over Spotify's regular width bar, 8 pt in and 648 of the
+container's 1016 pt as 9.2.0 lays it out on an iPad Pro 13-inch (`regular` lays the bar out so everywhere),
+minimized left out since that bar never minimizes. 2026-11-19, before the fix: the fade was only as wide as that
+bar, which an iPad showed as a dark rectangle with hard sides behind the glass. `fade`, `fade off` and
 `fade mini` hold the page in color for a screenshot, and `navsettings` opens the Tab bar page over the bar
 (navsettings.m): its fade switch starts on, the preview reads the fade, and the switch takes the fade off the real
 bar at once. It does so through the switch's own path in the product (`SGRRefreshBarFade`, TabBar.x): stubs.m's
@@ -169,4 +173,5 @@ is up, and Spotify's 8 pt in a regular width and right to left.
 
 What it does not cover: Spotify's own chrome, which is Swift with no symbols (the constraints above
 are read from its code, not run), the real now playing bar's content and its page's inset, the tab
-bar hidden by a page, the player's open and close over the bars, and a regular width.
+bar hidden by a page, the player's open and close over the bars, and a regular width beyond the bar's narrower
+width (its fixed 76 pt height, the now playing capsule beside it).
