@@ -22,6 +22,15 @@ fixed in the commits that follow `956e65c`.
 | `5f5c7ea`, `7a8c573` | Spotify 9.2 Spoof Premium: nebula account attributes and the signed-in remote config rewritten with Retrine's existing attribute and flag rules (crossfade included), their validators stripped, composed after Pixie's offline values. Version split by `CFBundleShortVersionString` ≥ 9.2 so 9.1.x keeps customize. Eevee's token bridge rename has no Retrine counterpart, and `AdsBaseImpl` was already covered. Harness only; on-device 9.2 queue, on-demand and crossfade unverified. |
 | `43b9ca3`, `350aa15`, `d4daa49`; audit ideas `1010573`, `7a617a7`, `e2abe5a` | Terminal `/ads` and pre-send ad cancellation under Hide ads; six 9.1.90-verified service selectors with individual runtime guards; binary coverage audit with explicit DI/regulatory and missing-selector exemptions. `2a9d4ae` shuffle/full-song hooks and d4daa49 realtime/instrumentation/element/native-element hooks were not ported: no Objective-C `load` in 9.1.90. CTA cards keep `registerScrollProviderIn:`. Static 9.1.90 proof and Foundation harnesses only; no 9.1.78/9.1.88 binary or device verification. |
 
+Not yet ported, checked against upstream `f6a3403` (2026-11-17):
+
+| Source commits | To build | Before building |
+|---|---|---|
+| `f6a3403` | Pixie's local track quota from 1,000,000 to Spotify's 10,000: `SAPMinimumTrackLimit` in `NativeDownloads/src/Generated/OfflineLimits.h`, the 9.2.0 `SAPRestrictionTrampoline` bytes in `NativeRestrictionsPatch.h`, and `SAPPrepareNativeOffline` (`NativeOfflineAdapter.m`) setting the quota to exactly 10,000, lowering a higher value an older build left. Also drop `SAPInstallAVHooks()` from `PixieBootstrap.m` and add `SAPStartupReport` for a one-line startup state in the log. | Upstream gives no reason for the lower quota. Commit the uncommitted Pixie work first: `PixieManagerActions.m` and `PixieManagerSettings.m` are changed by both. Needs a download check on a phone, 9.1.90 and 9.2.0. |
+| `ddcdada` | Nothing to copy: upstream's glass tab bar grew to 62 pt, upward, and lifted the mini player when Spotify shrinks its tab strip under a banner (offline, data saver). | Check on a phone whether the redesign's tab bar and now playing bar overlap under such a banner first. |
+| `838c5d5` | A new feature, not a version fix: download a local playlist over Wi-Fi, with a setting, the `offline` attribute forced while it is on and the playlist page's Download button kept. | Decide whether Retrine wants it; Spotify's `ActionView` class and the offlining helper's selector need checking in 9.1.90 and 9.2.0. |
+| `5f5c7ea`, `7a8c573` (ported above) | On-device check of the 9.2.0 port: queue, add to queue, picking any track, seeking and crossfade on a free account with Spoof Premium. | A phone with Spotify 9.2.0. |
+
 ## Done
 
 ### Apple Music artwork
