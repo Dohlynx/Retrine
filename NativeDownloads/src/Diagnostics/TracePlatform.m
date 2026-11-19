@@ -92,10 +92,14 @@ void SAPTracePlatformSetActive(bool enabled) {
         for(NSNotificationName name in @[UIApplicationDidFinishLaunchingNotification,UIApplicationDidBecomeActiveNotification,UIApplicationWillResignActiveNotification,
              UIApplicationDidEnterBackgroundNotification,UIApplicationWillEnterForegroundNotification,UIApplicationWillTerminateNotification,
              UIApplicationProtectedDataWillBecomeUnavailable,UIApplicationProtectedDataDidBecomeAvailable,AVAudioSessionRouteChangeNotification,AVAudioSessionInterruptionNotification,NSProcessInfoPowerStateDidChangeNotification]) {
-            id token=[NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){
-                if(expected!=atomic_load(&platformGeneration)||!SAPTraceIsActive())return;
-                SAP_TRACE("lifecycle","notification",0,@{@"name":note.name,@"application_state":@(UIApplication.sharedApplication.applicationState),@"route":route(),
-                    @"route_change_reason":note.userInfo[AVAudioSessionRouteChangeReasonKey]?:NSNull.null,@"interruption_type":note.userInfo[AVAudioSessionInterruptionTypeKey]?:NSNull.null});
+            id token=[NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note){
+                NSString *notificationName=[note.name copy];
+                NSNumber *reason=[note.userInfo[AVAudioSessionRouteChangeReasonKey] copy],*interruption=[note.userInfo[AVAudioSessionInterruptionTypeKey] copy];
+                dispatch_async(dispatch_get_main_queue(),^{
+                    if(expected!=atomic_load(&platformGeneration)||!SAPTraceIsActive())return;
+                    SAP_TRACE("lifecycle","notification",0,@{@"name":notificationName,@"application_state":@(UIApplication.sharedApplication.applicationState),@"route":route(),
+                        @"route_change_reason":reason?:NSNull.null,@"interruption_type":interruption?:NSNull.null});
+                });
             }];[observers addObject:token];
         }
         monitor=nw_path_monitor_create();nw_path_monitor_set_queue(monitor,dispatch_get_global_queue(QOS_CLASS_UTILITY,0));
