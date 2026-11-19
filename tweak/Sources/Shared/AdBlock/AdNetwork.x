@@ -3,7 +3,8 @@
 // SPTCoreURLSessionDataDelegate for the C++ core's, which fetch the ad config (ads/v2/config and
 // ad-logic/state/config, device 2026-10-10). A request for an ad is answered
 // empty. With Spoof Premium on, the bootstrap and customize bodies are rewritten by Premium.m
-// before the client sees them, the endpoints the server would use to log the account out are
+// before the client sees them (on 9.2, which has no customize, its account attributes and remote
+// config, which come on their own), the endpoints the server would use to log the account out are
 // answered as if they succeeded, and past the first thirty seconds the re-fetches that could bring
 // the real state back are canceled before they leave. Feeds go through Feeds.m. Everything here is
 // EeveeSpotify's, less its Ably hooks, which it does not turn on for 9.1 either.
@@ -14,6 +15,9 @@
 #import <mach-o/loader.h>
 
 static BOOL ads, premium;
+// Spoof Premium on Spotify 9.2 or later. 9.1.x still gets both parts inside customize, and keeps the
+// path it was tested on.
+static BOOL premiumSplit;
 static NSDate *started;
 static NSObject *cacheLock;
 static NSData *cachedCustomize;   // the last rewritten customize body, for a 304 and the re-fetches
@@ -51,6 +55,9 @@ static BOOL has(NSString *text, NSString *needle) {
 static BOOL isBootstrap(NSString *path) { return has(path, @"v1/bootstrap"); }
 static BOOL isCustomize(NSString *path) { return has(path, @"v1/customize"); }
 static BOOL isAttributes(NSString *path) { return [path isEqualToString:@"/nebula/v1/configuration/attributes"]; }
+// The signed-in configuration only; v3/unauth/configuration is the logged-out one.
+static BOOL isRemoteConfig(NSString *path) { return has(path, @"/remote-config-resolver/v3/configuration"); }
+static BOOL isSplitConfig(NSString *path) { return isAttributes(path) || isRemoteConfig(path); }
 
 static NSUInteger offlineEndpoint(NSURL *url) {
     NSString *host = url.host.lowercaseString;
@@ -130,7 +137,8 @@ static unsigned kindOf(NSURL *url) {
     NSString *path = url.path.lowercaseString ?: @"";
     return ((premium && isLogout(path)) || (ads && isAd(url, path)) ? kBlocked : 0)
          | (premium && isRefetch(path) ? kRefetch : 0)
-         | ((premium && (isBootstrap(path) || isCustomize(path))) || (ads && isFeed(path)) ? kPatched : 0);
+         | ((premium && (isBootstrap(path) || isCustomize(path))) || (premiumSplit && isSplitConfig(path))
+            || (ads && isFeed(path)) ? kPatched : 0);
 }
 
 // The thirty seconds are read at each call, as the task's data and its end arrive.
@@ -182,6 +190,13 @@ static void observeAccountRequest(NSURLRequest *request) {
         clearOfflineSession(nil);
 }
 
+// Pixie's offline values, then on 9.2 Spoof Premium's attributes: the two set different keys. Pixie's hooks
+// take the body before the Premium ones see it, so both are applied here.
+static NSData *offlineAttributes(NSData *raw, BOOL *recognized) {
+    NSData *result = SGPatchOfflineAccountAttributes(raw, recognized);
+    return premiumSplit ? SGPatchAccountAttributes(result) ?: result : result;
+}
+
 static NSData *cachedOffline(NSURL *url, uint64_t generation) {
     NSData *input;
     @synchronized (cacheLock) {
@@ -191,7 +206,7 @@ static NSData *cachedOffline(NSURL *url, uint64_t generation) {
     if (!input) return nil;
     BOOL recognized = NO;
     // Replay is read-only, including when another delegate completes a newer response here.
-    NSData *result = SGPatchOfflineAccountAttributes(input, &recognized);
+    NSData *result = offlineAttributes(input, &recognized);
     @synchronized (cacheLock) { return generation == offlineGeneration ? result : nil; }
 }
 
@@ -237,7 +252,9 @@ static NSData *patched(NSURL *url, NSData *body) {
     NSString *path = url.path.lowercaseString ?: @"";
     if (isFeed(path)) return SGStripFeed(body);
     SGAdBlockSawOne(@"Config rewrites");
-    NSData *result = isBootstrap(path) ? SGPatchBootstrap(body) : SGPatchCustomize(body);
+    NSData *result = isAttributes(path) ? SGPatchAccountAttributes(body)
+        : isRemoteConfig(path) ? SGPatchRemoteConfiguration(body)
+        : isBootstrap(path) ? SGPatchBootstrap(body) : SGPatchCustomize(body);
     if (!result) {
         SGLog(@"could not rewrite %@, passed through", path);
         return nil;
@@ -373,7 +390,7 @@ static void completeOffline(id<NSURLSessionDataDelegate> delegate, NSURLSession 
     state.buffer = nil;
     if (state.enabled && !state.bypass && raw) {
         BOOL recognized = NO;
-        NSData *result = error ? raw : SGPatchOfflineAccountAttributes(raw, &recognized);
+        NSData *result = error ? raw : offlineAttributes(raw, &recognized);
         if (recognized) storeOffline(state.url, state.generation, raw);
         deliver(delegate, session, task, result);
     }
@@ -445,9 +462,10 @@ static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *sessio
                 return;
             }
             // Nothing to rewrite: a 304, or a body of no bytes. The delegate is told of a body either
-            // way, since a completion with none hangs some readers.
+            // way, since a completion with none hangs some readers. 9.2's two are left as the server sent
+            // them: an empty body there would clear the account's state instead of keeping the cached one.
             if (!buffer) {
-                deliver(delegate, session, task, (isCustomize(path) ? cached() : nil) ?: [NSData data]);
+                if (!isSplitConfig(path)) deliver(delegate, session, task, (isCustomize(path) ? cached() : nil) ?: [NSData data]);
                 finish(nil);
                 return;
             }
@@ -584,10 +602,12 @@ static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *sessio
 // The config comes back 304 with no body when the app holds a copy of it and asks whether that is still
 // current, and a copy taken while Spoof Premium was off is the server's own: the mod then has nothing to
 // rewrite, and the account stays free until the server changes the config (device 2026-09-21). So the two
-// go out without the question, and the server always answers in full.
+// go out without the question, and the server always answers in full; on 9.2 the attributes and remote
+// config that replaced customize do too.
 static NSURLRequest *unconditional(NSURLRequest *request) {
     NSString *host = request.URL.host.lowercaseString ?: @"", *path = request.URL.path.lowercaseString ?: @"";
-    if (!(has(host, @"spotify") || has(host, @"spclient")) || !(isBootstrap(path) || isCustomize(path))) return nil;
+    if (!(has(host, @"spotify") || has(host, @"spclient"))
+        || !(isBootstrap(path) || isCustomize(path) || (premiumSplit && isSplitConfig(path)))) return nil;
     if (![request valueForHTTPHeaderField:@"If-None-Match"] && ![request valueForHTTPHeaderField:@"If-Modified-Since"]) return nil;
     NSMutableURLRequest *plain = [request mutableCopy];
     [plain setValue:nil forHTTPHeaderField:@"If-None-Match"];
@@ -626,7 +646,7 @@ static SGDataCompletion offlineCompletion(NSURLSession *session, NSURLRequest *r
                 }
             } else if (data.length && fullResponse((NSHTTPURLResponse *)response, request)) {
                 BOOL recognized = NO;
-                NSData *result = SGPatchOfflineAccountAttributes(data, &recognized);
+                NSData *result = offlineAttributes(data, &recognized);
                 if (recognized) storeOffline(url, generation, data);
                 if (result && ![result isEqual:data]) response = rewrittenResponse((NSHTTPURLResponse *)response, 200);
                 data = result ?: data;
@@ -751,6 +771,8 @@ static void offlineImageAdded(const struct mach_header *image, intptr_t slide) {
 %ctor {
     ads = SGHidden(SGKeyHideAds);
     premium = SGHidden(SGKeyFakePremium);
+    NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    premiumSplit = premium && version && [version compare:@"9.2" options:NSNumericSearch] != NSOrderedAscending;
     started = NSDate.date;
     cacheLock = [NSObject new];
     if (ads || premium) {

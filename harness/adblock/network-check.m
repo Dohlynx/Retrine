@@ -14,6 +14,8 @@ void SGAdBlockCountOne(NSString *label) {}
 void SGAdBlockSawOne(NSString *label) {}
 NSData *SGPatchCustomize(NSData *data) { return data; }
 NSData *SGPatchBootstrap(NSData *data) { return data; }
+NSData *SGPatchAccountAttributes(NSData *data) { return data; }
+NSData *SGPatchRemoteConfiguration(NSData *data) { return data; }
 BOOL SGOfflineCompanionLoaded(void) { return NO; }
 NSData *SGPatchOfflineAccountAttributes(NSData *data, BOOL *recognized) { if (recognized) *recognized = NO; return data; }
 NSData *SGStripFeed(NSData *data) { return data; }

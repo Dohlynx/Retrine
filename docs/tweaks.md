@@ -125,6 +125,12 @@ Shared:
                   and automix switched on in the player core, the core and Settings both kept on the audio.crossfade
                   prefs rather than the account's Playback Settings, and crossfade's switch kept in step with its
                   slider (Crossfade.x).
+                  Spotify 9.2.0 has no v1/customize: the account attributes come from nebula/v1/configuration/attributes
+                  and the remote config from remote-config-resolver/v3/configuration. On 9.2 and later Spoof Premium
+                  sends both without cache validators and rewrites them with the same attributes and flag rules
+                  (SGPatchAccountAttributes, SGPatchRemoteConfiguration), after Pixie's offline values when Pixie is
+                  loaded; a bodiless 304 passes as the server sent it. 9.1.x keeps the customize path
+                  (EeveeSpotifyReincarnated 5f5c7ea, 7a8c573; harness/adblock/offline-check.m splitCases).
                   Hide ads also cancels ad tasks before resume, including terminal /ads routes, without
                   Spoof Premium or its startup delay; Esperanto matching still uses whole tokens.
                   SPTDataLoaderService, HttpClientURLSession and SPTCoreURLSessionDataDelegate all receive

@@ -184,6 +184,42 @@ static void protocolCases(BOOL loaded, BOOL admitted) {
     }
 }
 
+// Spotify 9.2 has no customize: Spoof Premium rewrites the account attributes and the remote config on their
+// own and strips their validators; 9.1.x leaves both as they were.
+static void splitCases(BOOL loaded) {
+    NSURL *config = [NSURL URLWithString:@"https://spclient.wg.spotify.com/remote-config-resolver/v3/configuration"];
+    NSData *identifier = SGPBSerialize(@[SGPBString(1, @"core-playback-setup"), SGPBString(2, @"crossfade_enabled")]);
+    NSData *assignedValue = SGPBSerialize(@[SGPBBytes(1, identifier), SGPBBytes(3, NSData.data)]);
+    NSData *resolve = SGPBSerialize(@[SGPBBytes(1, SGPBSerialize(@[SGPBBytes(3, assignedValue)]))]);
+    for (NSNumber *split in @[@NO, @YES]) {
+        premiumSplit = premium && split.boolValue;
+        for (NSURL *url in @[config, urlFor(2)]) {
+            // Pixie strips the attributes' validators itself.
+            if (loaded && url != config) continue;
+            NSMutableURLRequest *conditional = [NSMutableURLRequest requestWithURL:url];
+            [conditional setValue:@"etag" forHTTPHeaderField:@"If-None-Match"];
+            NSURLSessionDataTask *task = [NSURLSession.sharedSession dataTaskWithRequest:conditional];
+            BOOL kept = [task.currentRequest valueForHTTPHeaderField:@"If-None-Match"] != nil;
+            check(kept != premiumSplit,
+                  @"9.2 config requests lose their validators only under 9.2 Premium");
+            [task cancel];
+        }
+        for (Class cls in @[SPTDataLoaderService.class, _TtC26Connectivity_HttpClientKit20HttpClientURLSession.class]) {
+            AttributeDelegate *live = receive(cls, urlFor(2), 200, account(NO), nil);
+            attributesMatch(live.body, 2, loaded, premiumSplit, NO);
+            AttributeDelegate *replay = receive(cls, urlFor(2), 304, nil, nil);
+            if (loaded) check(replay.status == 200 && [replay.body isEqual:live.body], @"9.2 replay carries Pixie's and Premium's values");
+            else check(replay.status == 304 && !replay.body.length, @"bodiless attributes 304 reaches Spotify as sent");
+            AttributeDelegate *remote = receive(cls, config, 200, resolve, nil);
+            NSData *first = SGPBFirst(SGPBParse(SGPBFirst(SGPBParse(remote.body), 1).payload), 3).payload;
+            check([SGPBFirst(SGPBParse(first), 3).payload isEqual:hex(premiumSplit ? "0801" : "")],
+                  @"9.2 remote config follows Premium's flag rules");
+            if (!premiumSplit) check([remote.body isEqual:resolve], @"remote config untouched off 9.2 Premium");
+        }
+    }
+    premiumSplit = NO;
+}
+
 static NSData *transportBody;
 static NSInteger transportStatus;
 static BOOL transportUnconditional;
@@ -494,6 +530,7 @@ int main(int argc, const char **argv) {
         if (getenv("RECHECK_REGRESSIONS")) return recheckRegressions(argv[1]);
         if (getenv("REVIEW_REGRESSIONS")) return reviewRegressions(argv[1]);
         protocolCases(NO, NO);
+        splitCases(NO);
         void *library = dlopen(argv[1], RTLD_NOW | RTLD_GLOBAL);
         if (!library) { NSLog(@"FAIL dlopen: %s", dlerror()); return 1; }
         dispatch_sync(offlineInstallQueue, ^{});
@@ -526,6 +563,7 @@ int main(int argc, const char **argv) {
             attributesMatch(replay.body, shape, YES, premium && shape != 2, YES);
         }
         protocolCases(YES, YES);
+        splitCases(YES);
         completionCases();
         securityCases();
         NSURL *foreign = [NSURL URLWithString:@"https://example.com/nebula/v1/configuration/attributes"];

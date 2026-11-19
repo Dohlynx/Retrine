@@ -489,3 +489,17 @@ NSData *SGPatchCustomize(NSData *body) {
 NSData *SGPatchBootstrap(NSData *body) {
     return SGPBEdit(body, @[@2, @1, @1, @1], ^NSData *(NSData *ucs) { return patchUcs(ucs); });
 }
+
+NSData *SGPatchAccountAttributes(NSData *body) {
+    for (SGPBField *field in SGPBParse(body)) {
+        if (field.number == 1 && field.wire == 2 && SGPBText(SGPBFirst(SGPBParse(field.payload), 1)).length)
+            return patchAttributes(body);
+    }
+    return nil;
+}
+
+NSData *SGPatchRemoteConfiguration(NSData *body) {
+    return SGPBEdit(body, @[@1], ^NSData *(NSData *configuration) {
+        return SGPBFirst(SGPBParse(configuration), 3).wire == 2 ? patchConfiguration(configuration) : nil;
+    });
+}
