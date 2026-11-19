@@ -24,6 +24,7 @@ class TransportPreflightTests(unittest.TestCase):
             for name in ("scripts/quick.sh", "scripts/spotify-transport-scan.py", "tweak/Sources/Shared/WireGuard/SGWGTargets.inc"):
                 shutil.copyfile(ROOT / name, root / name)
             app = root / "out/quick/Payload/Spotify.app"
+            (app / "Retrine.bundle").mkdir()
             (app / "Info.plist").write_bytes(plistlib.dumps({
                 "CFBundleIdentifier": "com.spotify.client", "CFBundleShortVersionString": "9.1.95",
             }))
