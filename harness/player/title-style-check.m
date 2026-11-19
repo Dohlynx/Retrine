@@ -1,6 +1,8 @@
 // The player's title and artist styling (PlayerTitle.x, compiled through Logos) on labels shaped as Spotify's: the title
 // a marquee view drawing through a UILabel inside it (9.1.90's Encore marquee), the artist a label. Spotify's setters
 // are called as Spotify calls them, with a stand-in for its family (Georgia), and the type is read off the labels.
+// Then the title row as 9.2.0 builds it (runRow): the title reaching the ⋯ and one explicit mark after it, closed and
+// slid beside the lyrics' thumbnail as PlayerLyrics.x moves it.
 #import <UIKit/UIKit.h>
 #import "Core/SGCore.h"
 #import "Shared/Fonts/Fonts.h"
@@ -58,6 +60,441 @@ static CGFloat heightFor(NSString *text, UIFont *font) {
     return label.intrinsicContentSize.height;
 }
 
+// Spotify's Encore marquee as the trees show it: a clipping view drawing through a UILabel sized to its text, at the
+// leading end while the text fits.
+@interface MarqueeMock : UIView
+@property (nonatomic, strong) UILabel *label;
+@end
+@implementation MarqueeMock
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGSize size = self.label.intrinsicContentSize;
+    BOOL rtl = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    CGFloat x = rtl && size.width < self.bounds.size.width ? self.bounds.size.width - size.width : 0;
+    self.label.frame = CGRectMake(x, (self.bounds.size.height - size.height) / 2, size.width, size.height);
+}
+@end
+
+// The information unit's title row as Spotify 9.2.0 builds it (design/spotify-920/device/920-track-more-tree.txt:476-528)
+// in the redesign's 32 pt margins: a row stack of the track info, Spotify's X (24 pt) and add button (48 pt) 12 pt
+// apart, both put away by alpha with the ⋯ standing in the add button's slot (PlayerMenu.m); in the track info the
+// title marquee over a stack of badges leading the artist marquee 8 pt after it, the two explicit marks each in a
+// 12 pt holder Spotify hides or shows.
+typedef struct {
+    UIView *unit, *thumb, *element, *container, *more, *ageHolder, *explicitHolder, *speed, *addSlot;
+    UIStackView *row, *badges;
+    MarqueeMock *title, *artist;
+} Row;
+
+static NSArray<UIView *> *allViews(UIView *root) {
+    NSMutableArray *views = [NSMutableArray arrayWithObject:root];
+    for (UIView *child in root.subviews) [views addObjectsFromArray:allViews(child)];
+    return views;
+}
+
+static UIView *markHolder(NSString *identifier) {
+    UIView *holder = [UIView new], *mark = [UIView new];
+    UILabel *text = [UILabel new];
+    mark.accessibilityIdentifier = identifier;
+    mark.isAccessibilityElement = YES;
+    mark.accessibilityLabel = @"19";
+    text.text = @"19";
+    text.font = [UIFont systemFontOfSize:8];
+    mark.frame = text.frame = CGRectMake(0, 0, 12, 12);
+    [mark addSubview:text];
+    [holder addSubview:mark];
+    [holder.widthAnchor constraintEqualToConstant:12].active = YES;
+    holder.hidden = YES;
+    return holder;
+}
+
+static MarqueeMock *marquee(NSString *identifier, NSString *text, UIFont *font) {
+    MarqueeMock *view = [MarqueeMock new];
+    view.accessibilityIdentifier = identifier;
+    view.clipsToBounds = YES;
+    view.translatesAutoresizingMaskIntoConstraints = NO;
+    view.label = [UILabel new];
+    view.label.text = text;
+    view.label.font = font;
+    [view addSubview:view.label];
+    return view;
+}
+
+// The trailing ends a title row is seen with: the ⋯ in Spotify's put away add button's slot; no add button, Spotify's
+// slots hidden and the ⋯ standing in the row's end (PlayerMenu.m's fallback, as for a local file); the AI DJ's, no ⋯
+// and a 48 pt button of Spotify's arranged after the title; and nothing at all after the title.
+typedef NS_ENUM(NSInteger, RowShape) { RowAddSlot, RowNoAddSlot, RowDJ, RowBare };
+static NSString *const kShapeNames[] = {@"with the ⋯ in the add button's slot", @"without an add button", @"of the AI DJ", @"with nothing after the title"};
+
+static Row buildRow(UIWindow *window, NSString *title, BOOL rtl, RowShape shape, NSString *artistText) {
+    Row r = {0};
+    r.unit = [[UIView alloc] initWithFrame:CGRectMake(0, 200, 402, 64)];
+    r.row = [[UIStackView alloc] initWithFrame:CGRectMake(32, 8, 338, 48)];
+    r.row.spacing = 12;
+    r.element = [UIView new];
+    [r.element setContentHuggingPriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisHorizontal];
+    [r.element setContentCompressionResistancePriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisHorizontal];
+    UIView *banSlot = [UIView new];
+    r.addSlot = [UIView new];
+    [banSlot.widthAnchor constraintEqualToConstant:24].active = YES;
+    [r.addSlot.widthAnchor constraintEqualToConstant:48].active = YES;
+    banSlot.alpha = 0;
+    r.addSlot.alpha = shape == RowDJ ? 1 : 0;
+    banSlot.hidden = shape != RowAddSlot;
+    r.addSlot.hidden = shape == RowNoAddSlot || shape == RowBare;
+    // An episode's own 48 pt thumbnail, which Spotify shows before the title on its own (9.2.0, a video episode).
+    r.thumb = [UIView new];
+    [r.thumb.widthAnchor constraintEqualToConstant:48].active = YES;
+    r.thumb.hidden = YES;
+    for (UIView *view in @[r.thumb, r.element, banSlot, r.addSlot]) [r.row addArrangedSubview:view];
+    r.container = [UIView new];
+    r.container.translatesAutoresizingMaskIntoConstraints = NO;
+    [r.element addSubview:r.container];
+    UIFont *spotifyTitle = [UIFont fontWithName:@"Georgia-Bold" size:24], *spotifyArtist = [UIFont fontWithName:@"Georgia" size:16];
+    r.title = marquee(@"now-playing-title-label", title, spotifyTitle);
+    r.artist = marquee(@"now-playing-subtitle-label", artistText, spotifyArtist);
+    r.badges = [UIStackView new];
+    r.badges.spacing = 2;
+    r.badges.translatesAutoresizingMaskIntoConstraints = NO;
+    r.ageHolder = markHolder(@"Components.UI.19andOverIcon");
+    r.explicitHolder = markHolder(@"Components.UI.ExplicitIcon");
+    r.speed = [UIView new];
+    [r.speed.widthAnchor constraintEqualToConstant:12].active = YES;
+    r.speed.hidden = YES;
+    for (UIView *view in @[r.explicitHolder, r.ageHolder, r.speed]) [r.badges addArrangedSubview:view];
+    for (UIView *view in @[r.title, r.badges, r.artist]) [r.container addSubview:view];
+    [NSLayoutConstraint activateConstraints:@[
+        [r.container.leadingAnchor constraintEqualToAnchor:r.element.leadingAnchor],
+        [r.container.trailingAnchor constraintEqualToAnchor:r.element.trailingAnchor],
+        [r.container.topAnchor constraintEqualToAnchor:r.element.topAnchor],
+        [r.container.bottomAnchor constraintEqualToAnchor:r.element.bottomAnchor],
+        [r.title.leadingAnchor constraintEqualToAnchor:r.container.leadingAnchor],
+        [r.title.trailingAnchor constraintEqualToAnchor:r.container.trailingAnchor],
+        [r.title.topAnchor constraintEqualToAnchor:r.container.topAnchor],
+        [r.title.heightAnchor constraintEqualToConstant:28],
+        [r.badges.leadingAnchor constraintEqualToAnchor:r.container.leadingAnchor],
+        [r.badges.topAnchor constraintEqualToAnchor:r.title.bottomAnchor],
+        [r.badges.heightAnchor constraintEqualToConstant:20],
+        [r.artist.leadingAnchor constraintEqualToAnchor:r.badges.trailingAnchor constant:8],
+        [r.artist.trailingAnchor constraintEqualToAnchor:r.container.trailingAnchor],
+        [r.artist.topAnchor constraintEqualToAnchor:r.title.bottomAnchor],
+        [r.artist.heightAnchor constraintEqualToConstant:20],
+    ]];
+    [r.unit addSubview:r.row];
+    [window addSubview:r.unit];
+    if (rtl) {
+        for (UIView *view in allViews(r.unit)) view.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
+    }
+    [r.row layoutIfNeeded];
+    if (shape == RowDJ || shape == RowBare) return r;
+    UIButton *more = [UIButton buttonWithType:UIButtonTypeSystem];
+    CGRect bounds = r.row.bounds;
+    more.frame = shape == RowAddSlot ? r.addSlot.frame : CGRectMake(rtl ? 0 : CGRectGetMaxX(bounds) - 48, 0, 48, 48);
+    [r.row addSubview:more];
+    r.more = more;
+    return r;
+}
+
+static UIView *drawnMark(Row r) {
+    for (UIView *view in r.container.subviews) {
+        if ([NSStringFromClass(view.class) isEqualToString:@"SGRTitleMark"]) return view;
+    }
+    return nil;
+}
+
+static NSUInteger marksSeen(Row r) {
+    NSUInteger seen = 0;
+    for (UIView *view in allViews(r.container)) {
+        BOOL mark = [NSStringFromClass(view.class) isEqualToString:@"SGRTitleMark"]
+            || [view.accessibilityIdentifier hasPrefix:@"Components.UI.19andOverIcon"] || [view.accessibilityIdentifier hasPrefix:@"Components.UI.ExplicitIcon"];
+        BOOL shown = YES;
+        for (UIView *v = view; v && v != r.unit; v = v.superview) shown &= !v.hidden && v.alpha > 0.01;
+        if (mark && shown && view.bounds.size.width > 0 && view.window) seen++;
+    }
+    return seen;
+}
+
+static CGRect inRow(Row r, UIView *view) {
+    return [view.superview convertRect:view.frame toView:r.row];
+}
+
+// The ink of the title's first letter, drawn by the label itself: its cap top and baseline in the container.
+static void capOf(Row r, CGFloat *top, CGFloat *bottom) {
+    UILabel *label = r.title.label;
+    CGFloat scale = 3;
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+    format.scale = scale;
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:label.bounds.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [label.layer renderInContext:context.CGContext];
+    }];
+    CGImageRef cg = image.CGImage;
+    size_t w = CGImageGetWidth(cg), h = CGImageGetHeight(cg);
+    uint8_t *pixels = calloc(w * h, 4);
+    CGContextRef context = CGBitmapContextCreate(pixels, w, h, 8, w * 4, CGColorSpaceCreateDeviceRGB(), (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGContextDrawImage(context, CGRectMake(0, 0, w, h), cg);
+    long first = -1, last = -1;
+    for (size_t y = 0; y < h; y++) {
+        for (size_t x = 0; x < (size_t)(10 * scale) && x < w; x++) {
+            if (pixels[(y * w + x) * 4 + 3] > 128) {
+                if (first < 0) first = (long)y;
+                last = (long)y;
+                break;
+            }
+        }
+    }
+    CGContextRelease(context);
+    free(pixels);
+    CGFloat origin = [label.superview convertPoint:label.frame.origin toView:r.container].y;
+    *top = origin + first / scale;
+    *bottom = origin + (last + 1) / scale;
+}
+
+// Until the work queued on the main queue so far has run, however busy the Mac is.
+static void settle(void) {
+    __block BOOL reached = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{ reached = YES; });
+    while (!reached) [NSRunLoop.mainRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+}
+
+// The lyrics coming (`slide` > 0) or going as PlayerLyrics.x moves the row: the type for them, then the title's
+// arranged view slid toward the ⋯ by the thumbnail's 72 pt and its 16 pt gap, mirrored right to left.
+static const CGFloat kLyricsSlide = 72 + 16;
+static void slideRow(Row r, CGFloat slide) {
+    lyricsOpen = slide > 0;
+    SGRShownTitleRestyle();
+    SGRShownTitleSlide(slide);
+    BOOL rtl = r.row.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    r.element.transform = CGAffineTransformMakeTranslation(rtl ? -slide : slide, 0);
+    settle();
+}
+
+// Whether all of `view` is drawn: no view or mask over it up to the window cuts any of it.
+static BOOL shownWhole(UIView *view) {
+    for (UIView *v = view.superview; v; v = v.superview) {
+        CGRect in = [view convertRect:view.bounds toView:v];
+        if ((v.clipsToBounds || !v.superview) && !CGRectContainsRect(CGRectInset(v.bounds, -0.5, -0.5), in)) return NO;
+        if (v.layer.mask && !CGRectContainsRect(CGRectInset(v.layer.mask.frame, -0.5, -0.5), in)) return NO;
+    }
+    return YES;
+}
+
+static void runRow(UIWindow *window) {
+    drawn = SGAppFontSystem;
+    lyricsOpen = NO;
+    // A plain song with a short title: the title's view reaches the ⋯, over Spotify's X and the add button's gap.
+    Row r = buildRow(window, @"Whiplash - Remastered", NO, RowAddSlot, @"Metallica");
+    CGRect addSlot = inRow(r, r.addSlot);
+    SGRShownTitleWatch(r.unit);
+    settle();
+    check(fabs(CGRectGetMaxX(inRow(r, r.element)) - CGRectGetMinX(r.more.frame)) < 0.5 && CGRectEqualToRect(inRow(r, r.addSlot), addSlot),
+          [NSString stringWithFormat:@"the title's view ends at the ⋯ (%.1f, ⋯ at %.1f; Spotify's ended at 242)",
+           CGRectGetMaxX(inRow(r, r.element)), CGRectGetMinX(r.more.frame)]);
+    check(marksSeen(r) == 0, @"a song that is not explicit shows no mark");
+
+    // Explicit: Spotify shows both of its marks, as in IMG_2565.
+    r.ageHolder.hidden = NO;
+    r.explicitHolder.hidden = NO;
+    settle();
+    UIView *mark = drawnMark(r);
+    check(marksSeen(r) == 1 && mark && !mark.hidden, [NSString stringWithFormat:@"an explicit song shows one mark (%lu)", (unsigned long)marksSeen(r)]);
+    check(r.ageHolder.hidden && r.explicitHolder.hidden, @"Spotify's two marks before the artist are gone");
+    check([mark.accessibilityLabel isEqualToString:@"19"] && mark.isAccessibilityElement, @"VoiceOver reads the mark as Spotify's");
+    check([((UIImageView *)mark).image isEqual:[UIImage systemImageNamed:@"19.circle.fill"]] && [mark.tintColor isEqual:SGRSecondary()],
+          @"the mark is the circled 19 in the secondary color");
+    CGRect title = [r.title.superview convertRect:r.title.frame toView:r.container];
+    CGFloat textEnd = CGRectGetMinX(title) + r.title.label.intrinsicContentSize.width;
+    CGFloat side = mark.frame.size.width, gap = CGRectGetMinX(mark.frame) - textEnd;
+    // Apple's at a 20 pt title: 15.7 pt wide, 7.7 pt after the title (IMG_2566).
+    check(side > 15 && side < 16.5 && gap > 7 && gap < 8.5,
+          [NSString stringWithFormat:@"the mark is as big and as far from the title as the Music app's (%.1f wide, %.1f after)", side, gap]);
+    CGFloat capTop, baseline;
+    capOf(r, &capTop, &baseline);
+    check(fabs(CGRectGetMidY(mark.frame) - (capTop + baseline) / 2) < 0.75,
+          [NSString stringWithFormat:@"the mark is centered on the title's letters (%.2f, letters %.2f-%.2f)", CGRectGetMidY(mark.frame), capTop, baseline]);
+    CGRect artist = [r.container convertRect:r.artist.bounds fromView:r.artist];
+    check(fabs(CGRectGetMinX(artist) - CGRectGetMinX(title)) < 0.5, [NSString stringWithFormat:@"the artist starts under the title (%.1f)", CGRectGetMinX(artist)]);
+    r.ageHolder.hidden = NO;
+    settle();
+    check(r.ageHolder.hidden && marksSeen(r) == 1, @"Spotify showing its mark again leaves the one mark");
+
+    // Another badge before the artist keeps the artist after it.
+    r.speed.hidden = NO;
+    SGRShownTitleWatch(r.unit);
+    artist = [r.container convertRect:r.artist.bounds fromView:r.artist];
+    check(CGRectGetMinX(artist) > CGRectGetMinX(title) + 12, @"the artist stays after another badge");
+    r.speed.hidden = YES;
+    SGRShownTitleWatch(r.unit);
+
+    // The lyrics' smaller title takes a smaller mark, still right after a title that fits beside the thumbnail.
+    slideRow(r, kLyricsSlide);
+    CGFloat small = mark.frame.size.width;
+    check(small < side && fabs(small / r.title.label.font.capHeight - side / [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold].capHeight) < 0.01,
+          [NSString stringWithFormat:@"with the lyrics open the mark keeps to the 17 pt title (%.1f)", small]);
+    r.title.label.text = @"Whiplash";
+    settle();
+    textEnd = CGRectGetMinX(title) + r.title.label.intrinsicContentSize.width;
+    check(marksSeen(r) == 1 && shownWhole(mark) && fabs(CGRectGetMinX(mark.frame) - textEnd - small / 2) < 0.5
+          && r.title.label.intrinsicContentSize.width <= r.title.bounds.size.width,
+          [NSString stringWithFormat:@"with the lyrics open a short title keeps its whole text and the mark right after it (%.1f after)",
+           CGRectGetMinX(mark.frame) - textEnd]);
+    r.title.label.text = @"Whiplash - Remastered";
+    slideRow(r, 0);
+
+    // Not explicit again.
+    r.ageHolder.hidden = YES;
+    r.explicitHolder.hidden = YES;
+    settle();
+    check(marksSeen(r) == 0 && fabs(CGRectGetMaxX(inRow(r, r.element)) - CGRectGetMinX(r.more.frame)) < 0.5, @"the next song, not explicit, has no mark");
+    [r.unit removeFromSuperview];
+
+    // A long 19+ title, Spotify showing both of its marks: the marquee ends a mark's room before the ⋯ and the one
+    // circled mark stays in that room.
+    r = buildRow(window, @"Holy Wars... The Punishment Due (Remastered 2004)", NO, RowAddSlot, @"Metallica");
+    r.explicitHolder.hidden = NO;
+    r.ageHolder.hidden = NO;
+    SGRShownTitleWatch(r.unit);
+    settle();
+    mark = drawnMark(r);
+    CGRect markInRow = inRow(r, mark), marqueeInRow = inRow(r, r.title);
+    check(marksSeen(r) == 1 && [((UIImageView *)mark).image isEqual:[UIImage systemImageNamed:@"19.circle.fill"]] && shownWhole(mark)
+          && CGRectGetMaxX(markInRow) <= CGRectGetMinX(r.more.frame) + 0.5 && CGRectGetMaxX(markInRow) > CGRectGetMinX(r.more.frame) - 1
+          && fabs(CGRectGetMinX(markInRow) - CGRectGetMaxX(marqueeInRow) - mark.frame.size.width / 2) < 0.5,
+          [NSString stringWithFormat:@"a long title with both of Spotify's marks ends before one circled mark, the mark before the ⋯ (marquee to %.1f, mark %.1f-%.1f, ⋯ at %.1f)",
+           CGRectGetMaxX(marqueeInRow), CGRectGetMinX(markInRow), CGRectGetMaxX(markInRow), CGRectGetMinX(r.more.frame)]);
+    CGRect closedMark = markInRow;
+    // The lyrics open: the slid title is narrowed by as much, so the mark is whole and 12 pt short of the ⋯.
+    slideRow(r, kLyricsSlide);
+    markInRow = inRow(r, mark);
+    marqueeInRow = inRow(r, r.title);
+    CGFloat stop = CGRectGetMinX(r.more.frame) - 12;
+    check(marksSeen(r) == 1 && [((UIImageView *)mark).image isEqual:[UIImage systemImageNamed:@"19.circle.fill"]] && shownWhole(mark)
+          && CGRectGetMaxX(markInRow) <= stop + 0.5 && CGRectGetMaxX(markInRow) > stop - 1
+          && fabs(CGRectGetMinX(markInRow) - CGRectGetMaxX(marqueeInRow) - mark.frame.size.width / 2) < 0.5,
+          [NSString stringWithFormat:@"with the lyrics open the long title ends before the one circled mark, whole and short of the ⋯ (marquee to %.1f, mark %.1f-%.1f, ⋯ at %.1f)",
+           CGRectGetMaxX(marqueeInRow), CGRectGetMinX(markInRow), CGRectGetMaxX(markInRow), CGRectGetMinX(r.more.frame)]);
+    slideRow(r, 0);
+    markInRow = inRow(r, mark);
+    check(fabs(CGRectGetMaxX(markInRow) - CGRectGetMaxX(closedMark)) < 0.5 && fabs(CGRectGetMinY(markInRow) - CGRectGetMinY(closedMark)) < 0.5,
+          [NSString stringWithFormat:@"the lyrics closed, the mark is back where it was (%.1f, was %.1f)", CGRectGetMaxX(markInRow), CGRectGetMaxX(closedMark)]);
+    // Spotify's own thumbnail coming in before the title narrows it in a layout of the row alone.
+    r.thumb.hidden = NO;
+    [r.row layoutIfNeeded];
+    markInRow = inRow(r, mark);
+    marqueeInRow = inRow(r, r.title);
+    check(CGRectGetMinX(marqueeInRow) > 59 && CGRectGetMaxX(markInRow) <= CGRectGetMinX(r.more.frame) + 0.5
+          && fabs(CGRectGetMinX(markInRow) - CGRectGetMaxX(marqueeInRow) - mark.frame.size.width / 2) < 0.5,
+          [NSString stringWithFormat:@"an episode's thumbnail coming in keeps the mark after the title and before the ⋯ (marquee %.1f-%.1f, mark to %.1f, ⋯ at %.1f)",
+           CGRectGetMinX(marqueeInRow), CGRectGetMaxX(marqueeInRow), CGRectGetMaxX(markInRow), CGRectGetMinX(r.more.frame)]);
+    r.thumb.hidden = YES;
+    [r.row layoutIfNeeded];
+    r.explicitHolder.hidden = YES;
+    r.ageHolder.hidden = YES;
+    settle();
+    check(fabs(CGRectGetMaxX(inRow(r, r.title)) - CGRectGetMinX(r.more.frame)) < 0.5, @"a long title with no mark reaches the ⋯");
+
+    // The row starting 24 pt in rather than 32 (after an episode or an ad turns into a song): the title still reaches
+    // the ⋯ and the mark stays after it, short of the ⋯.
+    r.explicitHolder.hidden = NO;
+    settle();
+    r.row.frame = CGRectMake(24, 8, 346, 48);
+    [r.row layoutIfNeeded];
+    r.more.frame = r.addSlot.frame;
+    SGRShownTitleWatch(r.unit);
+    settle();
+    markInRow = inRow(r, mark);
+    marqueeInRow = inRow(r, r.title);
+    check(marksSeen(r) == 1 && CGRectGetMinX(inRow(r, r.element)) < 0.5
+          && CGRectGetMaxX(markInRow) <= CGRectGetMinX(r.more.frame) + 0.5 && CGRectGetMaxX(markInRow) > CGRectGetMinX(r.more.frame) - 1
+          && fabs(CGRectGetMinX(markInRow) - CGRectGetMaxX(marqueeInRow) - mark.frame.size.width / 2) < 0.5,
+          [NSString stringWithFormat:@"a row starting at 24 pt keeps the mark after the title and before the ⋯ (marquee to %.1f, mark %.1f-%.1f, ⋯ at %.1f)",
+           CGRectGetMaxX(marqueeInRow), CGRectGetMinX(markInRow), CGRectGetMaxX(markInRow), CGRectGetMinX(r.more.frame)]);
+    [r.unit removeFromSuperview];
+
+    // Right to left: all of it mirrored.
+    r = buildRow(window, @"Whiplash - Remastered", YES, RowAddSlot, @"Metallica");
+    r.explicitHolder.hidden = NO;
+    SGRShownTitleWatch(r.unit);
+    settle();
+    mark = drawnMark(r);
+    title = [r.title.superview convertRect:r.title.frame toView:r.container];
+    CGFloat textStart = CGRectGetMaxX(title) - r.title.label.intrinsicContentSize.width;
+    artist = [r.container convertRect:r.artist.bounds fromView:r.artist];
+    check(fabs(CGRectGetMinX(inRow(r, r.element)) - CGRectGetMaxX(r.more.frame)) < 0.5
+          && fabs(textStart - CGRectGetMaxX(mark.frame) - mark.frame.size.width / 2) < 0.5
+          && fabs(CGRectGetMaxX(artist) - CGRectGetMaxX(title)) < 0.5,
+          [NSString stringWithFormat:@"right to left the title reaches the ⋯ on the left, the mark is left of it and the artist under it (element from %.1f, ⋯ to %.1f)",
+           CGRectGetMinX(inRow(r, r.element)), CGRectGetMaxX(r.more.frame)]);
+    [r.unit removeFromSuperview];
+
+    // Right to left, a long 19+ title with the lyrics open: slid left toward the ⋯, it ends right of the one mark.
+    r = buildRow(window, @"Holy Wars... The Punishment Due (Remastered 2004)", YES, RowAddSlot, @"Metallica");
+    r.explicitHolder.hidden = NO;
+    r.ageHolder.hidden = NO;
+    SGRShownTitleWatch(r.unit);
+    settle();
+    mark = drawnMark(r);
+    slideRow(r, kLyricsSlide);
+    markInRow = inRow(r, mark);
+    marqueeInRow = inRow(r, r.title);
+    stop = CGRectGetMaxX(r.more.frame) + 12;
+    check(marksSeen(r) == 1 && shownWhole(mark) && CGRectGetMinX(markInRow) >= stop - 0.5 && CGRectGetMinX(markInRow) < stop + 1
+          && fabs(CGRectGetMinX(marqueeInRow) - CGRectGetMaxX(markInRow) - mark.frame.size.width / 2) < 0.5,
+          [NSString stringWithFormat:@"right to left with the lyrics open the long title ends right of the whole mark, short of the ⋯ (mark %.1f-%.1f, marquee from %.1f, ⋯ to %.1f)",
+           CGRectGetMinX(markInRow), CGRectGetMaxX(markInRow), CGRectGetMinX(marqueeInRow), CGRectGetMaxX(r.more.frame)]);
+    slideRow(r, 0);
+    markInRow = inRow(r, mark);
+    check(fabs(CGRectGetMinX(markInRow) - CGRectGetMaxX(r.more.frame)) < 1,
+          [NSString stringWithFormat:@"right to left, the lyrics closed, the mark is back beside the ⋯ (%.1f)", CGRectGetMinX(markInRow)]);
+    [r.unit removeFromSuperview];
+}
+
+// Every row shape in both directions, a long 19+ title over a long artist: with the lyrics open the title, its one mark
+// and the artist all end 12 pt short of whatever is on the title's trailing side (the ⋯, Spotify's button) or of the
+// row's end, the mark after the title; closed again, the row is as it was.
+static void runShapes(UIWindow *window) {
+    for (RowShape shape = RowAddSlot; shape <= RowBare; shape++) {
+        for (int direction = 0; direction < 2; direction++) {
+            BOOL rtl = direction == 1;
+            Row r = buildRow(window, @"Holy Wars... The Punishment Due (Remastered 2004)", rtl, shape,
+                             @"Megadeth, Dave Mustaine, David Ellefson, Marty Friedman, Nick Menza");
+            r.explicitHolder.hidden = NO;
+            r.ageHolder.hidden = NO;
+            CGRect spotifys = inRow(r, r.element);
+            SGRShownTitleWatch(r.unit);
+            settle();
+            CGRect closed = inRow(r, r.element);
+            // Where the title must stop: the ⋯, Spotify's button after it, or the row's end.
+            UIView *after = r.more ?: (shape == RowDJ ? r.addSlot : nil);
+            CGRect afterFrame = after ? inRow(r, after) : CGRectNull;
+            CGFloat stop = after ? (rtl ? CGRectGetMaxX(afterFrame) : CGRectGetMinX(afterFrame))
+                                 : (rtl ? CGRectGetMinX(r.row.bounds) : CGRectGetMaxX(r.row.bounds));
+            NSString *name = [NSString stringWithFormat:@"%@ %@", kShapeNames[shape], rtl ? @"right to left" : @"left to right"];
+            if (shape != RowAddSlot) {
+                check(CGRectEqualToRect(closed, spotifys),
+                      [NSString stringWithFormat:@"the closed row %@ keeps Spotify's title width (%@, Spotify's %@)", name,
+                       NSStringFromCGRect(closed), NSStringFromCGRect(spotifys)]);
+            }
+            slideRow(r, kLyricsSlide);
+            UIView *mark = drawnMark(r);
+            CGRect title = inRow(r, r.title), markFrame = inRow(r, mark), artist = inRow(r, r.artist);
+            CGFloat limit = rtl ? stop + 12 : stop - 12;
+            BOOL inside = YES;
+            for (NSValue *frame in @[[NSValue valueWithCGRect:title], [NSValue valueWithCGRect:markFrame], [NSValue valueWithCGRect:artist]]) {
+                inside &= rtl ? CGRectGetMinX(frame.CGRectValue) >= limit - 0.5 : CGRectGetMaxX(frame.CGRectValue) <= limit + 0.5;
+            }
+            CGFloat after_ = rtl ? CGRectGetMinX(title) - CGRectGetMaxX(markFrame) : CGRectGetMinX(markFrame) - CGRectGetMaxX(title);
+            check(marksSeen(r) == 1 && shownWhole(mark) && inside && fabs(after_ - markFrame.size.width / 2) < 0.5,
+                  [NSString stringWithFormat:@"with the lyrics open the row %@ ends its title, mark and artist 12 pt short of %.1f "
+                   "(title %.1f-%.1f, mark %.1f-%.1f, artist %.1f-%.1f)", name, stop, CGRectGetMinX(title), CGRectGetMaxX(title),
+                   CGRectGetMinX(markFrame), CGRectGetMaxX(markFrame), CGRectGetMinX(artist), CGRectGetMaxX(artist)]);
+            slideRow(r, 0);
+            check(CGRectEqualToRect(inRow(r, r.element), closed),
+                  [NSString stringWithFormat:@"the lyrics closed, the row %@ is as it was (%@)", name, NSStringFromCGRect(inRow(r, r.element))]);
+            [r.unit removeFromSuperview];
+        }
+    }
+}
+
 static void run(UIWindow *window) {
     NSString *titleText = @"밤양갱", *artistText = @"비비 (BIBI)";
     UIFont *spotifyTitle = [UIFont fontWithName:@"Georgia-Bold" size:24], *spotifyArtist = [UIFont fontWithName:@"Georgia" size:16];
@@ -109,6 +546,9 @@ static void run(UIWindow *window) {
     check([title.font.familyName isEqualToString:@"Georgia"] && [artist.font.familyName isEqualToString:@"Georgia"]
           && title.font.pointSize == 20 && artist.font.pointSize == 20,
           [NSString stringWithFormat:@"with Spotify's font chosen the labels keep Spotify's family at 20 pt (%@, %@)", title.font.fontName, artist.font.fontName]);
+    [unit removeFromSuperview];
+    runRow(window);
+    runShapes(window);
     printf("title style checks: %d of %d right -- %s\n", checked - failed, checked, failed ? "FAIL" : "PASS");
     fflush(stdout);
     exit(failed ? 1 : 0);
@@ -122,7 +562,8 @@ static void run(UIWindow *window) {
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController = [UIViewController new];
     [self.window makeKeyAndVisible];
-    dispatch_async(dispatch_get_main_queue(), ^{ run(self.window); });
+    // From a timer, not the main queue: the checks turn the run loop for the row's work queued on the main queue.
+    [NSTimer scheduledTimerWithTimeInterval:0 repeats:NO block:^(NSTimer *timer) { run(self.window); }];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         HARNESS_FAIL(@"title style checks did not finish");
     });

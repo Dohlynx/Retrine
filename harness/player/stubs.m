@@ -347,6 +347,7 @@ NSString *SGRShownTitle(NSString *trackID, NSString *title, NSString *artist, NS
 }
 void SGRShownTitleWatch(UIView *unit) {}
 void SGRShownTitleRestyle(void) {}
+void SGRShownTitleSlide(CGFloat slide) {}
 
 // Speed and pitch: a number the harness keeps, with no audio behind it.
 static double sg_speed = 1;

@@ -9,8 +9,8 @@
 // belongs, while Spotify's list of covers goes to alpha 0 underneath: one view to move instead of a
 // paging list of them, and the two pictures are the same one, so the swap is not seen. The title row
 // is Spotify's own unit translated, the way PlayerFooter.x moves the footer's controls -- a transform
-// survives the stack view laying its arranged views out again -- with a mask over it where the controls
-// it moved toward begin, so a long title fades out before them instead of running under them. The row
+// survives the stack view laying its arranged views out again -- and narrowed by PlayerTitle.x by as much
+// as it slid (SGRShownTitleSlide), so a long title scrolls or ends before the controls it moved toward. The row
 // of chips over it (Switch to video) goes while the lines are up, since they take the room it sits in.
 //
 // Tree (trees/clean/player/01.txt): SPTNowPlayingView (:26) holds the content layers, the header row
@@ -47,8 +47,6 @@
 
 static const CGFloat kThumbSide = 72;          // the cover once the lyrics are up
 static const CGFloat kThumbGap = 16;           // between the thumbnail and the title beside it
-static const CGFloat kTitleGap = 12;           // between the title and the controls at the trailing edge
-static const CGFloat kTitleFade = 20;          // over how much of its end a title too long to fit fades out
 static const CGFloat kThumbTop = 8;            // below the top of the artwork band
 static const CGFloat kLyricsTop = 20;          // between the title row and the first line
 static const CGFloat kLyricsBottom = 8;        // above the progress bar
@@ -405,14 +403,17 @@ static SGRLyricsLayout layoutIn(UIView *host, BOOL wide) {
         l.ok = side >= kThumbSide && l.stage.size.height > kLivingHeight / 2;
         return l;
     }
-    // The thumbnail takes the title's own leading edge, so the two line up down the page.
-    CGFloat leading = title ? CGRectGetMinX(untransformed(title, host)) : CGRectGetMinX(area) + SGRSideMargin;
+    // The thumbnail takes the title's own leading edge, so the two line up down the page, and the title slides
+    // toward its trailing side.
+    BOOL rtl = host.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    CGRect titleFrame = title ? untransformed(title, host) : CGRectInset(area, SGRSideMargin, 0);
+    CGFloat leading = rtl ? CGRectGetMaxX(titleFrame) - kThumbSide : CGRectGetMinX(titleFrame);
     l.cover = cover;
     l.thumb = CGRectMake(leading, contentTop + kThumbTop, kThumbSide, kThumbSide);
     // Beside the thumbnail when the title can be moved clear of it, under it when it cannot be found.
     CGFloat top = title ? CGRectGetMidY(l.thumb) - row.size.height / 2 : CGRectGetMaxY(l.thumb) + SGRGrid;
     l.lift = top - CGRectGetMinY(row);
-    l.shift = title ? kThumbSide + kThumbGap : 0;
+    l.shift = title ? (rtl ? -1 : 1) * (kThumbSide + kThumbGap) : 0;
     CGFloat lines = MAX(CGRectGetMaxY(l.thumb), top + row.size.height) + kLyricsTop;
     // The artwork band belongs to a paging cell: on a skip its x can still be between pages.
     // Only its vertical room belongs to the lyrics. The lyric viewport and its controls belong
@@ -424,66 +425,20 @@ static SGRLyricsLayout layoutIn(UIView *host, BOOL wide) {
 
 #pragma mark - the title row
 
-// Where the row's trailing controls start, in the unit's coordinates: the nearest arranged view on the
-// trailing side of the title that is still there to be seen. The title may not reach it.
-static CGFloat trailingEdgeIn(UIView *info) {
-    UIView *title = sg_titleElement, *row = title.superview;
-    if (!title || !row) return CGFLOAT_MAX;
-    CGFloat titleLeft = CGRectGetMinX(untransformed(title, info));
-    CGFloat limit = CGRectGetMaxX(SGFrameIn(row, info));
-    for (UIView *view in row.subviews) {
-        if (view == title || view.hidden || view.alpha < 0.01 || view.bounds.size.width < 1) continue;
-        CGFloat x = CGRectGetMinX(SGFrameIn(view, info));
-        if (x > titleLeft && x < limit) limit = x;
-    }
-    return limit;
-}
-
-// The title moved right by the thumbnail would run into the add button beside it, and it cannot simply
-// be narrowed: Spotify lays its marquee labels out with constraints, which put the width back the next
-// time anything in the row lays out -- and a long title, being a marquee, lays out often. A mask on the
-// element takes no part in that, so it holds between passes, and it fades the title out where Spotify's
-// own fade would have been rather than cutting it.
-static void clipTitle(UIView *element, CGFloat width) {
-    CGRect bounds = element.bounds;
-    if (width >= bounds.size.width - 0.5 || bounds.size.height < 1) {
-        element.layer.mask = nil;
-        return;
-    }
-    CAGradientLayer *mask = [element.layer.mask isKindOfClass:CAGradientLayer.class] ? (CAGradientLayer *)element.layer.mask : nil;
-    if (!mask) {
-        mask = [CAGradientLayer layer];
-        mask.colors = @[(id)UIColor.whiteColor.CGColor, (id)UIColor.whiteColor.CGColor, (id)UIColor.clearColor.CGColor];
-        mask.startPoint = CGPointMake(0, 0.5);
-        mask.endPoint = CGPointMake(1, 0.5);
-        element.layer.mask = mask;
-    }
-    CGFloat fade = MIN(kTitleFade, width);
-    CGRect frame = CGRectMake(0, 0, MAX(0, width), bounds.size.height);
-    if (CGRectEqualToRect(frame, mask.frame)) return;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    mask.frame = frame;
-    mask.locations = @[@0, @(width > 0 ? (width - fade) / width : 0), @1];
-    [CATransaction commit];
-}
-
-// The unit's row lays its arranged views out after the unit's own pass, so the transforms go on after it.
+// The unit's row lays its arranged views out after the unit's own pass, so the transforms go on after it. The title
+// moved beside the thumbnail would run into the controls it moved toward, so PlayerTitle.x narrows it by as much.
 static void placeTitleRow(SGRLyricsLayout l) {
     UIView *info = sg_info.viewIfLoaded;
     if (!info) return;
     [SGRowIn(info) layoutIfNeeded];
     CGFloat lift = sg_open ? l.lift : 0, shift = sg_open ? l.shift : 0;
+    SGRShownTitleSlide(sg_titleElement ? fabs(round(shift)) : 0);
     CGAffineTransform rise = CGAffineTransformMakeTranslation(0, round(lift));
     if (!CGAffineTransformEqualToTransform(info.transform, rise)) info.transform = rise;
     UIView *title = sg_titleElement;
     if (!title) return;
     CGAffineTransform slide = CGAffineTransformMakeTranslation(round(shift), 0);
     if (!CGAffineTransformEqualToTransform(title.transform, slide)) title.transform = slide;
-    // Closed it reaches as far as Spotify meant it to; moved, only as far as the controls it moved toward.
-    CGFloat room = CGFLOAT_MAX;
-    if (sg_open) room = trailingEdgeIn(info) - kTitleGap - (CGRectGetMinX(untransformed(title, info)) + shift);
-    clipTitle(title, room);
 }
 
 #pragma mark - opening and closing

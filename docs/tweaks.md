@@ -1516,7 +1516,20 @@ Redesigned:
                   the halfway place between play and the footer. The title is 20 pt semibold over the artist 20 pt
                   regular in the secondary color (Title 3, capped at XXXL), 17 over 17 beside the lyrics' thumbnail
                   (PlayerTitle.x), in the app's chosen font (Spotify's own family when Spotify Mix is chosen), Spotify's
-                  labels and marquees keeping their text, simplification and translation. Where
+                  labels and marquees keeping their text, simplification and translation. The title and artist reach
+                  the ⋯, the add button's and X's slots (put away by PlayerMenu.m) given to them by a custom spacing after
+                  the track info's arranged view, so the marquee scrolls or ends there; slid beside the lyrics' thumbnail
+                  (toward the ⋯, mirrored right to left, PlayerLyrics.x) the same spacing narrows it by the slide and
+                  12 pt -- the row's trailing layout margin where nothing is arranged after the title (no add button,
+                  the ⋯ then in the row's end) -- so the title, its mark and the artist end short of the ⋯, of
+                  Spotify's next button or of the row's end rather than under them. Spotify's explicit marks
+                  (Components.UI.ExplicitIcon, a square "19" in Korea, and Components.UI.19andOverIcon, a circled "19",
+                  each in a holder of the badge stack leading the artist) are kept hidden, the artist then starting under
+                  the title, and one mark trails the title as the Music app's: the symbol for Spotify's mark in the
+                  secondary color, 1.1 times the title's cap height, centered on it, half its size after the last letter
+                  and, for a title too long for the row, after the marquee, which then ends that much sooner. It carries
+                  the shown mark's accessibility and id, so VoiceOver still reads the track as explicit and Hide explicit
+                  badge clears it (harness/player/title-style-check.sh). Where
                   the footer has no queue button of Spotify's (a Free account's row), the Music app's queue glyph stands
                   in the trailing slot and opens Playing Next; Spotify's own is kept where it has one. The
                   timestamps under the slider are metered (SGRMonospacedDigits) and, with Rolling time digits on (the

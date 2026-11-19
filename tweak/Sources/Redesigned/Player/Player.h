@@ -144,6 +144,9 @@ void SGRShownTitleWatch(UIView *unit);
 // The lyrics came or went (SGRPlayerLyricsChanged): the two labels take the type for it, 17 over 17 beside the
 // lyrics' thumbnail, 20 over 20 otherwise.
 void SGRShownTitleRestyle(void);
+// The lyrics slide the title's arranged view `slide` points toward the row's trailing controls, 0 when they do not
+// (PlayerLyrics.x): the title, and its explicit mark, then end that much and a gap sooner.
+void SGRShownTitleSlide(CGFloat slide);
 
 #pragma mark - iPad (PlayerLyrics.x, Redesigned/NowPlayingBar/NowPlayingBar.x)
 
