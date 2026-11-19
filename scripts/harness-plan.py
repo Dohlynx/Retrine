@@ -178,6 +178,8 @@ HARNESSES = [
      "run": "sh harness/radio-modes/build.sh"},
     {"name": "Song audio retention", "dir": "song-audio",
      "run": "sh harness/song-audio/build.sh"},
+    {"name": "Signing sheet", "dir": "signing",
+     "run": "bash harness/signing/check.sh"},
     {"name": "Sing model-free", "dir": "sing",
      "run": "sh harness/sing/build.sh && harness/sing/build/sing spatial"},
     {"name": "Sing render regressions", "dir": "sing",
