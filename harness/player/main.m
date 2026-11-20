@@ -878,13 +878,15 @@ static void loadLyrics(void) {
     }
 
     // The options scenario's AI DJ: its header unit's two buttons over the status bar, and its footer (DJMFooterUnitView:
-    // share, the DJ button and Connect, not in a stack) just under the player's header row.
+    // share, the DJ button and Connect, not in a stack) over the player's own header row. On the phone the DJ's footer is
+    // under its controls, where the lyrics never reach; here the ordinary player's rows hold that place, and the header
+    // row is the one place the open lyrics leave alone (their thumbnail takes the title row's place under it).
     UIViewController *djHeaderUnit = nil, *djFooterUnit = nil;
     if ([scenario() isEqualToString:@"options"]) {
         _djHeader = box(host, UIView.class, CGRectMake(0, 8, W, headerHeight), nil);
         glyphButton(_djHeader, CGRectMake(W / 2 - 104, 0, 48, 48), @"chevron.down", @"now-playing-minimize-button");
         glyphButton(_djHeader, CGRectMake(W / 2 + 56, 0, 48, 48), @"ellipsis", @"Context menu");
-        _djFooter = box(host, UIView.class, CGRectMake(0, bandTop, W, 44), nil);
+        _djFooter = box(host, UIView.class, CGRectMake(0, headerTop, W, 44), nil);
         UIView *djConnectHolder = box(_djFooter, UIView.class, CGRectMake(16, 4, 153, 36), nil);
         UIView *djConnect = box(djConnectHolder, UIView.class, djConnectHolder.bounds, @"Components.ConnectButtonOutputSwitcher");
         _djConnect = djConnect;
@@ -4895,10 +4897,15 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     };
     // A finger on the AI DJ's Queue, then on its Lyrics twice: the queue is asked for, and the lyrics open and close.
     __block BOOL lyricsBefore = NO;
-    void (^tapDJ)(NSString *) = ^(NSString *title) {
+    // Whether the touch lands on the button: with the lyrics up nothing of theirs may be over it.
+    BOOL (^tapDJ)(NSString *) = ^BOOL(NSString *title) {
         UIView *button = titled(djFooter, title);
-        SGHarnessTap(djFooter.window, [djFooter.window convertPoint:CGPointMake(CGRectGetMidX(button.bounds), CGRectGetMidY(button.bounds)) fromView:button]);
+        CGPoint point = [djFooter.window convertPoint:CGPointMake(CGRectGetMidX(button.bounds), CGRectGetMidY(button.bounds)) fromView:button];
+        BOOL lands = button && [[djFooter.window hitTest:point withEvent:nil] isDescendantOfView:button];
+        SGHarnessTap(djFooter.window, point);
+        return lands;
     };
+    __block BOOL lyricsReached = NO;
 
     // One step after another, each its delay after the one before it ran: every state a screenshot is asked for holds
     // two seconds or more, and a check reads a state the step before it set up once UIKit has laid it out.
@@ -4948,17 +4955,19 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
         [self expect:[SGRHarnessLastOpened.absoluteString isEqualToString:@"spotify:now-playing:queue"] step:@"the AI DJ's Queue tapped, Spotify's glyph"
               detail:SGRHarnessLastOpened.absoluteString ?: @"nothing opened"];
         lyricsBefore = SGRPlayerLyricsOpen();
-        tapDJ(@"Lyrics");
+        lyricsReached = tapDJ(@"Lyrics");
     });
+    // The second tap comes while the lyrics are still moving in: the Lyrics button turns them back at once.
     step(0.5, ^{
         BOOL turned = SGRPlayerLyricsOpen() != lyricsBefore;
-        tapDJ(@"Lyrics");
-        [self expect:turned && titled(djFooter, @"Lyrics").enabled step:@"the AI DJ's Lyrics tapped, Spotify's glyph"
-              detail:turned ? (lyricsBefore ? @"the lyrics closed" : @"the lyrics opened") : @"the lyrics did not turn"];
+        BOOL reached = lyricsReached;
+        lyricsReached = tapDJ(@"Lyrics");
+        [self expect:reached && turned && titled(djFooter, @"Lyrics").enabled step:@"the AI DJ's Lyrics tapped, Spotify's glyph"
+              detail:!reached ? @"the touch missed the button" : turned ? (lyricsBefore ? @"the lyrics closed" : @"the lyrics opened") : @"the lyrics did not turn"];
     });
     step(0.5, ^{
-        [self expect:SGRPlayerLyricsOpen() == lyricsBefore && encoreIn(titled(djFooter, @"Lyrics")) step:@"tapped again, back as they were"
-              detail:SGRPlayerLyricsOpen() ? @"open" : @"closed"];
+        [self expect:lyricsReached && SGRPlayerLyricsOpen() == lyricsBefore && encoreIn(titled(djFooter, @"Lyrics")) step:@"tapped again, back as they were"
+              detail:!lyricsReached ? @"the touch missed the button, under the lyrics" : SGRPlayerLyricsOpen() ? @"open" : @"closed"];
         open();
     });
     step(0.5, ^{ flip(@"Header glass", YES); flip(@"Music app icons", YES); });
