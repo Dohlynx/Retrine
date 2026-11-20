@@ -106,7 +106,7 @@ compile -target arm64-apple-ios17.0-simulator -fobjc-arc -g -O0 \
     "$SRC"/Shared/LyricsTranslation/LyricsTranslation.m "$SRC"/Shared/LyricsTranslation/SavedTranslations.m "$SRC"/Shared/LyricsTranslation/TranslatedTitles.m "$SRC"/Shared/LyricsTranslation/AIServices.m "$SRC"/Shared/LyricsTranslation/TranslationPrompt.m "$SRC"/Shared/LyricsTranslation/OpenAITranslate.m "$SRC"/Shared/LyricsTranslation/BingTranslate.m "$SRC"/Shared/LyricsTranslation/ClaudeTranslate.m "$SRC"/Shared/LyricsTranslation/DeepL.m "$SRC"/Shared/LyricsTranslation/GoogleTranslate.m \
     "$SRC"/Core/TranslationStore/SGTranslationFiles.m "$SRC"/Core/TranslationStore/SGTranslationTransfer.m \
     "$SRC"/Redesigned/Lyrics/AutoTranslatorName.m "$SRC"/Shared/LyricsTranslation/CredentialSettings.m "$SRC"/Shared/LyricsSources/SGTTML.m \
-    -framework UIKit -framework IOKit -framework QuartzCore -framework Metal -framework CoreGraphics -framework CoreImage -framework Foundation -framework NaturalLanguage -framework Symbols -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework Accelerate -framework PhotosUI -framework Security -framework MediaPlayer -framework Network -framework CoreText \
+    -framework OSLog -framework UIKit -framework IOKit -framework QuartzCore -framework Metal -framework CoreGraphics -framework CoreImage -framework Foundation -framework NaturalLanguage -framework Symbols -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework Accelerate -framework PhotosUI -framework Security -framework MediaPlayer -framework Network -framework CoreText \
     -lz "$SRC/Core/SGDataRoot.m" -o "$OUT/PlayerHarness.app/PlayerHarness"
 
 cat > "$OUT/PlayerHarness.app/Info.plist" <<'PLIST'

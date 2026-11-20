@@ -51,9 +51,8 @@ static void placeLine(void);
 static char kLineKey, kStackKey, kTitleKey;
 static __weak UIView *sg_host;              // SPTNowPlayingView
 static __weak UIViewController *sg_floating; // the chips over the title (FloatingElementsUnit)
-static void placeLine(void);
+static void flushChip(BOOL leaving);
 static CGFloat visibleChipTop(UIView *host, CGRect area);
-static void reportChip(UIView *host, BOOL moved);
 
 BOOL SGRPlayerLyricLineOn(void) {
     static BOOL on;
@@ -243,7 +242,6 @@ BOOL SGRPlayerLyricLineOn(void) {
         self.frame = slot;
         if (_overClip && _shown) SGRPlayerMotionLineMoved();
     }
-    reportChip(self.superview, _chipTop < CGRectGetMaxY(_room));
     return YES;
 }
 
@@ -321,6 +319,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    if (!self.window && self.superview == sg_host) flushChip(YES);
     [self clock];
 }
 
@@ -547,6 +546,18 @@ static BOOL layerPaints(CALayer *layer) {
     for (CALayer *child in layer.sublayers) if (layerPaints(child)) return YES;
     return NO;
 }
+static CGRect maskBox(UIView *v, UIView *host) {
+    CALayer *mask = v.layer.mask;
+    CGPathRef path = [mask isKindOfClass:CAShapeLayer.class] ? ((CAShapeLayer *)mask).path : NULL;
+    if (!path) return [host convertRect:mask.frame fromView:v];
+    CGRect box = CGPathGetPathBoundingBox(path);
+    if (CGRectIsEmpty(box)) return CGRectNull;
+    // A mask has no superlayer. Its anchor/position nevertheless place its local path in the owner's bounds.
+    CGRect b = mask.bounds;
+    box = CGRectOffset(box, -b.origin.x - b.size.width * mask.anchorPoint.x, -b.origin.y - b.size.height * mask.anchorPoint.y);
+    box = CGRectApplyAffineTransform(box, mask.affineTransform);
+    return [host convertRect:CGRectOffset(box, mask.position.x, mask.position.y) fromView:v];
+}
 static BOOL chipVisibleThrough(UIView *v, UIView *host, CGRect *clip) {
     if (v.hidden || v.layer.hidden || v.alpha < .01 || v.layer.opacity < .01 || CGRectIsEmpty(v.bounds)) return NO;
     CGRect bounds = [host convertRect:v.bounds fromView:v];
@@ -555,63 +566,146 @@ static BOOL chipVisibleThrough(UIView *v, UIView *host, CGRect *clip) {
     CALayer *mask = v.layer.mask;
     if (mask) {
         if (!layerPaints(mask)) return NO;
-        *clip = CGRectIntersection(*clip, [host convertRect:mask.frame fromView:v]);
+        *clip = CGRectIntersection(*clip, maskBox(v, host));
     }
     return !CGRectIsEmpty(*clip);
 }
 static __weak UIView *sg_chip;
-static void reportChip(UIView *host, BOOL moved) {
-    static NSString *last;
-    UIView *chip = sg_chip;
-    if (!moved || !chip) { last = nil; return; }
-    NSMutableString *record = [NSMutableString stringWithFormat:@"%@ id=%@ frame=%@", NSStringFromClass(chip.class),
-        [chip.accessibilityIdentifier isEqual:SGVideoSwitchIdentifier] ? SGVideoSwitchIdentifier :
-        (chip.accessibilityIdentifier.length ? @"<other>" : @"-"), NSStringFromCGRect([host convertRect:chip.bounds fromView:chip])];
-    for (UIView *v = chip; v; v = v.superview) {
-        [record appendFormat:@" / %@ hidden=%d alpha=%.2f opacity=%.2f", NSStringFromClass(v.class), v.hidden, v.alpha, v.layer.opacity];
-        if (v == sg_floating.viewIfLoaded) break;
+static uint64_t sg_tree;
+static void chipMix(uint64_t n) { sg_tree = (sg_tree ^ n) * UINT64_C(1099511628211); }
+static void chipNumbers(const CGFloat *numbers, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        double value = numbers[i];
+        uint64_t bits;
+        memcpy(&bits, &value, sizeof(bits));
+        chipMix(bits);
     }
-    if (![last isEqual:record]) { last = record.copy; SGLog(@"lyrics chip: %@", record); }
+}
+static void fingerprintLayer(CALayer *l, CGRect frame) {
+    chipMix((uintptr_t)(__bridge void *)l.class);
+    chipMix(l.hidden | ((l.contents != nil) << 1) | ((l.backgroundColor && CGColorGetAlpha(l.backgroundColor) > 0) << 2));
+    chipNumbers((CGFloat[]){frame.origin.x, frame.origin.y, frame.size.width, frame.size.height, l.opacity, l.cornerRadius}, 6);
+    if ([l isKindOfClass:CAShapeLayer.class] && ((CAShapeLayer *)l).path) {
+        CGRect b = CGPathGetPathBoundingBox(((CAShapeLayer *)l).path);
+        chipNumbers((CGFloat[]){b.origin.x,b.origin.y,b.size.width,b.size.height},4);
+    }
+    if (l.mask) fingerprintLayer(l.mask, l.mask.frame);
+}
+enum { kChipPartBytes = 840, kChipParts = 4 };
+static void appendChipTree(NSMutableString *tree, UIView *v, UIView *host, NSUInteger depth) {
+    if (tree.length >= kChipPartBytes * kChipParts) return;
+    CALayer *l = v.layer;
+    NSMutableString *layers = [NSMutableString string];
+    for (CALayer *child in l.sublayers) {
+        if ([child.delegate isKindOfClass:UIView.class] && ((UIView *)child.delegate).layer == child) continue;
+        if (layers.length >= 180) { [layers appendString:@"…"]; break; }
+        [layers appendFormat:@"%@,", NSStringFromClass(child.class)];
+    }
+    [tree appendFormat:@"\nd%lu %@%@ id=%@ hidden=%d/%d alpha=%.3g frame=%@ clips=%d layer=%@ opacity=%.3g mask=%@ box=%@ bg=%d contents=%d radius=%.3g sub=%@",
+        (unsigned long)depth, NSStringFromClass(v.class), v == sg_chip ? @"*" : @"",
+        [v.accessibilityIdentifier isEqual:SGVideoSwitchIdentifier] ? @"switch" : (v.accessibilityIdentifier.length ? @"other" : @"none"),
+        v.hidden, l.hidden, v.alpha, v.window == host.window ? NSStringFromCGRect([host convertRect:v.bounds fromView:v]) : @"unattached",
+        v.clipsToBounds, NSStringFromClass(l.class), l.opacity, NSStringFromClass(l.mask.class) ?: @"-",
+        l.mask && v.window == host.window ? NSStringFromCGRect(maskBox(v,host)) : @"-",
+        l.backgroundColor && CGColorGetAlpha(l.backgroundColor) > 0, l.contents != nil, l.cornerRadius, layers];
+    for (UIView *child in v.subviews) {
+        if (tree.length >= kChipPartBytes * kChipParts) break;
+        appendChipTree(tree, child, host, depth + 1);
+    }
+}
+// Structure and decision are independent of host translation. Keep the latest absolute pose
+// separately so an animation costs one trailing snapshot, not one snapshot per layout.
+static CGRect sg_area, sg_unitFrame;
+static CGFloat sg_top;
+static uint64_t sg_sentTree, sg_observedTree;
+static CFTimeInterval sg_sentAt, sg_poseAt;
+static BOOL sg_scheduled;
+static NSData *sg_pending;
+static void flushChip(BOOL leaving) {
+    if (!sg_pending || (!leaving && sg_scheduled)) return;
+    CFTimeInterval now = CACurrentMediaTime();
+    CFTimeInterval due = sg_sentAt + 1;
+    if (sg_observedTree == sg_sentTree) due = MAX(due, sg_poseAt + 1);
+    if (!leaving && due > now) {
+        sg_scheduled = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((due-now)*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            sg_scheduled = NO; flushChip(NO);
+        });
+        return;
+    }
+    sg_sentTree = sg_observedTree; sg_sentAt = now;
+    NSData *data = sg_pending;
+    sg_pending = nil;
+    const uint8_t *bytes = data.bytes;
+    NSUInteger offset = 0;
+    for (NSUInteger part = 1; part <= kChipParts && offset < data.length; part++) {
+        NSUInteger end = MIN(offset + kChipPartBytes, data.length);
+        while (end < data.length && (bytes[end] & 0xc0) == 0x80) end--;
+        NSString *chunk = [[NSString alloc] initWithBytes:bytes+offset length:end-offset encoding:NSUTF8StringEncoding];
+        SGLog(@"lyrics unit: %lu %@%@", (unsigned long)part, chunk, part == kChipParts && end < data.length ? @" [capped]" : @"");
+        offset = end;
+    }
+}
+static void reportChip(UIView *host, CGRect area, CGFloat top) {
+    if (!host.window) return;
+    UIView *unit = sg_floating.viewIfLoaded;
+    BOOL attached = unit.window && unit.window == host.window;
+    CGRect frame = attached ? [host convertRect:unit.bounds fromView:unit] : CGRectNull;
+    chipMix(attached); chipMix((uintptr_t)(__bridge void *)sg_chip);
+    if (sg_chip) chipNumbers((CGFloat[]){top - CGRectGetMinY(frame)}, 1);
+    BOOL pose = !CGRectEqualToRect(frame, sg_unitFrame) || !CGRectEqualToRect(area, sg_area) || top != sg_top;
+    if (!pose && sg_tree == sg_observedTree) return;
+    if (pose) sg_poseAt = CACurrentMediaTime();
+    sg_unitFrame = frame; sg_area = area; sg_top = top;
+    sg_observedTree = sg_tree;
+    // The player can disappear before the coalescing deadline. Keep bytes, not its live views.
+    NSMutableString *record = [NSMutableString stringWithFormat:@"loaded=%d attached=%d area=%@ top=%@ winner=%@",
+        unit != nil, attached, NSStringFromCGRect(area), top == CGFLOAT_MAX ? @"none" : @(top).stringValue,
+        sg_chip ? NSStringFromClass(sg_chip.class) : @"none"];
+    if (unit) appendChipTree(record, unit, host, 0);
+    sg_pending = [record dataUsingEncoding:NSUTF8StringEncoding];
+    flushChip(NO);
 }
 static CGFloat chipTopInBranch(UIView *view, UIView *host, CGRect clip, UIView **winner) {
-    if (!chipVisibleThrough(view, host, &clip)) return CGFLOAT_MAX;
-    CGRect visible = CGRectIntersection(clip, [host convertRect:view.bounds fromView:view]);
+    // Parent-local geometry preserves hierarchy and ignores a translation of the whole unit.
+    fingerprintLayer(view.layer, view == sg_floating.viewIfLoaded ? view.bounds : view.frame);
     BOOL identified = [view.accessibilityIdentifier isEqualToString:SGVideoSwitchIdentifier];
-    if (!CGRectIsEmpty(visible) && layerOwnPaint(view.layer)) { *winner = view; return CGRectGetMinY(visible); }
+    chipMix(view.subviews.count); chipMix(view.layer.sublayers.count);
+    chipMix((uintptr_t)(__bridge void *)view.class);
+    chipMix(view.clipsToBounds | (view.hidden << 1) | (identified << 2) | ((view.accessibilityIdentifier.length != 0) << 3));
+    chipNumbers((CGFloat[]){view.alpha}, 1);
+    if (!CGRectIsEmpty(clip) && !chipVisibleThrough(view, host, &clip)) clip = CGRectNull;
+    CGRect visible = CGRectIsEmpty(clip) ? CGRectNull : CGRectIntersection(clip, [host convertRect:view.bounds fromView:view]);
+    BOOL owns = !CGRectIsEmpty(visible) && (identified || layerOwnPaint(view.layer));
     CGFloat top = CGFLOAT_MAX;
     for (CALayer *layer in view.layer.sublayers) {
-        if ([layer.delegate isKindOfClass:UIView.class] || !layerPaints(layer)) continue;
+        if ([layer.delegate isKindOfClass:UIView.class] && ((UIView *)layer.delegate).layer == layer) continue;
+        fingerprintLayer(layer, layer.frame);
+        if (owns || CGRectIsEmpty(clip) || !layerPaints(layer)) continue;
         CGRect rect = CGRectIntersection(clip, [host convertRect:layer.frame fromView:view]);
         if (!CGRectIsEmpty(rect) && CGRectGetMinY(rect) < top) { *winner = view; top = CGRectGetMinY(rect); }
     }
     for (UIView *child in view.subviews) {
         UIView *candidate = nil;
-        CGFloat other = chipTopInBranch(child, host, clip, &candidate);
+        CGFloat other = chipTopInBranch(child, host, owns ? CGRectNull : clip, &candidate);
         if (other < top) { top = other; *winner = candidate; }
     }
-    if (identified && !CGRectIsEmpty(visible) && top != CGFLOAT_MAX) { *winner = view; return CGRectGetMinY(visible); }
+    if (owns) { *winner = view; return CGRectGetMinY(visible); }
     return top;
 }
 
 static CGFloat visibleChipTop(UIView *host, CGRect area) {
     UIView *floating = sg_floating.viewIfLoaded;
     sg_chip = nil;
-#if SG_DRIVER
-    // Physical-device observation only; inventory by geometry, never by label text.
-    static NSString *lastProbe;
-    NSMutableString *probe = [NSMutableString stringWithFormat:@"loaded=%d attached=%d", floating != nil, floating.window && floating.window == host.window];
-    if (floating) SGForEachView(floating, ^(UIView *v) {
-        [probe appendFormat:@" / %@ id=%@ hidden=%d alpha=%.2f frame=%@ clips=%d opacity=%.2f mask=%@",
-            NSStringFromClass(v.class), [v.accessibilityIdentifier isEqual:SGVideoSwitchIdentifier] ? SGVideoSwitchIdentifier : (v.accessibilityIdentifier.length ? @"<other>" : @"-"),
-            v.hidden, v.alpha, NSStringFromCGRect([host convertRect:v.bounds fromView:v]), v.clipsToBounds, v.layer.opacity, NSStringFromClass(v.layer.mask.class) ?: @"-"];
-    });
-    if (![probe isEqual:lastProbe]) { lastProbe = probe.copy; SGLog(@"FLOATPROBE %@", probe); }
-#endif
-    if (!floating.window || floating.window != host.window) return CGFLOAT_MAX;
-    CGRect clip = CGRectIntersection(area, [host convertRect:host.window.bounds fromView:host.window]);
-    clip = CGRectIntersection(clip, [host convertRect:floating.bounds fromView:floating]);
-    for (UIView *v = floating.superview; v; v = v.superview)
-        if (!chipVisibleThrough(v, host, &clip)) return CGFLOAT_MAX;
+    sg_tree = UINT64_C(14695981039346656037);
+    if (!floating) return CGFLOAT_MAX;
+    CGRect clip = CGRectNull;
+    if (!CGRectIsEmpty(area) && floating.window && floating.window == host.window) {
+        clip = CGRectIntersection(area, [host convertRect:host.window.bounds fromView:host.window]);
+        clip = CGRectIntersection(clip, [host convertRect:floating.bounds fromView:floating]);
+        for (UIView *v = floating.superview; v; v = v.superview)
+            if (!chipVisibleThrough(v, host, &clip)) { clip = CGRectNull; break; }
+    }
     UIView *winner = nil;
     CGFloat top = chipTopInBranch(floating, host, clip, &winner);
     sg_chip = winner;
@@ -722,6 +816,8 @@ static void placeLine(void) {
     NSInteger priorRows = [line lyricRows];
     BOOL wasCompact = line.normalSide > 0;
     CGFloat chipTop = CGFLOAT_MAX;
+    line.chipArea = CGRectNull;
+    sg_chip = nil;
     line.normalSide = 0;
     line.ownedTilt = nil;
     BOOL wants = title && SGRPlayerLineTakesPreview(YES, host.bounds.size.height > host.bounds.size.width, playingTrackSynced());
@@ -749,10 +845,11 @@ static void placeLine(void) {
         if (line.normalSide && !clip) top = normal.origin.y;
         // Measure from the unmoved normal top, never the bottom produced by this reservation.
         line.chipArea = CGRectMake(content.origin.x, top, content.size.width, MAX(0, CGRectGetMinY(stackFrame) - top));
-        chipTop = visibleChipTop(host, line.chipArea);
         if (bottom > top)
             room = CGRectMake(slot.origin.x, top, slot.size.width, bottom - top);
     }
+    chipTop = visibleChipTop(host, line.chipArea);
+    reportChip(host, line.chipArea, chipTop);
     BOOL changed = line.overClip != clip;
     line.overClip = clip;
     if (!line.normalSide) SGRPlayerReserveCover(nil, 0);
@@ -815,10 +912,15 @@ CGRect SGRPlayerLyricLineIn(UIView *view) {
 %end
 
 %hook _TtC19NowPlaying_ViewImpl24NowPlayingViewController
+- (void)viewDidDisappear:(BOOL)animated {
+    if (((UIViewController *)self).viewIfLoaded == sg_host) flushChip(YES);
+    %orig;
+}
 - (void)viewDidLayoutSubviews {
     %orig;
     UIView *host = ((UIViewController *)self).viewIfLoaded;
     if (!host.window) return;
+    if (sg_host != host) flushChip(YES);
     sg_host = host;
     placeLine();
 }
@@ -835,6 +937,8 @@ CGRect SGRPlayerLyricLineIn(UIView *view) {
 %ctor {
     if (!SGRedesignedUI()) return;
     if (!SGRPlayerLyricLineOn()) return;
+    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
+        usingBlock:^(NSNotification *note) { flushChip(YES); }];
     %init;
     SGRequireClasses(@[
         @"_TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView",

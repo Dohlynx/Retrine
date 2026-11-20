@@ -57,6 +57,7 @@
 // HARNESS_VOLUME=0 leaves out the volume row the phone has (trees/clean/player/01.txt has none).
 #import <AVFoundation/AVFoundation.h>
 #import <CoreImage/CoreImage.h>
+#import <OSLog/OSLog.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <UIKit/UIKit.h>
 #import <dlfcn.h>
@@ -1100,7 +1101,9 @@ static void loadLyrics(void) {
                 chip.accessibilityIdentifier = SGVideoSwitchIdentifier;
                 chip.backgroundColor = UIColor.clearColor;
                 chipLabel.layer.mask = [CALayer layer]; [floating viewDidLayoutSubviews];
-                check(CGRectEqualToRect(line.frame, preview), @"transparent switch with masked child");
+                check(fabs(CGRectGetMaxY(line.frame) - (target.origin.y-8)) < .01, @"identified wrapper owns its outer frame");
+                chip.accessibilityIdentifier = nil; [floating viewDidLayoutSubviews];
+                check(CGRectEqualToRect(line.frame, preview), @"anonymous wrapper with masked child");
                 chipLabel.hidden = YES; chip.accessibilityIdentifier = nil; chip.layer.cornerRadius = 0;
                 UIImageView *img = [[UIImageView alloc] initWithImage:picture]; img.frame = CGRectInset(chip.bounds,4,4);
                 [chip addSubview:img]; [floating viewDidLayoutSubviews];
@@ -1230,6 +1233,62 @@ static void loadLyrics(void) {
                 NSLog(@"[harness] lyric-line passed (compact)");
                 exit(0);
             }
+            BOOL dismissRecord = [scenario() isEqual:@"lyric-line-chip-dismiss"];
+            if (dismissRecord || [scenario() isEqual:@"lyric-line-chip-record"]) {
+                NSArray *(^records)(void) = ^{
+                    OSLogStore *store = [OSLogStore storeWithScope:OSLogStoreCurrentProcessIdentifier error:nil];
+                    NSMutableArray *messages = [NSMutableArray array];
+                    NSPredicate *p = [NSPredicate predicateWithFormat:@"composedMessage BEGINSWITH '[spotifyglass] lyrics unit:'"];
+                    for (OSLogEntry *e in [store entriesEnumeratorWithOptions:0 position:nil predicate:p error:nil])
+                        [messages addObject:e.composedMessage];
+                    return messages.copy;
+                };
+                if (dismissRecord) {
+                    floatingView.center = CGPointMake(floatingView.center.x + 37, floatingView.center.y);
+                    NSString *finalFrame = NSStringFromCGRect([host convertRect:floatingView.bounds fromView:floatingView]);
+                    [floating viewDidLayoutSubviews];
+                    [host removeFromSuperview];
+                    HARNESS_CHECK(!host.window && [[records() componentsJoinedByString:@"\n"] containsString:finalFrame]);
+                    NSLog(@"[harness] pending record survived dismissal"); exit(0);
+                }
+                CGRect plain = line.frame;
+                CALayer *ink = [CALayer layer]; ink.frame = chip.frame; ink.backgroundColor = UIColor.blackColor.CGColor;
+                [floatingView.layer addSublayer:ink];
+                after(1.4, ^{
+                    BOOL raised = fabs(CGRectGetMaxY(line.frame) - ([host convertRect:ink.frame fromView:floatingView].origin.y - 8)) < .01;
+                    // Same winner and top, different backing structure, without a view layout.
+                    CAGradientLayer *extra = [CAGradientLayer layer]; extra.frame = ink.frame;
+                    [floatingView.layer addSublayer:extra];
+                    [line performSelector:@selector(tick)];
+                    [extra removeFromSuperlayer]; // No layout can observe this transient backing layer.
+                    after(1.4, ^{
+                        NSArray *before = records();
+                        BOOL tick = raised && [[before componentsJoinedByString:@"\n"] containsString:@"CAGradientLayer"];
+                        for (int i = 0; i < 100; i++) {
+                            floatingView.center = CGPointMake(floatingView.center.x + .25, floatingView.center.y);
+                            [floating viewDidLayoutSubviews];
+                        }
+                        after(1.4, ^{
+                            NSArray *moved = records();
+                            NSString *finalFrame = NSStringFromCGRect([host convertRect:floatingView.bounds fromView:floatingView]);
+                            BOOL bounded = moved.count - before.count <= 2 && [moved.lastObject containsString:finalFrame];
+                            [ink removeFromSuperlayer];
+                            chip.hidden = NO; chip.accessibilityIdentifier = SGVideoSwitchIdentifier;
+                            CAShapeLayer *mask = [CAShapeLayer layer]; mask.frame = chip.bounds;
+                            CGRect outside = CGRectMake(240,2,16,12);
+                            mask.path = [UIBezierPath bezierPathWithRect:outside].CGPath; chip.layer.mask = mask;
+                            [floating viewDidLayoutSubviews];
+                            after(1.4, ^{
+                                BOOL masked = CGRectEqualToRect(line.frame,plain) && [records().lastObject containsString:
+                                    NSStringFromCGRect([host convertRect:outside fromView:chip])];
+                                NSLog(@"[harness] record: tick=%d coalesced=%d mask=%d",tick,bounded,masked);
+                                HARNESS_CHECK(tick && bounded && masked); exit(0);
+                            });
+                        });
+                    });
+                });
+                return;
+            }
             if ([scenario() isEqual:@"lyric-line-chip-live"]) {
                 HARNESS_CHECK(CGRectEqualToRect(text, preview));
                 chip.alpha = 1;
@@ -1257,6 +1316,17 @@ static void loadLyrics(void) {
                 void (^layout)(void) = ^{ [floating viewDidLayoutSubviews]; [line layoutIfNeeded]; };
                 CGPoint original = band.center;
                 band.center = CGPointMake(original.x, original.y - 80);
+                // Model the public tree of a compositor-hosted material: neither the backing
+                // layer nor the hosted label exposes the pixels as a UIKit image or text.
+                UIView *material = box(floatingView,UIView.class,chip.frame,SGVideoSwitchIdentifier);
+                material.layer.cornerRadius = 16;
+                CALayer *backdrop = [CALayer layer]; backdrop.frame = material.bounds;
+                [material.layer addSublayer:backdrop];
+                UIView *hostedLabel = box(material,UIView.class,CGRectInset(material.bounds,8,4),nil);
+                hostedLabel.accessibilityLabel = @"Private hosted words";
+                layout();
+                HARNESS_CHECK(fabs(CGRectGetMaxY(line.frame) - (pill.origin.y - 8)) < .01);
+                [material removeFromSuperview]; layout();
                 if (!clip) {
                     chip.hidden = NO;
                     CGRect home = chip.frame;

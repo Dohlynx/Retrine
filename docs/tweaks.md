@@ -1671,9 +1671,18 @@ Redesigned:
                   or full-screen still carries the dim with it. The line rechecks visible chips on its lyric
                   clock as well as on layout: a late switch or a fade needs no player layout pass. The video
                   switch is measured from the outer pill, not its inset text.
-                  A change of chip that lifts the slot logs `lyrics chip:` with the responsible class, structural
-                  identifier, host frame and ancestor visibility (no song or label text). For a report, reproduce
-                  it, then use Mod Settings → Mod → Share diagnostics before relaunching.
+                  The identified switch need not expose painted pixels; anonymous views still do. A changed
+                  floating-unit snapshot logs `lyrics unit:` even when nothing wins. The numbered parts
+                  show the search area, chosen top and view (`*`), and a bounded view/layer tree, never
+                  identifiers other than the switch classification, label text or image data. The lyric clock
+                  checks the structure even between layouts. A shape mask reports its path bounds in player
+                  coordinates; a path outside the pill cannot lift the rows. Translation alone is recorded
+                  once it settles. During playback snapshots are at least one second apart and use at most four
+                  unified-log entries each (at most 240 per minute; oversized trees are marked `[capped]`).
+                  Leaving the player or app flushes a pending snapshot immediately, outside that rate limit. For a report,
+                  show the problem, then use Mod Settings → Mod → Share diagnostics without restarting.
+                  The file includes the newest 1,500 matching system-log entries available from this launch,
+                  not a guaranteed number of minutes.
                   A track without synced lyrics keeps Spotify's own lyric preview under the cover,
                   which in 9.1.90 is Lyrics_NPVElementsKitImpl.LyricsElementWrapperView beside the tilt view, hooked apart
                   from the other placements because that preview gets its height when its lyrics arrive, after the cover's

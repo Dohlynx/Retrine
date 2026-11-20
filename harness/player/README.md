@@ -185,8 +185,13 @@ come late, out of order, or not at all.
   the live change from the preview font to 17 pt and back, with and without a translation.
   `lyric-line-switch` uses the same clip fixture and checks clip → cover → clip without changing the words.
   `lyric-line-chip` and `lyric-line-chip-clip` compare chip clearance and the restored preview slot for
-  one row, two rows and translations, including the video switch's inset label. `lyric-line-chip-live`
-  changes chip opacity, position and visibility without driving player layout. `lyric-line-long` and `lyric-line-vo` check the first
+  one row, two rows and translations, including the video switch's inset label and a material-only
+  switch whose hosted pixels are not exposed as layer contents. Hidden, masked, transparent,
+  collapsed and out-of-area switches must not raise the line. `lyric-line-chip-live`
+  changes chip opacity, position and visibility without driving player layout. `lyric-line-chip-record`
+  reads the process log after a tick-only backing-layer change, 100 translations of the unit and an
+  off-pill shape mask; it checks the final reported frames as well as the lyric slot.
+  `lyric-line-long` and `lyric-line-vo` check the first
   long lyric before the view has a frame, and opening lyrics by accessibility activation.
   `lyric-line-clip` is Animated artwork as in `motion` (it needs a portrait `HARNESS_CANVAS_FILE`) and checks
   the same preview frame over the clip. Both are run by hand; the log ends with
