@@ -719,7 +719,104 @@ CGFloat SGRPlayerBarDragHeight(CGFloat height) {
     return round(height * kBarDragGrow);
 }
 
-static char kBarKey, kBarMinKey, kBarMaxKey;
+static char kBarKey, kBarMinKey, kBarMaxKey, kHeldKey;
+static CGFloat sg_scrubHeight;
+
+// The sibling escapes the slider's highlighted opacity. Only the two native track images give
+// way: PlayerMix's bands are still behind the translucent rail, in their original slider.
+@interface SGRHeldBar : UIView
+@property (nonatomic, strong) UIView *rail;
+@property (nonatomic, strong) CALayer *fill, *remaining;
+@property (nonatomic, strong) NSHashTable<UIImageView *> *tracks;
+@property (nonatomic) CGFloat restHeight, heldHeight;
+@property (nonatomic) NSUInteger generation;
+@end
+@implementation SGRHeldBar
+@end
+
+static void updateHeldBar(UISlider *slider) {
+    SGRHeldBar *bar = objc_getAssociatedObject(slider, &kHeldKey);
+    if (!bar) return;
+    CGRect rect = [slider trackRectForBounds:slider.bounds];
+    BOOL rtl = thumbCentre(slider, slider.minimumValue) > thumbCentre(slider, slider.maximumValue);
+    CGFloat range = slider.maximumValue - slider.minimumValue;
+    CGFloat share = range > 0 ? (slider.value - slider.minimumValue) / range : 0;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    rect = [slider convertRect:rect toView:slider.superview];
+    bar.frame = CGRectMake(rect.origin.x, CGRectGetMidY(rect)-bar.heldHeight/2, rect.size.width, bar.heldHeight);
+    CGFloat width = rect.size.width * share, remaining = rect.size.width-width;
+    bar.fill.frame = CGRectMake(rtl ? remaining : 0, 0, width, bar.heldHeight);
+    bar.remaining.frame = CGRectMake(rtl ? 0 : width, 0, remaining, bar.heldHeight);
+    [CATransaction commit];
+}
+
+static void hideTrackImages(UISlider *slider, SGRHeldBar *bar) {
+    UIImage *min = slider.currentMinimumTrackImage, *max = slider.currentMaximumTrackImage;
+    SGForEachView(slider, ^(UIView *v) {
+        if (![v isKindOfClass:UIImageView.class] || v.hidden) return;
+        UIImageView *image = (UIImageView *)v;
+        // UIKit clips each full-width track in a separate container on iOS 26/27. Match the
+        // assigned image as well for sliders that fit it directly into the played segment.
+        if (!(image.image && (image.image == min || image.image == max)) &&
+            !(v.superview.clipsToBounds && [v.superview.superview isKindOfClass:NSClassFromString(@"_UISlideriOSVisualElement")])) return;
+        [bar.tracks addObject:image];
+        image.hidden = YES;
+    });
+}
+
+static void removeHeldBar(UISlider *slider) {
+    SGRHeldBar *bar = objc_getAssociatedObject(slider, &kHeldKey);
+    if (!bar) return;
+    for (UIImageView *image in bar.tracks) image.hidden = NO;
+    [bar removeFromSuperview];
+    objc_setAssociatedObject(slider, &kHeldKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void setHeldBar(UISlider *slider, BOOL on) {
+    SGRHeldBar *bar = objc_getAssociatedObject(slider, &kHeldKey);
+    if (!bar) {
+        if (!on) return;
+        bar = [SGRHeldBar new];
+        bar.userInteractionEnabled = NO;
+        bar.accessibilityElementsHidden = YES;
+        bar.tracks = [NSHashTable weakObjectsHashTable];
+        bar.restHeight = [slider maximumTrackImageForState:UIControlStateNormal].size.height ?: SGRPlayerBarHeight;
+        bar.heldHeight = sg_scrubHeight;
+        bar.rail = [UIView new];
+        bar.rail.clipsToBounds = YES;
+        bar.rail.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        [bar addSubview:bar.rail];
+        bar.fill = [CALayer layer];
+        bar.fill.backgroundColor = SGRPlayerBarFill(YES).CGColor;
+        bar.remaining = [CALayer layer];
+        bar.remaining.backgroundColor = SGRPlayerBarTrack().CGColor;
+        [bar.rail.layer addSublayer:bar.fill];
+        [bar.rail.layer addSublayer:bar.remaining];
+        [slider.superview insertSubview:bar aboveSubview:slider];
+        objc_setAssociatedObject(slider, &kHeldKey, bar, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        updateHeldBar(slider);
+        bar.rail.frame = CGRectInset(bar.bounds, 0, (bar.heldHeight-bar.restHeight)/2);
+        bar.rail.layer.cornerRadius = bar.restHeight/2;
+        bar.fill.opacity = CGColorGetAlpha(SGRPlayerBarFill(NO).CGColor);
+        hideTrackImages(slider, bar);
+    }
+    NSUInteger generation = ++bar.generation;
+    void (^geometry)(void) = ^{
+        CGFloat height = on ? bar.heldHeight : bar.restHeight;
+        bar.rail.frame = CGRectInset(bar.bounds, 0, (bar.heldHeight-height)/2);
+        bar.rail.layer.cornerRadius = height/2;
+        bar.fill.opacity = CGColorGetAlpha(SGRPlayerBarFill(on).CGColor);
+    };
+    SGRAnimateLayout(bar, ^{
+        // The transition snapshots the rail. Don't also interpolate its bounds during the dissolve.
+        if (SGRReduceMotion()) [UIView performWithoutAnimation:geometry];
+        else geometry();
+    }, ^(BOOL finished) {
+        if (!on && generation == bar.generation && bar == objc_getAssociatedObject(slider, &kHeldKey))
+            removeHeldBar(slider);
+    });
+}
 
 // What a track of the bar shows: Spotify's image (`spotify`), the one drawn from it (`drawn`) and its color.
 @interface SGRBarTrack : NSObject
@@ -733,7 +830,9 @@ static char kBarKey, kBarMinKey, kBarMaxKey;
 // bar's color, and one already drawn only when the color changes. A bar with no image takes the color as its tint.
 static void colorTrack(UISlider *slider, BOOL minimum, UIColor *color) {
     const void *key = minimum ? &kBarMinKey : &kBarMaxKey;
-    UIImage *shown = minimum ? [slider minimumTrackImageForState:UIControlStateNormal] : [slider maximumTrackImageForState:UIControlStateNormal];
+    UIControlState state = UIControlStateNormal;
+    UIImage *shown = minimum ? [slider minimumTrackImageForState:state] : [slider maximumTrackImageForState:state];
+    SGRBarTrack *track = objc_getAssociatedObject(slider, key);
     if (!shown) {
         UIColor *tint = minimum ? slider.minimumTrackTintColor : slider.maximumTrackTintColor;
         if ([tint isEqual:color]) return;
@@ -741,7 +840,6 @@ static void colorTrack(UISlider *slider, BOOL minimum, UIColor *color) {
         else slider.maximumTrackTintColor = color;
         return;
     }
-    SGRBarTrack *track = objc_getAssociatedObject(slider, key);
     if (!track) {
         track = [SGRBarTrack new];
         objc_setAssociatedObject(slider, key, track, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -749,14 +847,15 @@ static void colorTrack(UISlider *slider, BOOL minimum, UIColor *color) {
     if (shown == track.drawn && [track.color isEqual:color]) return;
     if (shown != track.drawn) track.spotify = shown;
     track.color = color;
-    track.drawn = SGRPlayerBarImage(color, track.spotify.size.height);
-    if (minimum) [slider setMinimumTrackImage:track.drawn forState:UIControlStateNormal];
-    else [slider setMaximumTrackImage:track.drawn forState:UIControlStateNormal];
+    UIImage *image = SGRPlayerBarImage(color, track.spotify.size.height);
+    if (minimum) [slider setMinimumTrackImage:image forState:state];
+    else [slider setMaximumTrackImage:image forState:state];
+    track.drawn = minimum ? [slider minimumTrackImageForState:state] : [slider maximumTrackImageForState:state];
 }
 
 static void colorBar(UISlider *slider) {
-    if (!objc_getAssociatedObject(slider, &kBarKey)) return;
-    colorTrack(slider, YES, SGRPlayerBarFill(slider == sg_scrubSlider));
+    if (slider == sg_scrubSlider || !objc_getAssociatedObject(slider, &kBarKey)) return;
+    colorTrack(slider, YES, SGRPlayerBarFill(NO));
     colorTrack(slider, NO, SGRPlayerBarTrack());
 }
 
@@ -767,12 +866,13 @@ static void brightenTimes(UIView *unit, BOOL on, BOOL animated) {
 
 static void scrubLook(UISlider *slider, BOOL on) {
     if (on) {
+        if (sg_scrubSlider && sg_scrubSlider != slider) scrubLook(sg_scrubSlider, NO);
         sg_scrubSlider = slider;
     } else {
         if (sg_scrubSlider != slider) return;
         sg_scrubSlider = nil;
     }
-    // The new track rect is laid out on the layout spring; under Reduce Motion the slider crossfades instead.
+    if (!on || objc_getAssociatedObject(slider, &kBarKey)) setHeldBar(slider, on);
     SGRAnimateLayout(slider, ^{
         [slider setNeedsLayout];
         [slider layoutIfNeeded];
@@ -808,21 +908,30 @@ static void keepScrubLook(UIView *host) {
 - (CGRect)trackRectForBounds:(CGRect)bounds {
     CGRect track = %orig;
     if ((UISlider *)self != sg_scrubSlider || track.size.height <= 0) return track;
-    CGFloat height = SGRPlayerBarDragHeight(track.size.height);
+    CGFloat height = sg_scrubHeight;
     return CGRectMake(track.origin.x, CGRectGetMidY(track) - height / 2, track.size.width, height);
 }
 
 // PlayerScroll.x and Shared/Haptics/ControlHaptics.x hook the same tracking; all call through.
 - (BOOL)beginTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
     cancelSeek();
+    UISlider *slider = (UISlider *)self;
+    // Spotify can select a taller image on touch down. Grow from the normal track, not from that image.
+    CGFloat rest = [slider maximumTrackImageForState:UIControlStateNormal].size.height ?: [slider trackRectForBounds:slider.bounds].size.height;
     BOOL tracking = %orig;
-    if (tracking) scrubLook((UISlider *)self, YES);
+    if (tracking) {
+        sg_scrubHeight = SGRPlayerBarDragHeight(rest);
+        scrubLook(slider, YES);
+    }
     return tracking;
 }
 
 - (BOOL)continueTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
     BOOL tracking = %orig;
-    if ((UISlider *)self == sg_scrubSlider) keepScrubLook(nil);
+    if ((UISlider *)self == sg_scrubSlider) {
+        updateHeldBar((UISlider *)self);
+        keepScrubLook(nil);
+    }
     return tracking;
 }
 
@@ -838,7 +947,18 @@ static void keepScrubLook(UIView *host) {
 
 - (void)didMoveToWindow {
     %orig;
-    if (!((UIView *)self).window) scrubLook((UISlider *)self, NO);
+    if (!((UIView *)self).window) {
+        scrubLook((UISlider *)self, NO);
+        removeHeldBar((UISlider *)self);
+    }
+}
+
+- (void)willMoveToSuperview:(UIView *)parent {
+    if (parent != ((UISlider *)self).superview) {
+        scrubLook((UISlider *)self, NO);
+        removeHeldBar((UISlider *)self);
+    }
+    %orig;
 }
 
 // The player's bar in its translucent colors, before it lays its tracks out; AutoMix's transition bands behind the knob
@@ -848,6 +968,11 @@ static void keepScrubLook(UIView *host) {
     %orig;
     UISlider *slider = (UISlider *)self;
     if ([slider.accessibilityIdentifier isEqualToString:kSliderID]) SGRPlayerMixSliderLaidOut(slider);
+    SGRHeldBar *bar = objc_getAssociatedObject(slider, &kHeldKey);
+    if (bar) {
+        updateHeldBar(slider);
+        hideTrackImages(slider, bar);
+    }
 }
 %end
 

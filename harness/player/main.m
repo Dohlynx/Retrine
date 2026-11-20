@@ -59,6 +59,7 @@
 #import <CoreImage/CoreImage.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <UIKit/UIKit.h>
+#import <dlfcn.h>
 #import "Redesigned/Kit/SGRTokens.h"
 #import "../harness-fail.h"
 #import <objc/runtime.h>
@@ -4292,11 +4293,10 @@ static UISlider *spotifyBar(UIView *unit, NSArray<UILabel *> **labels) {
     CGFloat badgeAt = CGRectGetMinY(badge.frame);
     [slider beginTrackingWithTouch:[UITouch new] withEvent:nil];
     after(0.6, ^{
-        CGFloat lit = middleAlpha([slider minimumTrackImageForState:UIControlStateNormal]);
         [durationUnit viewDidLayoutSubviews];
         CGFloat lower = uikitBaseline(elapsed, unit) - baseline;
-        [self expect:lit > 0.95 && lower > 1 && CGRectGetMinY(badge.frame) == badgeAt step:@"scrubbing"
-              detail:[NSString stringWithFormat:@"fill %.2f, times %.1f pt lower, badge moved %.1f pt", lit, lower, CGRectGetMinY(badge.frame) - badgeAt]];
+        [self expect:lower > 1 && CGRectGetMinY(badge.frame) == badgeAt step:@"times while scrubbing"
+              detail:[NSString stringWithFormat:@"times %.1f pt lower, badge moved %.1f pt", lower, CGRectGetMinY(badge.frame) - badgeAt]];
         [slider endTrackingWithTouch:[UITouch new] withEvent:nil];
     });
     after(1.4, ^{

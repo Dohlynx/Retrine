@@ -1494,8 +1494,11 @@ Redesigned:
                   fill ends square inside the round track. They are translucent: the fill a light white the background
                   shows through, the track dimmer, both more opaque under Increase Contrast (SGRPlayerBarFill,
                   SGRPlayerBarTrack). A finger dragging either thickens its track 1.75 times, to 12 pt, about its middle
-                  (SGRPlayerBarDragHeight) and lights the fill whole white: the progress bar's through its track rect,
-                  the volume's through taller images (PlayerVolume.m). The volume's slider tracks a drag from its fill's
+                  (SGRPlayerBarDragHeight) and lights the fill whole white: the progress bar's as a rail of the mod's own
+                  drawn over the slider while it is held — one capsule clipping a rectangular fill to the value, Spotify's
+                  track image views hidden under it and given back on release, so the held shape does not depend on how
+                  UIKit stretches a track image (issue #30: a disc drawn across the whole bar as a lens); checked by
+                  harness/player/scrub-capsule.inc — the volume's through taller images (PlayerVolume.m). The volume's slider tracks a drag from its fill's
                   end; a sideways drag starting anywhere else on its row moves the volume by the finger's distance, as
                   iOS 26's thumbless slider did, and a tap there moves nothing. Its ⋯, beside the title and artist where the add button was
                   (PlayerMenu.m), opens the system
