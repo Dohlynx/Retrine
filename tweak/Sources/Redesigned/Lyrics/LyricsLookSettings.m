@@ -6,13 +6,19 @@
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
 #import "Redesigned/Kit/SGRTokens.h"
-#import "LyricsLookRows.h"
+#import "LyricsLook.h"
 #import "SGRKaraokeView.h"
 
 static const CGFloat kPreviewHeight = 230, kCardRadius = 26;
 static const CGFloat kChipHeight = 36, kChipGap = 8, kStripGap = 12, kStripPad = 6, kNoteGap = 14;
 
 #pragma mark - the sliders
+
+static SGModRow *sizeRow(NSString *title, SGRLyricsPlace place) {
+    NSArray *names = SGRLyricsSizeNames();
+    return SGMenuRow(title, names, ^NSString * { return names[(NSUInteger)SGRLyricsSizeChoice(place)]; },
+                     ^(NSInteger index) { SGRSetLyricsSizeChoice(place, index); });
+}
 
 // A page of the five sliders, each storing as it moves. A preset picked on the page while the sheet is up
 // is read back into them; their own changes are not, so a slider is never reloaded under the finger.
@@ -97,12 +103,10 @@ static void presentStyleSheet(UIViewController *owner) {
     NSString *footer = SGL(@"settings.lyricslook.footer", @"Blur is how much the lines away from the one sung soften. Glow and Wave are how strongly a held "
                        @"word glows and its letters rise. 100% is Apple Music's.");
     NSArray<SGModRow *> *places = @[
-        SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.under_cover", @"Under the cover"), SGRLyricsPlaceUnderCover),
-        SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.player", @"In the player"), SGRLyricsPlacePlayer),
-        SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.full_screen", @"Landscape and full screen"), SGRLyricsPlaceFullScreen),
+        sizeRow(SGL(@"settings.lyricslook.place.player", @"In the player"), SGRLyricsPlacePlayer),
+        sizeRow(SGL(@"settings.lyricslook.place.full_screen", @"Landscape and full screen"), SGRLyricsPlaceFullScreen),
     ];
-    NSString *placesFooter = SGL(@"settings.lyricslook.place.footer", @"Default uses Spotify's preview size for Lyrics Line and Text size for the other places. "
-                                 @"A percentage changes only that place. You can also set the line's size on the Player page.");
+    NSString *placesFooter = SGL(@"settings.lyricslook.place.footer", @"Default uses Text size. A percentage changes only that place.");
     SGRLyricsStyleSheet *page = [[SGRLyricsStyleSheet alloc] initWithTitle:SGL(@"settings.lyricslook.title", @"Lyrics Style") intro:nil
                                                                  sections:@[SGNotedSection(nil, rows, footer),
                                                                             SGNotedSection(SGL(@"settings.lyricslook.place.header", @"Size in each place"),

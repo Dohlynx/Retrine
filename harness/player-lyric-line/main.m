@@ -65,6 +65,19 @@ static SGRLyricWait waitAtWidth(NSArray<SGKaraokeLine *> *lines, NSInteger posit
 }
 
 int main(void) {
+    for (NSArray<NSNumber *> *metrics in @[@[@23,@18], @[@21,@17]]) {
+        CGFloat row = metrics[0].doubleValue, translation = metrics[1].doubleValue;
+        for (NSInteger count = 0; count <= 2; count++) {
+            CGFloat tr = translation;
+            HARNESS_CHECK(SGRPlayerCompactRows((count + 1) * row - .25, row, &tr) == count);
+            tr = translation;
+            HARNESS_CHECK(SGRPlayerCompactRows(count * row, row, &tr) == count && tr == 0);
+        }
+        CGFloat tr = translation;
+        HARNESS_CHECK(SGRPlayerCompactRows(2 * row + translation - .25, row, &tr) == 2 && tr == 0);
+        tr = translation;
+        HARNESS_CHECK(SGRPlayerCompactRows(2 * row + translation, row, &tr) == 2 && tr == translation);
+    }
     @autoreleasepool {
         // The contract's own numbers, not the constants that carry them.
         HARNESS_CHECK(SGRLyricMinScale == 0.85);
@@ -307,21 +320,14 @@ int main(void) {
         sung.translation = @" \n";
         HARNESS_CHECK(SGRPlayerLineTranslation(sung, YES) == nil);
 
-        HARNESS_CHECK(SGRPlayerLineFitIn(14, 30, 20, 16, 4).translation);
-        SGRPlayerLineFit cramped = SGRPlayerLineFitIn(80, 29.99, 20, 16, 4);
-        HARNESS_CHECK(cramped.line && !cramped.translation);
-        HARNESS_CHECK(!SGRPlayerLineFitIn(13.99, 80, 20, 16, 4).line);
-        HARNESS_CHECK(!SGRPlayerLineFitIn(80, 13.99, 20, 16, 4).line);
-
         // Spotify's own preview under the cover: the line takes its place only while it is on, translations are shown
         // and the player is taller than wide; every other case leaves the preview as Spotify shows it.
-        HARNESS_CHECK(SGRPlayerLineTakesPreview(YES, YES, YES, YES));
-        HARNESS_CHECK(!SGRPlayerLineTakesPreview(YES, NO, YES, YES));
-        HARNESS_CHECK(!SGRPlayerLineTakesPreview(NO, YES, YES, YES));
-        HARNESS_CHECK(!SGRPlayerLineTakesPreview(YES, YES, NO, YES));
+        HARNESS_CHECK(SGRPlayerLineTakesPreview(YES, YES, YES));
+        HARNESS_CHECK(!SGRPlayerLineTakesPreview(NO, YES, YES));
+        HARNESS_CHECK(!SGRPlayerLineTakesPreview(YES, NO, YES));
         // A track the line has no synced lines for keeps Spotify's preview, its only lyrics.
-        HARNESS_CHECK(!SGRPlayerLineTakesPreview(YES, YES, YES, NO));
-        HARNESS_CHECK(!SGRPlayerLineTakesPreview(NO, NO, NO, NO));
+        HARNESS_CHECK(!SGRPlayerLineTakesPreview(YES, YES, NO));
+        HARNESS_CHECK(!SGRPlayerLineTakesPreview(NO, NO, NO));
 
         // Giving the previews back: none while the line takes their place; then every one hidden, the one a list
         // keeps for reuse (out of any view) included, and none twice.

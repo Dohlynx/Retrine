@@ -28,6 +28,7 @@ UIFont *SGRLyricFontAtScale(UIFont *font, CGFloat scale);
 // The two-row portions of `line` for a label `width` wide with `font`. Empty for a line without words. `width` of 0 measures nothing
 // yet and gives one portion at full size.
 NSArray<SGRLyricPortion *> *SGRLyricPortions(SGKaraokeLine *line, CGFloat width, UIFont *font);
+NSArray<SGRLyricPortion *> *SGRLyricPortionsInRows(SGKaraokeLine *line, CGFloat width, UIFont *font, NSInteger rows);
 // The portion shown at `ms` of the track: the one holding the word being sung, or the share of the line's time that
 // `ms` falls in. 0 for an empty or not yet begun line.
 NSInteger SGRLyricPortionAt(NSArray<SGRLyricPortion *> *portions, NSInteger ms);
@@ -50,6 +51,8 @@ extern const NSTimeInterval SGRLyricMaxTolerance;  // 0.1
 // again without a new transition.
 SGRLyricWait SGRLyricLineWait(NSArray<SGKaraokeLine *> *ordered, NSInteger positionMs, NSInteger delayMs,
                               CGFloat width, UIFont *font, double rate);
+SGRLyricWait SGRLyricLineWaitInRows(NSArray<SGKaraokeLine *> *ordered, NSInteger positionMs, NSInteger delayMs,
+                                    CGFloat width, UIFont *font, double rate, NSInteger rows);
 
 // How far a playing report may land from where the armed timer was heading before it is taken for a seek.
 extern const NSInteger SGRLyricReportSlack;   // 500 ms

@@ -145,7 +145,6 @@ static const NSInteger kPlaceShareCount = sizeof(kPlaceShares) / sizeof(*kPlaceS
 
 static NSString *placeKey(SGRLyricsPlace place) {
     switch (place) {
-        case SGRLyricsPlaceUnderCover: return SGRKeyLyricsSizeUnderCover;
         case SGRLyricsPlacePlayer: return SGRKeyLyricsSizePlayer;
         case SGRLyricsPlaceFullScreen: return SGRKeyLyricsSizeFullScreen;
         case SGRLyricsPlaceNone: return nil;

@@ -51,7 +51,6 @@
 #import "Shared/Player/SGLastTrack.h"
 #import "Player.h"
 #import "PlayerLyricLine.h"
-#import "Redesigned/Lyrics/LyricsLookRows.h"
 
 extern NSString *const SGRKeyPlayerMusicClose;
 
@@ -1108,6 +1107,7 @@ SGModRow *SGRLyricsHideRow(void) {
 }
 
 UIViewController *SGRPlayerSettingsPage(NSArray *more) {
+    NSArray *lineSizes = @[SGL(@"settings.player.lyric_line.size_19", @"19 pt"), SGL(@"settings.player.lyric_line.size_17", @"17 pt")];
     SGRPlayerPreview *preview = [[SGRPlayerPreview alloc] initWithFrame:CGRectMake(0, 0, 320, kPreviewCompactHeight)];
     __block __weak SGRPlayerPage *weakPlayerPage;
     UISegmentedControl *backgrounds = [[UISegmentedControl alloc] initWithItems:SGRPlayerBackgroundNames()];
@@ -1231,7 +1231,9 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
                                       SGWithNew(SGOptionRow(SGL(@"settings.player.lyric_line.title", @"Lyrics Line"),
                                                   SGL(@"settings.player.lyric_line.subtitle", @"The line being sung, under the cover. Tap it to open the lyrics."),
                                                   SGRKeyPlayerLyricLine), @"playerLyricLine"),
-                                      SGRLyricsSizeRow(SGL(@"settings.player.lyric_line.size", @"Size"), SGRLyricsPlaceUnderCover),
+                                      SGMenuRow(SGL(@"settings.player.lyric_line.size", @"Size"), lineSizes,
+                                                ^NSString *{ return lineSizes[SGRPlayerLineSmall() ? 1 : 0]; },
+                                                ^(NSInteger i) { SGRSetPlayerLineSmall(i == 1); }),
                                       SGWithNew(SGSwitchRow(SGL(@"settings.player.rolling_digits.title", @"Rolling time digits"),
                                                   SGL(@"settings.player.rolling_digits.subtitle", @"The digits that change under the progress bar roll into place."),
                                                   SGRKeyPlayerRollingDigits), @"playerRollingDigits"),

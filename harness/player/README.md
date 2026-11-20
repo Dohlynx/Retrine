@@ -181,8 +181,8 @@ come late, out of order, or not at all.
 - `badge` shows the hold's 2× badge on the cover by hand, holds again while it fades out and lets go.
   The log ends with `badge checks: n of 3 right -- PASS` or `FAIL`.
 - `lyric-line` and `lyric-line-clip` switch Lyrics Line on (PlayerLyricLine.x; off in every other scenario) with
-  one sung line and no chip over the title. Both check the native preview's inset and 100 pt cell,
-  the displayed fonts at standard text size and a live change to 130% and back, with and without a translation.
+  one sung line and no chip over the title. Both check the compact slot above the title,
+  the live change from the preview font to 17 pt and back, with and without a translation.
   `lyric-line-switch` uses the same clip fixture and checks clip → cover → clip without changing the words.
   `lyric-line-chip` and `lyric-line-chip-clip` compare chip clearance and the restored preview slot for
   one row, two rows and translations, including the video switch's inset label. `lyric-line-chip-live`
@@ -192,7 +192,7 @@ come late, out of order, or not at all.
   the same preview frame over the clip. Both are run by hand; the log ends with
   `lyric-line passed`, or the failed check and a nonzero exit.
 
-  `settings` checks that Size immediately follows Lyrics Line and shares the lyrics size choice.
+  `settings` checks that Size immediately follows Lyrics Line and offers just 19 and 17 pt.
   Set `HARNESS_SIZE_SCREENSHOT=1` to stop on the two rows instead of continuing the settings suite.
 
 - `motion` is Animated artwork. The clip, `HARNESS_CANVAS_FILE` (any mp4, `harness/fluid-clip` writes one),

@@ -22,6 +22,7 @@
 #import "Shared/Player/SpeedPitch.h"
 #import "Player.h"
 #import "PlayerMix.h"
+#import "PlayerLyricLine.h"
 
 static const CGFloat kPausedScale = 0.84;
 // The bar's 40pt cover lives in a tilt view of its own; the player's is 354.
@@ -31,6 +32,8 @@ static const CGFloat kCoverMinWidth = 200;
 static const CGFloat kCoverTopUnderSafeArea = 33;
 
 static char kPlateKey;
+static __weak UIView *sg_reservedTilt;
+static CGFloat sg_reservedSide;
 static NSHashTable<UIView *> *sg_tilts;
 // The cover of each tilt view once found. A frame Spotify sets on a scaled view becomes its scaled
 // size, leaving bounds that no longer match the tilt view's, so the cover is not looked for by size again.
@@ -95,6 +98,49 @@ static void layOutCoversIn(UIWindow *window) {
     for (UIView *tilt in sg_tilts) {
         if (tilt.window == window) [tilt setNeedsLayout];
     }
+}
+
+CGRect SGRPlayerNormalCover(UIView *host, UIView *tilt, CGFloat maxSide) {
+    UIView *cell = coverCellOf(tilt);
+    UIView *column = tilt.superview;
+    CGFloat side = CGRectGetWidth(column.bounds);
+    if (!cell || ![tilt isDescendantOfView:host] || tilt.bounds.size.width < kCoverMinWidth ||
+        host.traitCollection.userInterfaceIdiom != UIUserInterfaceIdiomPhone ||
+        fabs(tilt.bounds.size.width - tilt.bounds.size.height) > 1 ||
+        fabs(side - maxSide) > 1 || tilt.bounds.size.width > side + 1 ||
+        fabs(tilt.center.x - CGRectGetMidX(column.bounds)) > 1) return CGRectNull;
+    CGFloat y = CGRectGetMinY(tilt.bounds) - coverLift(tilt, cell);
+    CGPoint top = [host convertPoint:CGPointMake(CGRectGetMidX(tilt.bounds), y) fromView:tilt];
+    return CGRectMake(top.x - side / 2, top.y, side, side);
+}
+
+void SGRPlayerReserveCover(UIView *tilt, CGFloat side) {
+    static NSString *track;
+    NSString *playing = SGKaraokePlayingTrack();
+    BOOL sameTrack = track == playing || [track isEqualToString:playing];
+    if (!sameTrack) track = playing.copy;
+    if (tilt == sg_reservedTilt && side == sg_reservedSide) return;
+    // A centre crossing the screen edge is not a handover while the pager
+    // is moving. Freeze the reservation, not Spotify's scrolling or the clock.
+    if (sameTrack) for (UIView *v = sg_reservedTilt ?: tilt; v; v = v.superview) {
+        if (![v isKindOfClass:UICollectionView.class]) continue;
+        UICollectionView *pager = (UICollectionView *)v;
+        if (pager.dragging || pager.decelerating) return;
+        if (@available(iOS 17.4, *)) {
+            if (pager.scrollAnimating) return;
+        } else {
+            CALayer *visible = pager.layer.presentationLayer;
+            if (visible && visible.bounds.origin.x != pager.bounds.origin.x) return;
+        }
+        break;
+    }
+    UIView *prior = sg_reservedTilt;
+    sg_reservedTilt = tilt;
+    sg_reservedSide = side;
+    SGRAnimate(SGRMotionLayout, ^{
+        if (prior != tilt) { [prior setNeedsLayout]; [prior layoutIfNeeded]; }
+        [tilt setNeedsLayout]; [tilt layoutIfNeeded];
+    }, nil);
 }
 
 // A view in a live row's player, from the player's top to the row's bottom. Spotify 9.2.0 moves the row by its top
@@ -440,6 +486,15 @@ static CGRect coverPlaceIn(UIView *tilt) {
     return CGRectMake(cover.center.x - size.width / 2, cover.center.y - size.height / 2, size.width, size.height);
 }
 
+static Class imageProxyClass(void) {
+    return NSClassFromString(@"_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy");
+}
+
+static void fillParts(UIView *holder) {
+    for (UIView *part in holder.subviews)
+        if (!CGRectEqualToRect(part.frame, holder.bounds)) part.frame = holder.bounds;
+}
+
 %hook _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
 // A cover laid out out of a window had no safe area to be lifted under.
 - (void)didMoveToWindow {
@@ -479,18 +534,32 @@ static CGRect coverPlaceIn(UIView *tilt) {
         [UIView performWithoutAnimation:^{ SGRPlayerSetCoverHidden(YES); }];
     }
     watchHold(tilt);
-    SGRPlayerMotionCoverLaidOut();
     SGRPlayerMixCoverLaidOut();
     // The cover fills the tilt view (01.txt:37), lifted to the Music app's top; bounds and center, unlike a frame, hold
     // under the scale.
     CGRect bounds = CGRectMake(0, 0, tilt.bounds.size.width, tilt.bounds.size.height);
     CGPoint middle = CGPointMake(CGRectGetMidX(tilt.bounds), CGRectGetMidY(tilt.bounds) - coverLift(tilt, cell));
+    if (sg_reservedTilt == tilt && sg_reservedSide > 0) {
+        middle.y += (sg_reservedSide - bounds.size.height) / 2;
+        bounds.size = CGSizeMake(sg_reservedSide, sg_reservedSide);
+    }
     if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
     if (!CGPointEqualToPoint(cover.center, middle)) cover.center = middle;
-    // Its image is placed again for the new size (the ImageViewProxy hook below makes it fill the cover).
-    for (UIView *image in cover.subviews) {
-        if (!CGRectEqualToRect(image.frame, cover.bounds)) image.bounds = image.bounds, image.center = image.center;
+    // A cell pass can reset just the bitmap. Matching outer frames do not
+    // imply its descendants were laid out. Size all three in this transaction.
+    for (UIView *proxy in cover.subviews) {
+        if (tilt != sg_reservedTilt) {
+            // The ordinary issue #21 layout: only re-place a proxy whose own frame is stale.
+            if (!CGRectEqualToRect(proxy.frame, cover.bounds)) { proxy.bounds = proxy.bounds; proxy.center = proxy.center; }
+            continue;
+        }
+        if (![proxy isKindOfClass:imageProxyClass()]) continue;
+        if (!CGRectEqualToRect(proxy.frame, cover.bounds)) proxy.frame = cover.bounds;
+        fillParts(proxy);
+        for (UIView *image in proxy.subviews)
+            if ([image.accessibilityIdentifier isEqualToString:@"Encore.ImageView"]) fillParts(image);
     }
+    SGRPlayerMotionCoverLaidOut(); // The square clip reads the final cover bounds.
 
     cover.layer.cornerRadius = SGRRadiusArtwork;
     cover.layer.cornerCurve = kCACornerCurveContinuous;
@@ -558,9 +627,7 @@ static UIView *coverOfImage(UIView *image) {
     %orig;
     UIView *proxy = (UIView *)self;
     if (!coverOfImage(proxy)) return;
-    for (UIView *image in proxy.subviews) {
-        if (!CGRectEqualToRect(image.frame, proxy.bounds)) image.frame = proxy.bounds;
-    }
+    fillParts(proxy);
 }
 %end
 
@@ -568,18 +635,40 @@ static UIView *coverOfImage(UIView *image) {
 - (void)layoutSubviews {
     %orig;
     UIView *view = (UIView *)self;
-    static Class proxyClass;
-    if (!proxyClass) proxyClass = NSClassFromString(@"_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy");
-    if (![view.superview isKindOfClass:proxyClass] || !coverOfImage(view.superview)) return;
-    for (UIView *part in view.subviews) {
-        if (!CGRectEqualToRect(part.frame, view.bounds)) part.frame = view.bounds;
-    }
+    if ([view.superview isKindOfClass:imageProxyClass()] && coverOfImage(view.superview)) fillParts(view);
 }
 %end
 
 
 @interface SGRPlayerArtworkWatcher : NSObject <SGPlayerStateObserver>
 @end
+
+// Encore may write its original cell geometry to the bitmap after all three
+// containers have finished layout. Own those writes only for this cover path.
+static UIView *playerImageHolder(UIView *part) {
+    UIView *holder = part.superview;
+    static Class encore;
+    if (!encore) encore = NSClassFromString(@"_TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView");
+    if (![holder isKindOfClass:encore]) return nil;
+    UIView *proxy = holder.superview;
+    return sg_reservedTilt && proxy.superview.superview == sg_reservedTilt &&
+           [proxy isKindOfClass:imageProxyClass()] && coverOfImage(proxy) ? holder : nil;
+}
+
+%hook UIImageView
+- (void)setFrame:(CGRect)frame {
+    UIView *holder = playerImageHolder(self);
+    %orig(holder ? holder.bounds : frame);
+}
+- (void)setBounds:(CGRect)bounds {
+    UIView *holder = playerImageHolder(self);
+    %orig(holder ? (CGRect){bounds.origin, holder.bounds.size} : bounds);
+}
+- (void)setCenter:(CGPoint)center {
+    UIView *holder = playerImageHolder(self);
+    %orig(holder ? CGPointMake(CGRectGetMidX(holder.bounds), CGRectGetMidY(holder.bounds)) : center);
+}
+%end
 
 @implementation SGRPlayerArtworkWatcher {
     NSInteger _paused;

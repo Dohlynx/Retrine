@@ -388,7 +388,10 @@ static NSUInteger sg_headerLayouts;
 @end
 
 @interface _TtC35NowPlaying_ContentLayerPlatformImpl24AccessibleCollectionView : UICollectionView @end
-@implementation _TtC35NowPlaying_ContentLayerPlatformImpl24AccessibleCollectionView @end
+static BOOL testCoverDrag;
+@implementation _TtC35NowPlaying_ContentLayerPlatformImpl24AccessibleCollectionView
+- (BOOL)isDragging { return testCoverDrag || [super isDragging]; }
+@end
 
 @interface _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl : UICollectionViewCell @end
 @implementation _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl @end
@@ -406,6 +409,10 @@ static NSUInteger sg_headerLayouts;
 @interface _TtC18NowPlaying_BarImpl27NowPlayingBarViewController : UIViewController @end
 @implementation _TtC18NowPlaying_BarImpl27NowPlayingBarViewController @end
 
+@interface _TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy : UIView @end
+@implementation _TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy @end
+@interface _TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView : UIView @end
+@implementation _TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView @end
 @interface _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView : UIView
 - (void)handleTap;
 @end
@@ -588,7 +595,9 @@ static void loadLyrics(void) {
     ];
     NSMutableArray<SGKaraokeLine *> *lines = [NSMutableArray array];
     if ([scenario() hasPrefix:@"lyric-line"]) texts = @[@"한순간이였지"];
-    if ([scenario() hasPrefix:@"lyric-line-chip"]) texts = @[@"Now I don't want you calling me baby"];
+    if ([scenario() isEqual:@"lyric-line-ownership"])
+        texts = @[@"Short", @"A longer phrase that cannot possibly fit onto one row of the available width"];
+    if ([scenario() hasPrefix:@"lyric-line-chip"]) texts = @[@"Now I don't want you calling me baby now"];
     BOOL longFirst = [scenario() isEqual:@"lyric-line-long"];
     if (longFirst) texts = @[@"First we find the words and then we sing the words together before another phrase begins and carries on until the final note"];
     NSInteger at = 0;
@@ -604,7 +613,7 @@ static void loadLyrics(void) {
             // Each line's last word is held, as sung lines often end, so the held-word glow shows.
             if (word == words.lastObject) cursor += 1600;
             if (longFirst) cursor = w.start + 1000;
-            else if ([scenario() hasPrefix:@"lyric-line"]) cursor = 60000;
+            else if ([scenario() hasPrefix:@"lyric-line"]) cursor = at + 60000;
             w.end = cursor;
             [built addObject:w];
         }
@@ -717,6 +726,7 @@ static void loadLyrics(void) {
 - (BOOL)buildPlayer {
     UIViewController *root = self.window.rootViewController;
     CGFloat W = root.view.bounds.size.width, H = root.view.bounds.size.height;
+    if ([scenario() isEqual:@"lyric-line-compact"]) { W = 393; H = 852; }
     if ([scenario() isEqualToString:@"adaptive"]) {
         if (getenv("HARNESS_COMPACT")) {
             W = 500;
@@ -784,7 +794,12 @@ static void loadLyrics(void) {
     cover.image = picture;
     _cover = cover;
     cover.contentMode = UIViewContentModeScaleAspectFill;
-    [coverElement addSubview:cover];
+    if ([@[@"lyric-line-compact", @"lyric-line-ownership", @"artwork-unowned"] containsObject:scenario()]) {
+        UIView *proxy = box(coverElement, NSClassFromString(@"_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy"), coverElement.bounds, nil);
+        UIView *image = box(proxy, NSClassFromString(@"_TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView"), proxy.bounds, @"Encore.ImageView");
+        [image addSubview:cover];
+        cover.autoresizingMask = UIViewAutoresizingNone;
+    } else [coverElement addSubview:cover];
     UIView *previewShell = box(inner, _TtC22Lyrics_NPVContainerKit19LyricsContainerView.class, CGRectMake(0, inner.bounds.size.height, coverSide, 0), nil);
     if ([scenario() isEqualToString:@"lyric-line"]) {
         // Spotify keeps a populated, invisible wrapper beside the ordinary cover on tracks without a preview.
@@ -1011,7 +1026,12 @@ static void loadLyrics(void) {
         NSLog(@"[harness] hit on the title: %@", NSStringFromClass([self.window hitTest:onTitle withEvent:nil].class));
         NSLog(@"[harness] hit on the lines: %@", NSStringFromClass([self.window hitTest:onLines withEvent:nil].class));
     });
-    if (getenv("HARNESS_OPENING")) [self runOpeningChecks];
+    if ([scenario() isEqual:@"artwork-unowned"]) after(2, ^{
+        cover.frame = CGRectMake(0,0,264,264);
+        HARNESS_CHECK(CGRectGetWidth(cover.frame) == 264);
+        NSLog(@"[harness] line off passed"); exit(0);
+    });
+    else if (getenv("HARNESS_OPENING")) [self runOpeningChecks];
     else if ([scenario() isEqualToString:@"adaptive"]) [self runAdaptiveChecks];
     else if ([scenario() isEqualToString:@"artwork"]) [self runArtworkChecks];
     else if ([scenario() isEqualToString:@"look"]) [self runLook];
@@ -1058,26 +1078,167 @@ static void loadLyrics(void) {
             }
             HARNESS_CHECK(fabs(words.font.pointSize - native) < 0.05 &&
                           (words.font.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold));
-            if (!clip && host.bounds.size.width == 375 && host.bounds.size.height == 667) {
-                // This fixture's ordinary cover extends into the SE's preview cell.
-                HARNESS_CHECK(CGRectGetMaxY(SGRPlayerCoverFrameIn(host)) >= CGRectGetMidY(text));
-                HARNESS_CHECK(!line.userInteractionEnabled && line.alpha == 0);
-                NSLog(@"[harness] lyric-line passed (no room on SE)");
+            CGRect (^slotFor)(CGFloat, CGFloat, BOOL) = ^CGRect(CGFloat end, CGFloat points, BOOL translation) {
+                CGFloat rowHeight = ceil([UIFont boldSystemFontOfSize:points].lineHeight);
+                CGFloat reserve = translation ? ceil([UIFont systemFontOfSize:round(.8 * points)].lineHeight) : 0;
+                return CGRectMake(row.origin.x, end - 8 - 2 * rowHeight - reserve, host.bounds.size.width - 2 * row.origin.x, 2 * rowHeight + reserve);
+            };
+            CGRect preview = slotFor(CGRectGetMinY(row), native, NO);
+            if ([scenario() isEqual:@"lyric-line-ownership"]) {
+                __block NSInteger failures = 0;
+                void (^check)(BOOL, NSString *) = ^(BOOL ok, NSString *what) {
+                    NSLog(@"[harness] %@: %@", what, ok ? @"PASS" : @"FAIL");
+                    if (!ok) failures++;
+                };
+                CGRect originalFloating = floatingView.frame;
+                CGFloat artEnd = CGRectGetMaxY(SGRPlayerCoverFrameIn(host));
+                CGRect target = CGRectMake(0, artEnd - 12, W, 32);
+                floatingView.frame = [bottom convertRect:target fromView:host];
+                chip.hidden = NO; [floating viewDidLayoutSubviews];
+                check(fabs(CGRectGetMaxY(line.frame) - (target.origin.y - 8)) < .01, @"pill above reserved foot");
+                chip.accessibilityIdentifier = SGVideoSwitchIdentifier;
+                chip.backgroundColor = UIColor.clearColor;
+                chipLabel.layer.mask = [CALayer layer]; [floating viewDidLayoutSubviews];
+                check(CGRectEqualToRect(line.frame, preview), @"transparent switch with masked child");
+                chipLabel.hidden = YES; chip.accessibilityIdentifier = nil; chip.layer.cornerRadius = 0;
+                UIImageView *img = [[UIImageView alloc] initWithImage:picture]; img.frame = CGRectInset(chip.bounds,4,4);
+                [chip addSubview:img]; [floating viewDidLayoutSubviews];
+                check(fabs(CGRectGetMaxY(line.frame) - (target.origin.y+4-8)) < .01, @"generic painted image");
+                chip.hidden = YES; floatingView.frame = originalFloating;
+                CGRect originalColumn = inner.frame;
+                inner.frame = CGRectInset(originalColumn,32,0); [floating viewDidLayoutSubviews];
+                check(![[line valueForKey:@"normalSide"] doubleValue], @"narrow artwork column");
+                CGPoint homeBottom = bottom.center;
+                previewShell.frame = CGRectMake(0,0,coverSide,64);
+                CGFloat coverBottom = CGRectGetMaxY(SGRPlayerCoverFrameIn(host));
+                bottom.center = CGPointMake(homeBottom.x, homeBottom.y + coverBottom + 46 -
+                                           CGRectGetMinY([host convertRect:title.bounds fromView:title]));
+                [floating viewDidLayoutSubviews];
+                BOOL steady = YES;
+                for (NSNumber *position in @[@1000,@62000,@1000]) {
+                    SGRHarnessPlayFrom(position.integerValue); [line performSelector:@selector(tick)];
+                    steady &= previewShell.layer.mask != nil && line.userInteractionEnabled &&
+                              words.numberOfLines == 1 && words.text.length > 0;
+                    if (position.integerValue == 62000) steady &= words.text.length < line.accessibilityLabel.length;
+                }
+                check(steady, @"one-row fallback keeps preview masked across lyrics");
+                bottom.center = homeBottom;
+                inner.frame = originalColumn;
+                CGPoint originalBottom = bottom.center;
+                previewShell.frame = CGRectMake(0,0,coverSide,64);
+                bottom.center = CGPointMake(originalBottom.x, originalBottom.y-270);
+                [floating viewDidLayoutSubviews];
+                check(!previewShell.layer.mask && !line.userInteractionEnabled, @"no-fit preview returned");
+                bottom.center = originalBottom; [floating viewDidLayoutSubviews];
+                UIView *second = box(inner,tilt.class,CGRectMake(W,0,264,264),nil);
+                UIView *secondBox = box(second,UIView.class,second.bounds,nil);
+                UIView *proxy = box(secondBox,cover.superview.superview.class,secondBox.bounds,nil);
+                UIView *holder = box(proxy,cover.superview.class,proxy.bounds,@"Encore.ImageView");
+                UIImageView *bitmap = [UIImageView new]; [holder addSubview:bitmap];
+                [second layoutSubviews]; bitmap.frame = CGRectMake(0,0,264,264);
+                bitmap.frame = CGRectInset(bitmap.frame, 8, 8);
+                check(bitmap.frame.size.width == 248, @"prefetched bitmap write accepted");
+                UIView *nextColumn = box(band,UIView.class,CGRectOffset(inner.frame,W,0),nil);
+                [nextColumn addSubview:second]; second.center = tilt.center;
+                box(nextColumn,previewShell.class,previewShell.frame,nil);
+                bottom.center = CGPointMake(originalBottom.x, originalBottom.y-45);
+                [floating viewDidLayoutSubviews];
+                CGRect outgoing = coverElement.frame, incoming = secondBox.frame;
+                testCoverDrag = YES;
+                BOOL unchanged = YES;
+                for (NSNumber *delta in @[@-3,@3,@-2,@2]) {
+                    covers.contentOffset = CGPointMake(W/2 + delta.doubleValue,0);
+                    [line performSelector:@selector(tick)];
+                    unchanged &= CGRectEqualToRect(coverElement.frame,outgoing) && CGRectEqualToRect(secondBox.frame,incoming);
+                }
+                check(unchanged, @"midpoint drag keeps both cover frames");
+                testCoverDrag = NO; covers.contentOffset = CGPointMake(W,0);
+                [line performSelector:@selector(tick)];
+                check(secondBox.bounds.size.width > 264 && coverElement.bounds.size.width == tilt.bounds.size.width,
+                      @"settling the pager transfers the reservation");
+                covers.contentOffset = CGPointZero;
+                [inner addSubview:second]; bottom.center = originalBottom;
+                second.center = tilt.center; tilt.hidden = YES;
+                [line performSelector:@selector(tick)];
+                check(secondBox.bounds.size.width > 264 && coverElement.bounds.size.width == tilt.bounds.size.width,
+                      @"clock transfers cover reservation");
+                cover.frame = CGRectMake(0,0,264,264);
+                check(cover.frame.size.width == 264, @"outgoing bitmap write accepted");
+                HARNESS_CHECK(!failures); exit(0);
+            }
+            if ([scenario() isEqual:@"lyric-line-compact"]) {
+                NSArray<SGKaraokeLine *> *kept = SGKaraokeLinesForTrack(SGKaraokePlayingTrack());
+                void (^checkPicture)(void) = ^{
+                    for (UIView *v = cover; v != coverElement; v = v.superview) {
+                        HARNESS_CHECK(v && CGRectEqualToRect(v.frame, v.superview.bounds));
+                    }
+                };
+                for (NSNumber *show in @[@NO,@YES]) {
+                    SGRSetLyricsTextShown(SGRLyricsTextTranslation, show.boolValue);
+                    [floating viewDidLayoutSubviews];
+                    CGRect slot = slotFor(row.origin.y, native, show.boolValue);
+                    CGRect art = SGRPlayerCoverFrameIn(host);
+                    // A late cell pass can put the bitmap back at the native preview size
+                    // without changing either the proxy or the Encore holder's bounds.
+                    cover.frame = CGRectMake(0, 0, 264, 264);
+                    checkPicture(); // No later parent layout is promised.
+                    [tilt layoutSubviews];
+                    checkPicture();
+                    HARNESS_CHECK(CGRectEqualToRect(line.frame, slot));
+                    HARNESS_CHECK(fabs(art.size.width - MIN(345, slot.origin.y - 8 - art.origin.y)) < .5);
+                    NSString *old = [kept.firstObject translation];
+                    [kept.firstObject setTranslation:nil];
+                    [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLinesKeptNotification object:nil];
+                    HARNESS_CHECK(CGRectEqualToRect(art, SGRPlayerCoverFrameIn(host)) && CGRectEqualToRect(slot, line.frame));
+                    [kept.firstObject setTranslation:old];
+                    NSLog(@"[harness] compact translation %@ slot %@ art %@",show,NSStringFromCGRect(slot),NSStringFromCGRect(art));
+                }
+                SGRSetLyricsTextShown(SGRLyricsTextTranslation, NO);
+                CGPoint saved = bottom.center;
+                // Shorten the space between artwork and title without moving the live header.
+                CGFloat floor = 230, naturalTop = CGRectGetMinY(SGRPlayerCoverFrameIn(host));
+                SGRSetLyricsTextShown(SGRLyricsTextTranslation, YES);
+                bottom.center = CGPointMake(saved.x, saved.y + 450 - row.origin.y);
+                for (NSNumber *small in @[@NO, @YES, @NO]) {
+                    SGRSetPlayerLineSmall(small.boolValue);
+                    HARNESS_CHECK(line.frame.size.height == (small.boolValue ? 59 : 64));
+                    HARNESS_CHECK(fabs(SGRPlayerCoverFrameIn(host).size.width -
+                                       (450 - naturalTop - 16 - (small.boolValue ? 59 : 64))) < .5);
+                }
+                for (NSNumber *rows in @[@2,@1,@0]) {
+                    CGFloat titleY = naturalTop + 16 + floor + rows.intValue * 23 + 1;
+                    bottom.center = CGPointMake(saved.x,saved.y + titleY-row.origin.y);
+                    [floating viewDidLayoutSubviews]; [line layoutIfNeeded];
+                    HARNESS_CHECK(line.userInteractionEnabled == (rows.intValue != 0));
+                    checkPicture();
+                    if (rows.intValue) HARNESS_CHECK(line.frame.size.height == rows.intValue * 23 && !line.accessibilityValue);
+                }
+                bottom.center = saved;
+                SGRSetLyricsTextShown(SGRLyricsTextTranslation, NO);
+                SGKaraokeKeepLines(@"harness",nil); [floating viewDidLayoutSubviews];
+                HARNESS_CHECK(!line.userInteractionEnabled && SGRPlayerCoverFrameIn(host).size.width == tilt.bounds.size.width);
+                checkPicture();
+                SGKaraokeKeepLines(@"harness",kept); [floating viewDidLayoutSubviews];
+                HARNESS_CHECK(line.userInteractionEnabled && CGRectEqualToRect(line.frame,preview));
+                checkPicture();
+                SGRSetPlayerLineSmall(YES);
+                chip.hidden = NO; [floating viewDidLayoutSubviews]; checkPicture();
+                chip.hidden = YES; [floating viewDidLayoutSubviews]; checkPicture();
+                SGRPlayerToggleLyrics(); SGRPlayerToggleLyrics();
+                [floating viewDidLayoutSubviews]; checkPicture();
+                NSLog(@"[harness] lyric-line passed (compact)");
                 exit(0);
             }
-            CGRect stack = [host convertRect:bottom.bounds fromView:bottom];
-            CGRect preview = CGRectMake(24, CGRectGetMinY(stack) - 100, host.bounds.size.width - 48, 100);
             if ([scenario() isEqual:@"lyric-line-chip-live"]) {
                 HARNESS_CHECK(CGRectEqualToRect(text, preview));
                 chip.alpha = 1;
                 after(1, ^{
                     CGRect pill = [host convertRect:chip.bounds fromView:chip];
                     CGRect moved = [host convertRect:words.bounds fromView:words];
-                    CGFloat height = [words textRectForBounds:words.bounds limitedToNumberOfLines:2].size.height;
-                    HARNESS_CHECK(line.userInteractionEnabled && fabs(CGRectGetMinY(pill) - CGRectGetMidY(moved) - height / 2 - 8) <= .5);
-                    chip.center = CGPointMake(chip.center.x, chip.center.y - 6);
+                    HARNESS_CHECK(line.userInteractionEnabled && CGRectEqualToRect(moved, slotFor(pill.origin.y,native,NO)));
+                    chip.center = CGPointMake(chip.center.x, chip.center.y + 6);
                     after(1, ^{
-                        HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], CGRectOffset(moved, 0, -6)));
+                        HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], CGRectOffset(moved, 0, 6)));
                         chip.hidden = YES;
                         after(1, ^{
                             HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], preview));
@@ -1095,14 +1256,40 @@ static void loadLyrics(void) {
                 void (^layout)(void) = ^{ [floating viewDidLayoutSubviews]; [line layoutIfNeeded]; };
                 CGPoint original = band.center;
                 band.center = CGPointMake(original.x, original.y - 80);
+                if (!clip) {
+                    chip.hidden = NO;
+                    CGRect home = chip.frame;
+                    CALayer *emptyMask = [CALayer layer];
+                    emptyMask.frame = chip.bounds;
+                    chip.layer.mask = emptyMask;
+                    layout();
+                    HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], text));
+                    chip.layer.mask = nil;
+                    chip.layer.opacity = 0;
+                    layout();
+                    HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], text));
+                    chip.layer.opacity = 1;
+                    chip.transform = CGAffineTransformMakeScale(0, 1);
+                    layout();
+                    HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], text));
+                    chip.transform = CGAffineTransformIdentity;
+                    chip.frame = CGRectOffset(home, 0, -100);
+                    layout();
+                    HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], text));
+                    chip.frame = (CGRect){home.origin, CGSizeZero};
+                    layout();
+                    HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], text));
+                    chip.frame = home;
+                    chip.hidden = YES;
+                }
                 for (NSNumber *large in @[@NO, @YES]) {
-                    SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, large.boolValue ? SGRLyricsSizeNames().count - 1 : 0);
+                    SGRSetPlayerLineSmall(!large.boolValue);
                     for (NSNumber *pair in @[@NO, @YES]) {
                         SGRSetLyricsTextShown(SGRLyricsTextTranslation, pair.boolValue);
                         chip.hidden = YES;
                         layout();
                         CGRect before = [host convertRect:words.bounds fromView:words];
-                        HARNESS_CHECK(CGRectEqualToRect(before, preview));
+                        HARNESS_CHECK(CGRectEqualToRect(line.frame, slotFor(row.origin.y, words.font.pointSize, pair.boolValue)));
                         chip.hidden = NO;
                         layout();
                         UILabel *translation = (UILabel *)line.subviews[1];
@@ -1112,7 +1299,8 @@ static void loadLyrics(void) {
                         CGRect block = pair.boolValue ? CGRectUnion(ink, [host convertRect:translation.bounds fromView:translation]) : ink;
                         HARNESS_CHECK(line.userInteractionEnabled && (line.accessibilityValue != nil) == pair.boolValue);
                         HARNESS_CHECK((ink.size.height > words.font.lineHeight * 1.5) == large.boolValue);
-                        HARNESS_CHECK(fabs(CGRectGetMinY(pill) - CGRectGetMaxY(block) - 8) <= 0.5);
+                        HARNESS_CHECK(CGRectEqualToRect(line.frame, slotFor(pill.origin.y,words.font.pointSize,pair.boolValue)));
+                        HARNESS_CHECK(CGRectGetMaxY(block) <= CGRectGetMinY(pill) - 7.5);
                         CGRect moved = [host convertRect:words.bounds fromView:words];
                         HARNESS_CHECK(moved.origin.x == before.origin.x && moved.size.width == before.size.width);
                         HARNESS_CHECK(CGRectGetMaxY(line.frame) <= CGRectGetMinY(pill));
@@ -1124,23 +1312,21 @@ static void loadLyrics(void) {
                         HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], before));
                     }
                 }
-                if (!clip) {
-                    chip.hidden = NO;
-                    SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, 0);
-                    band.center = CGPointMake(original.x, original.y + 6);
-                    layout();
-                    HARNESS_CHECK(line.userInteractionEnabled && !line.accessibilityValue);
-                    band.center = CGPointMake(original.x, original.y + 36);
-                    layout();
-                    HARNESS_CHECK(!line.userInteractionEnabled);
-                }
                 SGRSetLyricsTextShown(SGRLyricsTextTranslation, NO);
-                SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, 0);
+                SGRSetPlayerLineSmall(NO);
                 NSLog(@"[harness] lyric-line passed (chip)");
                 exit(0);
             }
             HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"한순간이였지"] && clip == SGRPlayerMotionShowing());
             HARNESS_CHECK(CGRectEqualToRect(text, preview) && words.textAlignment == NSTextAlignmentLeft);
+            CGPoint savedTitle = title.center;
+            CGRect savedArt = SGRPlayerCoverFrameIn(host);
+            title.center = CGPointMake(savedTitle.x + 8, savedTitle.y);
+            [floating viewDidLayoutSubviews]; [line layoutIfNeeded];
+            CGRect shifted = [host convertRect:words.bounds fromView:words];
+            HARNESS_CHECK(shifted.origin.x == row.origin.x + 8 && shifted.size.width == text.size.width - 16);
+            HARNESS_CHECK(CGRectEqualToRect(savedArt, SGRPlayerCoverFrameIn(host)));
+            title.center = savedTitle; [floating viewDidLayoutSubviews];
             HARNESS_CHECK(CGColorEqualToColor(words.textColor.CGColor, UIColor.whiteColor.CGColor));
             if (handover) {
                 SGRSetPlayerBackground(SGRPlayerBackgroundFluid);
@@ -1159,28 +1345,29 @@ static void loadLyrics(void) {
                 return;
             }
             void (^checkSize)(NSInteger, CGFloat) = ^(NSInteger choice, CGFloat points) {
-                SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, choice);
+                SGRSetPlayerLineSmall(choice == 1);
                 [host layoutIfNeeded];
                 HARNESS_CHECK(fabs(words.font.pointSize - points) < 0.05);
                 HARNESS_CHECK([words.text isEqual:@"한순간이였지"]);
                 CGRect label = [host convertRect:words.bounds fromView:words];
-                HARNESS_CHECK(CGRectEqualToRect(label, preview));
+                HARNESS_CHECK(CGRectEqualToRect(label, slotFor(row.origin.y,points,NO)));
             };
-            checkSize(SGRLyricsSizeNames().count - 1, round(native * 1.30));
+            checkSize(1, 17);
             checkSize(0, native);
             SGRSetLyricsTextShown(SGRLyricsTextTranslation, YES);
             UILabel *translation = (UILabel *)line.subviews[1];
-            for (NSNumber *choice in @[@0, @(SGRLyricsSizeNames().count - 1), @0]) {
-                SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, choice.integerValue);
+            for (NSNumber *choice in @[@0, @1, @0]) {
+                SGRSetPlayerLineSmall(choice.boolValue);
                 [host layoutIfNeeded];
-                CGFloat expected = choice.integerValue ? 20 : 15;
+                CGFloat expected = choice.integerValue ? 14 : 15;
                 NSLog(@"[harness] translation %.0f pt expected %.0f, frame %@", translation.font.pointSize,
                       expected, NSStringFromCGRect(translation.frame));
                 HARNESS_CHECK(translation.font.pointSize == expected);
                 HARNESS_CHECK(line.userInteractionEnabled && line.accessibilityValue != nil);
                 HARNESS_CHECK([translation.text isEqual:@"One moment"] && translation.alpha == 1);
+                HARNESS_CHECK([host convertRect:translation.bounds fromView:translation].origin.x == row.origin.x);
                 HARNESS_CHECK(CGColorGetAlpha(translation.textColor.CGColor) == CGColorGetAlpha(SGRSecondary().CGColor));
-                HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], preview));
+                HARNESS_CHECK(CGRectEqualToRect(line.frame, slotFor(row.origin.y,words.font.pointSize,YES)));
                 HARNESS_CHECK(CGRectGetMinY(translation.frame) >= CGRectGetMidY(words.frame) + words.font.lineHeight / 2 - 0.5);
                 HARNESS_CHECK(translation.frame.size.height == ceil(translation.font.lineHeight));
                 if (clip) HARNESS_CHECK(translation.frame.size.width == ceil(translation.intrinsicContentSize.width));
@@ -2345,11 +2532,11 @@ static void installSettingsWorkProbes(void) {
             NSIndexPath *linePath = pathOf(rowTitled(@"Lyrics Line"));
             SGModRow *size = rowTitled(@"Size");
             HARNESS_CHECK(size && linePath && [pathOf(size) isEqual:[NSIndexPath indexPathForRow:linePath.row + 1 inSection:linePath.section]]);
-            HARNESS_CHECK([size.menu isEqual:SGRLyricsSizeNames()]);
+            HARNESS_CHECK(([size.menu isEqual:@[@"19 pt", @"17 pt"]]));
             size.chosen(size.menu.count - 1);
-            HARNESS_CHECK(SGRLyricsSizeShare(SGRLyricsPlaceUnderCover) == 1.30);
-            SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, 0);
-            HARNESS_CHECK([size.value() isEqual:@"Default"]);
+            HARNESS_CHECK(SGRPlayerLineSmall() && [size.value() isEqual:@"17 pt"]);
+            size.chosen(0);
+            HARNESS_CHECK([size.value() isEqual:@"19 pt"]);
             if (getenv("HARNESS_SIZE_SCREENSHOT")) {
                 cellOf(size);
                 NSLog(@"[harness] size-settings ready");
@@ -4101,6 +4288,7 @@ static UISlider *spotifyBar(UIView *unit, NSArray<UILabel *> **labels) {
     }
 
     // A finger scrubbing: the fill lit whole and the times a step lower; the badge stays where it is.
+#include "scrub-capsule.inc"
     CGFloat badgeAt = CGRectGetMinY(badge.frame);
     [slider beginTrackingWithTouch:[UITouch new] withEvent:nil];
     after(0.6, ^{
@@ -5484,6 +5672,11 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
                                 SGKeyHideVideoSwitch, SGRKeyPlayerHeaderGlass, SGRKeyPlayerStarAdd]) [store removeObjectForKey:key];
     }
     [NSUserDefaults.standardUserDefaults setBool:[scenario() hasPrefix:@"lyric-line"] forKey:@"spotifyglass.redesign.player.lyricLine"];
+    if ([scenario() hasPrefix:@"lyric-line"]) {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.redesign.lyricsTranslation"];
+        SGRSetPlayerLineSmall(NO);
+        [NSUserDefaults.standardUserDefaults setInteger:4 forKey:@"spotifyglass.redesign.lyricsSize.underCover"]; // retired choice is ignored
+    }
     if ([scenario() isEqualToString:@"motion"] || [scenario() isEqualToString:@"settings"] ||
         [scenario() isEqualToString:@"lyric-line-clip"] || [scenario() isEqual:@"lyric-line-chip-clip"] || [scenario() isEqualToString:@"lyric-line-switch"]) {
         [NSUserDefaults.standardUserDefaults setInteger:3 forKey:@"spotifyglass.redesign.player.background"];

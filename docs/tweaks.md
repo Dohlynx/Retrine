@@ -1649,20 +1649,29 @@ Redesigned:
                   a paused song's hills have settled. The spectrum is checked on the Mac against harness/visualiser/,
                   the view in the simulator against harness/player/ (`visualiser`). The line under the cover (Lyrics Line on the Player
                   page, off until switched on, as the Music app keeps nothing between its cover and title; PlayerLyricLine.x,
-                  PlayerLyricFit.h). Spotify's own lyric preview under the cover stays as Spotify's Lyrics setting in the
-                  track menu has it, and Spotify sizes the cover for it. Switched on, it is the one line a place with room for
-                  one shows, in the native preview's text rectangle (on the 13 Pro, 24 pt in, centered vertically
-                  in the 100 pt above the bottom stack), clear of the unshrunk cover. It uses the measured
+                  PlayerLyricFit.h). When switched on, synced lyrics replace the native preview. The player reserves
+                  two sung rows and, while translations are enabled, one translation row, one grid gap above the title.
+                  Both start at the title label's live leading edge and wrap within equal side margins; only a
+                  missing title uses the 24 pt text inset. Moving the title does not resize the artwork.
+                  The ordinary cover gets the room above the slot up to its measured phone artwork-column width.
+                  Unknown or narrower layouts keep their ordinary cover geometry. The preview is masked only after
+                  the replacement fits; chip measurement starts at the normal cover top, independent of the resize.
+                  To keep a recognizable cover
+                  at least two thirds of that width, release the translation row first, then the second sung row,
+                  then the slot. Missing words or translations within a track do not resize the cover. It uses the measured
                   19.098 pt system bold preview font, fixed across phone text sizes,
                   and white text at the player's position less the Lyrics page's Delay; a tap opens the lyrics.
-                  Size under Lyrics Line and Under the cover in Lyrics Style scale the same preview font.
+                  Size under Lyrics Line selects 19 pt (the preview size) or 17 pt; the translation uses 15 or 14 pt respectively.
                   A field clip or full-screen still keeps the same text rectangle, with the clip's dim behind it.
                   A visible chip lifts the rows only enough to leave one grid gap above it. If that would
                   crowd the cover, it tries the sung line alone before hiding it. The same lift over a clip
                   or full-screen still carries the dim with it. The line rechecks visible chips on its lyric
                   clock as well as on layout: a late switch or a fade needs no player layout pass. The video
                   switch is measured from the outer pill, not its inset text.
-                  It stands down where Spotify shows its own lyric preview under the cover,
+                  A change of chip that lifts the slot logs `lyrics chip:` with the responsible class, structural
+                  identifier, host frame and ancestor visibility (no song or label text). For a report, reproduce
+                  it, then use Mod Settings → Mod → Share diagnostics before relaunching.
+                  A track without synced lyrics keeps Spotify's own lyric preview under the cover,
                   which in 9.1.90 is Lyrics_NPVElementsKitImpl.LyricsElementWrapperView beside the tilt view, hooked apart
                   from the other placements because that preview gets its height when its lyrics arrive, after the cover's
                   last pass. Long lines use successive two-row portions at the chosen size (only a word too wide
@@ -1768,8 +1777,8 @@ Redesigned:
                   its values) and a sheet of sliders, applied at once to every view, the lines 32 pt in from the sides as
                   the player's title and bar are (SGRKaraokeView.m), under a live
                   preview of the view playing a song of its own (LyricsLookSettings.m); its Size in each place sets the
-                  line under the cover, the player's lyrics and landscape/full-screen lyrics to 75–130% of their own size,
-                  Default changing nothing, the line under the cover keeping the Spotify preview's size. Laid out on the Mac against
+                  player's lyrics and landscape/full-screen lyrics to 75–130% of their own size,
+                  Default changing nothing. Laid out on the Mac against
                   harness/lyrics/; the page against harness/lyrics-page/
     Navigation/   Open pages from their artwork, an opt-in on Appearance beside the page-title options
                   (`spotifyglass.redesign.pageZoom`, off, restart to apply, iOS 26 only; PageZoom.x/m).

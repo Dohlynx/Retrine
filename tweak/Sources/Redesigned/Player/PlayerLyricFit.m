@@ -189,7 +189,7 @@ static NSArray<SGRLyricUnit *> *unitsOf(SGKaraokeLine *line) {
 
 // The line's words in two-row portions at the selected font. Every portion is whole words, so no
 // portion is cut in the middle of one; a single word wider than the label keeps a portion to itself.
-static NSArray<SGRLyricPortion *> *splitPortions(SGKaraokeLine *line, CGFloat width, UIFont *font) {
+static NSArray<SGRLyricPortion *> *splitPortions(SGKaraokeLine *line, CGFloat width, UIFont *font, NSInteger rows) {
     NSArray<SGRLyricUnit *> *units = unitsOf(line);
     NSMutableArray<NSArray<SGRLyricUnit *> *> *groups = [NSMutableArray array];
     NSMutableArray<SGRLyricUnit *> *group = [NSMutableArray array];
@@ -201,7 +201,7 @@ static NSArray<SGRLyricPortion *> *splitPortions(SGKaraokeLine *line, CGFloat wi
         CGFloat height = [candidate boundingRectWithSize:CGSizeMake(width, CGFLOAT_MAX)
             options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
             attributes:@{NSFontAttributeName:font} context:nil].size.height;
-        if (group.count && (oversized || height > 2 * ceil(font.lineHeight))) {
+        if (group.count && (oversized || height > rows * ceil(font.lineHeight))) {
             [groups addObject:group];
             group = [NSMutableArray array];
             [candidate setString:unit.text];
@@ -238,6 +238,7 @@ static NSArray<SGRLyricPortion *> *splitPortions(SGKaraokeLine *line, CGFloat wi
 @interface SGRLyricPortionEntry : NSObject
 @property (nonatomic, strong) SGKaraokeLine *line;
 @property (nonatomic) CGFloat width;
+@property (nonatomic) NSInteger rows;
 @property (nonatomic, strong) UIFont *font;
 @property (nonatomic, copy) NSArray<SGRLyricPortion *> *portions;
 @end
@@ -253,11 +254,14 @@ static NSMutableArray<SGRLyricPortionEntry *> *sg_kept;
 static const NSUInteger kPortionCacheLimit = 32;
 
 NSArray<SGRLyricPortion *> *SGRLyricPortions(SGKaraokeLine *line, CGFloat width, UIFont *font) {
+    return SGRLyricPortionsInRows(line, width, font, 2);
+}
+NSArray<SGRLyricPortion *> *SGRLyricPortionsInRows(SGKaraokeLine *line, CGFloat width, UIFont *font, NSInteger rows) {
     if (!line.words.count) return @[];
     if (width <= 0) return @[wholePortion(line, 1)];
     if (!sg_kept) sg_kept = [NSMutableArray array];
     for (SGRLyricPortionEntry *entry in sg_kept) {
-        if ([entry isFor:line width:width font:font]) return entry.portions;
+        if (entry.rows == rows && [entry isFor:line width:width font:font]) return entry.portions;
     }
 
     NSArray<SGRLyricPortion *> *measured = nil;
@@ -265,12 +269,13 @@ NSArray<SGRLyricPortion *> *SGRLyricPortions(SGKaraokeLine *line, CGFloat width,
     if (widthOf(whole, font) <= width) {
         measured = @[wholePortion(line, 1)];
     } else {
-        measured = splitPortions(line, width, font);
+        measured = splitPortions(line, width, font, rows);
     }
     if (sg_kept.count >= kPortionCacheLimit) [sg_kept removeObjectAtIndex:0];
     SGRLyricPortionEntry *entry = [SGRLyricPortionEntry new];
     entry.line = line;
     entry.width = width;
+    entry.rows = rows;
     entry.font = font;
     entry.portions = measured;
     [sg_kept addObject:entry];
@@ -306,6 +311,10 @@ BOOL SGRLyricRearmNeeded(NSInteger armedMs, double armedRate, NSInteger reported
 
 SGRLyricWait SGRLyricLineWait(NSArray<SGKaraokeLine *> *ordered, NSInteger positionMs, NSInteger delayMs,
                               CGFloat width, UIFont *font, double rate) {
+    return SGRLyricLineWaitInRows(ordered, positionMs, delayMs, width, font, rate, 2);
+}
+SGRLyricWait SGRLyricLineWaitInRows(NSArray<SGKaraokeLine *> *ordered, NSInteger positionMs, NSInteger delayMs,
+                                    CGFloat width, UIFont *font, double rate, NSInteger rows) {
     // A position not known yet, or a paused song (rate 0), has nothing to aim at: no boundary is nearer than that.
     if (!ordered.count || positionMs < 0 || !(rate > 0)) return fallbackWait();
     NSInteger position = positionMs - delayMs;
@@ -321,7 +330,7 @@ SGRLyricWait SGRLyricLineWait(NSArray<SGKaraokeLine *> *ordered, NSInteger posit
             if (ends[e] > position && ends[e] < boundary) boundary = ends[e];
         }
         if (index >= 0 && (NSInteger)i == index) {
-            NSArray<SGRLyricPortion *> *portions = SGRLyricPortions(line, width, font);
+            NSArray<SGRLyricPortion *> *portions = SGRLyricPortionsInRows(line, width, font, rows);
             for (SGRLyricPortion *portion in portions) {
                 if (portion.start > position && portion.start < boundary) boundary = portion.start;
             }

@@ -82,6 +82,8 @@ static void runChecks(UIViewController *page) {
         expect([nav isKindOfClass:UINavigationController.class] && [NSStringFromClass(sheet.class) isEqualToString:@"SGRLyricsStyleSheet"],
                @"the sliders' button opens the sheet");
         NSArray<UISlider *> *sliders = find(sheet.tableView, UISlider.class);
+        expect([sheet.tableView numberOfRowsInSection:1] == 2,
+               @"only player and landscape/full-screen lyrics have a percentage size");
         expect(sliders.count == 5, [NSString stringWithFormat:@"the sheet has five sliders (%lu)", (unsigned long)sliders.count]);
         UISlider *spacing = nil;
         for (UISlider *slider in sliders) {

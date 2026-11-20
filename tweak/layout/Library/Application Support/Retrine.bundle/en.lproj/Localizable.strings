@@ -1433,11 +1433,10 @@
 "settings.lyricslook.format.pt" = "%.0f pt";
 "settings.lyricslook.glow.title" = "Glow";
 "settings.lyricslook.place.default" = "Default";
-"settings.lyricslook.place.footer" = "Default uses Spotify's preview size for Lyrics Line and Text size for the other places. A percentage changes only that place. You can also set the line's size on the Player page.";
+"settings.lyricslook.place.footer" = "Default uses Text size. A percentage changes only that place.";
 "settings.lyricslook.place.full_screen" = "Landscape and full screen";
 "settings.lyricslook.place.header" = "Size in each place";
 "settings.lyricslook.place.player" = "In the player";
-"settings.lyricslook.place.under_cover" = "Under the cover";
 "settings.lyricslook.preview.a11y" = "Preview of the lyrics";
 "settings.lyricslook.size.title" = "Text size";
 "settings.lyricslook.spacing.title" = "Line spacing";
@@ -2619,6 +2618,8 @@
 "settings.player.lockscreen.title" = "Lock screen";
 "settings.player.lyric_line.hint" = "Opens the lyrics.";
 "settings.player.lyric_line.size" = "Size";
+"settings.player.lyric_line.size_17" = "17 pt";
+"settings.player.lyric_line.size_19" = "19 pt";
 "settings.player.lyric_line.subtitle" = "The line being sung, under the cover. Tap it to open the lyrics.";
 "settings.player.lyric_line.title" = "Lyrics Line";
 "settings.player.lyrics.thumb_a11y" = "Show the player";
