@@ -1809,13 +1809,17 @@ Redesigned:
                   drives Spotify's own chips, with the device picker and the top shelf's Show all; with Podcasts and audiobooks
                   hidden on the Home page, `spotifyglass.redesign.home.hidePodcasts`, shown unless set, it leaves out the
                   Podcasts and Audiobooks chips and takes Home back to the default chip once when one was chosen, at once
-                  when flipped; harness/home-podcasts/) and the avatar, on a Friday (the device's calendar, read as the
+                  when flipped; harness/home-podcasts/) and the avatar, 6 pt apart and kept so through an iPad's turns and
+                  window resizes (the page's pass lays the header out before reading it; harness/home-header/), on a Friday (the device's calendar, read as the
                   header lays out) a thin ring of pinks and purples turning round that pill (a turn in 6 s at no more than
                   30 frames a second, still under Reduce Motion, going and coming back with the pill as the title row
                   scrolls and still while gone), and Top picks
                   (the first shelf, or the one Cards from names, found in Spotify's feed model before its cells are
                   built, moved above the shortcuts and drawn as large cards in their covers' colors with no heading
-                  unless Show Top picks heading is on, the page tinted by the first card); under Glass shortcuts (the
+                  unless Show Top picks heading is on, the page tinted by the first card, laid out in the page view's own
+                  pass (the feed's controller's), so from launch even when the feed comes after the header's last pass,
+                  and across the page's whole width through an iPad's turns and window resizes; harness/home-header/);
+                  under Glass shortcuts (the
                   row after Home look, `spotifyglass.redesign.home.shortcutGlass`, read at launch; unset, it is what the
                   Home look is, so turning the look off before it existed still means plain shortcuts) each shortcut tile as
                   a glass pill in its cover's color with its name in bold on up to two lines; in FLEX builds a meter

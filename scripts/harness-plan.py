@@ -62,6 +62,8 @@ HARNESSES = [
      "run": "sh harness/settings-search/build.sh"},
     {"name": "Home podcasts", "dir": "home-podcasts", "theos": True,
      "run": "bash harness/home-podcasts/check.sh"},
+    {"name": "Home header", "dir": "home-header", "theos": True,
+     "run": "sh harness/home-header/check.sh"},
     {"name": "Settings bars inset", "dir": "settings-bars",
      "run": "sh harness/settings-bars/build.sh"},
     {"name": "Ad block hubs", "dir": "adblock", "theos": True,
