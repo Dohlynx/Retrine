@@ -15,10 +15,19 @@ scripts and sources reach — every repo path named in a build/check script
 (`-I ../autoeq/shim`, `VENDOR=../../vendor/audio`, `$SRC/...`), every file
 under such a directory, plus transitive quoted imports. A new directory a
 build script starts using is picked up without editing the script. Every harness runs
-when the pull request's changed list cannot be determined, when a change touches `.github/`,
-`scripts/harness-plan.py` or `tweak/Makefile`, or when a changed path is no longer
+when the changed list cannot be determined, when a change touches `.github/workflows/harness.yml`,
+`.github/actions/` or `tweak/Makefile`, or when a changed path is no longer
 in the checkout (a deletion, or a rename's old name: the diff is taken with
-`--no-renames`), since a harness may still use it. A harness with no tweak
+`--no-renames`), since a harness may still use it. Other `.github/` files follow the normal
+path rules. For edits to `scripts/harness-plan.py`, CI sets `HARNESS_PLAN_BASE` to the
+PR merge base or the private check's baseline. If only the `HARNESSES` list literal
+differs, new or edited entries are selected by name alongside path matches; removing an
+entry selects nothing by itself. Any edit outside the literal or uncertain comparison
+(including a missing base, unreadable source or duplicate name) runs everything.
+Reordering entries common to both versions also runs everything, since lookup uses the
+first matching name or directory. The shortcut requires the running registry to equal
+the head literal, so entries derived or modified after it cannot be missed.
+A harness with no tweak
 dependency is always selected, with a warning. The selected harnesses are
 packed into at most three shards by greedy weight and run as
 `Harnesses <shard>` jobs with a 45-minute timeout. Each shard containing a Theos harness uses

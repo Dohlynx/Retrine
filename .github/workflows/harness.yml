@@ -38,7 +38,9 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           changed=$(mktemp)
-          if git diff --no-renames --name-only "origin/$BASE_REF...$SHA" > "$changed"; then
+          if HARNESS_PLAN_BASE=$(git merge-base "origin/$BASE_REF" "$SHA") &&
+             git diff --no-renames --name-only "$HARNESS_PLAN_BASE" "$SHA" > "$changed"; then
+            export HARNESS_PLAN_BASE
             python3 scripts/harness-plan.py plan --changed-from "$changed" --github-output "$GITHUB_OUTPUT"
           else
             echo "pull request diff failed; running everything" >&2

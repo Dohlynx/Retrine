@@ -701,10 +701,61 @@ def selected_for(path, index):
     return names
 
 
+PLANNER_PATH = "scripts/harness-plan.py"
+
+
+def registry_parts(source, *, check_runtime=False):
+    """Return the exact bytes around the list and its literal entries keyed by name."""
+    assignments = [s for s in ast.parse(source.decode("utf-8")).body
+                   if isinstance(s, ast.Assign) and len(s.targets) == 1
+                   and isinstance(s.targets[0], ast.Name) and s.targets[0].id == "HARNESSES"]
+    if len(assignments) != 1 or not isinstance(assignments[0].value, ast.List):
+        raise ValueError("expected one HARNESSES list literal")
+    literal = assignments[0].value
+    if any(isinstance(node, (ast.Call, ast.BinOp)) for node in ast.walk(literal)):
+        raise ValueError("expected plain literals inside HARNESSES")
+    entries = {}
+    parsed = ast.literal_eval(literal)
+    if check_runtime and parsed != HARNESSES:
+        raise ValueError("runtime HARNESSES differs from the head literal")
+    for entry in parsed:
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+            raise ValueError("expected a named HARNESSES entry")
+        name = entry["name"]
+        if name in entries:
+            raise ValueError("duplicate harness name: " + name)
+        # Preserve type changes (True == 1 in Python), but not key ordering.
+        entries[name] = {key: repr(value) for key, value in entry.items()}
+    # AST columns count UTF-8 bytes. Keep comments and whitespace outside
+    # the expression significant, even on its opening and closing lines.
+    lines = source.splitlines(keepends=True)
+    prefix = b"".join(lines[:literal.lineno - 1]) + lines[literal.lineno - 1][:literal.col_offset]
+    suffix = lines[literal.end_lineno - 1][literal.end_col_offset:] + b"".join(lines[literal.end_lineno:])
+    return (prefix, suffix), entries
+
+
+def read_base_planner():
+    base = os.environ.get("HARNESS_PLAN_BASE", "")
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", base):
+        raise ValueError("missing or invalid HARNESS_PLAN_BASE")
+    return subprocess.check_output(["git", "show", base + ":" + PLANNER_PATH], cwd=REPO)
+
+
+def changed_registry_entries(old_source, new_source):
+    old_code, old = registry_parts(old_source)
+    new_code, new = registry_parts(new_source, check_runtime=True)
+    if old_code != new_code:
+        raise ValueError("planner changed outside the HARNESSES literal")
+    # find_harness resolves the first matching name or directory.
+    if [n for n in old if n in new] != [n for n in new if n in old]:
+        raise ValueError("relative order of existing harnesses changed")
+    return [name for name in new if new[name] != old.get(name)]
+
+
 def is_global_change(path):
     return (
-        path.startswith(".github/")
-        or path in ("scripts/harness-plan.py", "scripts/harness-plan-data.json")
+        path.startswith(".github/actions/")
+        or path == ".github/workflows/harness.yml"
         or path == "tweak/Makefile"
     )
 
@@ -739,27 +790,33 @@ def plan(index, changed, all_harnesses):
     reasons = []
     always = [h["name"] for h in index if h["always"]]
     if all_harnesses:
-        reasons.append("all harnesses requested (workflow_dispatch, schedule, or the changed list is unknown)")
+        reasons.append("run all: all harnesses requested (workflow_dispatch, schedule, or the changed list is unknown)")
         selected = list(index)
     else:
         global_paths = [p for p in changed if is_global_change(p)]
         # A path no longer in the checkout (deleted, or a rename's old name; the workflow diffs with --no-renames)
         # is in no dependency set, as those are read from the files that exist, yet a harness may still use it.
         gone = [p for p in changed if not (REPO / p).exists()]
-        if global_paths or gone:
-            if global_paths:
-                reasons.append("global change: " + ", ".join(global_paths))
-            if gone:
-                reasons.append("deleted or renamed away, a harness may still use it: " + ", ".join(gone))
+        registry_names = []
+        if global_paths:
+            reasons.append("run all: global change: " + ", ".join(global_paths))
+        if gone:
+            reasons.append("run all: deleted or renamed away, a harness may still use it: " + ", ".join(gone))
+        if not reasons and PLANNER_PATH in changed:
+            try:
+                registry_names = changed_registry_entries(read_base_planner(), (REPO / PLANNER_PATH).read_bytes())
+            except (OSError, subprocess.CalledProcessError, SyntaxError, ValueError, TypeError,
+                    RecursionError, MemoryError) as error:
+                reasons.append("run all: cannot isolate registry change: %s" % error)
+        if reasons:
             selected = list(index)
         else:
-            selected = [h for h in index if h["always"]]
+            if PLANNER_PATH in changed:
+                reasons.append("registry change selects: " + (", ".join(registry_names) or "(none)"))
+            names = set(registry_names)
             for path in changed:
-                for name in selected_for(path, index):
-                    entry = next(h for h in index if h["name"] == name)
-                    if entry not in selected:
-                        selected.append(entry)
-            selected.sort(key=lambda h: HARNESSES.index(next(x for x in HARNESSES if x["name"] == h["name"])))
+                names.update(selected_for(path, index))
+            selected = [h for h in index if h["always"] or h["name"] in names]
     if always and not all_harnesses:
         for name in always:
             print("warning: no tweak dependency found for %r; always selected" % name,
@@ -804,7 +861,7 @@ def cmd_plan(args):
     selected, matrix, reasons = plan(index, changed, unknown)
 
     for reason in reasons:
-        print("run all: " + reason)
+        print(reason)
     print("changed files: %d" % len(changed))
     print("selected (%d of %d):" % (len(selected), len(index)))
     for harness in selected:
