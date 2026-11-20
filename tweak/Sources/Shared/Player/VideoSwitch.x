@@ -9,10 +9,8 @@
 #import "Core/SGCore.h"
 #import "PlayerSettings.h"
 
-static NSString *const kSwitchIdentifier = @"nowplaying-npv-musicvideos-switch";
-
 static UIView *switchIn(UIView *root, int depth) {
-    if ([root.accessibilityIdentifier isEqualToString:kSwitchIdentifier]) return root;
+    if ([root.accessibilityIdentifier isEqualToString:SGVideoSwitchIdentifier]) return root;
     if (depth > 10) return nil;
     for (UIView *child in root.subviews) {
         UIView *found = switchIn(child, depth + 1);

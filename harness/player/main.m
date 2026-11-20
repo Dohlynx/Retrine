@@ -66,6 +66,7 @@
 #import <stdlib.h>
 #import "Shared/Lyrics/Lyrics.h"
 #import "Redesigned/Player/Player.h"
+#import "Redesigned/Player/PlayerLyricLine.h"
 #import "Redesigned/Player/PlayerConnectVolume.h"
 #import "Redesigned/Kit/SGRGlyph.h"
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
@@ -587,6 +588,7 @@ static void loadLyrics(void) {
     ];
     NSMutableArray<SGKaraokeLine *> *lines = [NSMutableArray array];
     if ([scenario() hasPrefix:@"lyric-line"]) texts = @[@"한순간이였지"];
+    if ([scenario() hasPrefix:@"lyric-line-chip"]) texts = @[@"Now I don't want you calling me baby"];
     BOOL longFirst = [scenario() isEqual:@"lyric-line-long"];
     if (longFirst) texts = @[@"First we find the words and then we sing the words together before another phrase begins and carries on until the final note"];
     NSInteger at = 0;
@@ -829,7 +831,15 @@ static void loadLyrics(void) {
     chip.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
     chip.layer.cornerRadius = 16;
     UILabel *chipLabel = [[UILabel alloc] initWithFrame:chip.bounds];
-    if ([scenario() hasPrefix:@"lyric-line"]) chip.hidden = ![scenario() isEqual:@"lyric-line-chip"];
+    if ([scenario() hasPrefix:@"lyric-line"]) chip.hidden = YES;
+    if ([scenario() isEqual:@"lyric-line-chip"]) {
+        chip.accessibilityIdentifier = @"nowplaying-npv-musicvideos-switch";
+        chipLabel.frame = CGRectInset(chip.bounds, 8, 8);
+    }
+    if ([scenario() isEqual:@"lyric-line-chip-live"]) {
+        chip.hidden = NO;
+        chip.alpha = 0;
+    }
     chipLabel.text = @"  \u25B6  Switch to video";
     chipLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
     chipLabel.textColor = UIColor.whiteColor;
@@ -984,7 +994,7 @@ static void loadLyrics(void) {
     // on the Player page is seen to reach the open player by itself; the header scenarios too, so the grabber is
     // seen to need no layout of the header.
     if (![scenario() isEqualToString:@"options"] && ![scenario() isEqualToString:@"renderer"] && ![scenario() hasPrefix:@"header"]
-        && !getenv("HARNESS_OPENING")) {
+        && ![scenario() isEqual:@"lyric-line-chip-live"] && !getenv("HARNESS_OPENING")) {
         [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t) { [self layOut]; }];
     }
 
@@ -1016,7 +1026,7 @@ static void loadLyrics(void) {
         CGRect text = [host convertRect:words.bounds fromView:words];
         CGRect row = [host convertRect:title.bounds fromView:title];
         BOOL handover = [scenario() isEqualToString:@"lyric-line-switch"];
-        BOOL clip = handover || [scenario() isEqualToString:@"lyric-line-clip"];
+        BOOL clip = handover || [scenario() isEqualToString:@"lyric-line-clip"] || [scenario() isEqual:@"lyric-line-chip-clip"];
         NSLog(@"[harness] lyric-line font %.1f frame %@ title %@ room %@ clip %d", words.font.pointSize,
               NSStringFromCGRect(text), NSStringFromCGRect(row), [line valueForKey:@"room"], SGRPlayerMotionShowing());
         // Leave the settled frame on screen for simctl io screenshot.
@@ -1055,18 +1065,81 @@ static void loadLyrics(void) {
                 NSLog(@"[harness] lyric-line passed (no room on SE)");
                 exit(0);
             }
-            HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"한순간이였지"] && clip == SGRPlayerMotionShowing());
             CGRect stack = [host convertRect:bottom.bounds fromView:bottom];
             CGRect preview = CGRectMake(24, CGRectGetMinY(stack) - 100, host.bounds.size.width - 48, 100);
-            if ([scenario() isEqual:@"lyric-line-chip"]) {
-                HARNESS_CHECK(CGRectEqualToRect(text, preview) && !chip.hidden && chip.bounds.size.height == 32);
-                SGRSetLyricsTextShown(SGRLyricsTextTranslation, YES);
-                [host layoutIfNeeded];
-                HARNESS_CHECK(line.userInteractionEnabled && !line.accessibilityValue &&
-                             CGRectEqualToRect([host convertRect:words.bounds fromView:words], preview));
+            if ([scenario() isEqual:@"lyric-line-chip-live"]) {
+                HARNESS_CHECK(CGRectEqualToRect(text, preview));
+                chip.alpha = 1;
+                after(1, ^{
+                    CGRect pill = [host convertRect:chip.bounds fromView:chip];
+                    CGRect moved = [host convertRect:words.bounds fromView:words];
+                    CGFloat height = [words textRectForBounds:words.bounds limitedToNumberOfLines:2].size.height;
+                    HARNESS_CHECK(line.userInteractionEnabled && fabs(CGRectGetMinY(pill) - CGRectGetMidY(moved) - height / 2 - 8) <= .5);
+                    chip.center = CGPointMake(chip.center.x, chip.center.y - 6);
+                    after(1, ^{
+                        HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], CGRectOffset(moved, 0, -6)));
+                        chip.hidden = YES;
+                        after(1, ^{
+                            HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], preview));
+                            NSLog(@"[harness] lyric-line passed (live chip)");
+                            exit(0);
+                        });
+                    });
+                });
+                return;
+            }
+            if ([scenario() hasPrefix:@"lyric-line-chip"]) {
+                HARNESS_CHECK(CGRectEqualToRect(text, preview) && clip == SGRPlayerMotionShowing());
+                CGRect pill = [host convertRect:chip.bounds fromView:chip];
+                HARNESS_CHECK(pill.size.height == 32);
+                void (^layout)(void) = ^{ [floating viewDidLayoutSubviews]; [line layoutIfNeeded]; };
+                CGPoint original = band.center;
+                band.center = CGPointMake(original.x, original.y - 80);
+                for (NSNumber *large in @[@NO, @YES]) {
+                    SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, large.boolValue ? SGRLyricsSizeNames().count - 1 : 0);
+                    for (NSNumber *pair in @[@NO, @YES]) {
+                        SGRSetLyricsTextShown(SGRLyricsTextTranslation, pair.boolValue);
+                        chip.hidden = YES;
+                        layout();
+                        CGRect before = [host convertRect:words.bounds fromView:words];
+                        HARNESS_CHECK(CGRectEqualToRect(before, preview));
+                        chip.hidden = NO;
+                        layout();
+                        UILabel *translation = (UILabel *)line.subviews[1];
+                        CGRect ink = [host convertRect:[words textRectForBounds:words.bounds limitedToNumberOfLines:2] fromView:words];
+                        // textRectForBounds supplies the measured size, not UILabel's vertical centering.
+                        ink.origin.y = CGRectGetMidY([host convertRect:words.bounds fromView:words]) - ink.size.height / 2;
+                        CGRect block = pair.boolValue ? CGRectUnion(ink, [host convertRect:translation.bounds fromView:translation]) : ink;
+                        HARNESS_CHECK(line.userInteractionEnabled && (line.accessibilityValue != nil) == pair.boolValue);
+                        HARNESS_CHECK((ink.size.height > words.font.lineHeight * 1.5) == large.boolValue);
+                        HARNESS_CHECK(fabs(CGRectGetMinY(pill) - CGRectGetMaxY(block) - 8) <= 0.5);
+                        CGRect moved = [host convertRect:words.bounds fromView:words];
+                        HARNESS_CHECK(moved.origin.x == before.origin.x && moved.size.width == before.size.width);
+                        HARNESS_CHECK(CGRectGetMaxY(line.frame) <= CGRectGetMinY(pill));
+                        if (clip) HARNESS_CHECK(CGRectGetMinY(SGRPlayerVisibleClipLineIn(host)) <= CGRectGetMinY(ink));
+                        NSLog(@"[harness] chip %@ large %@ pair %@ slot %@ -> %@ block %@ chip %@", scenario(), large, pair,
+                              NSStringFromCGRect(before), NSStringFromCGRect(moved), NSStringFromCGRect(block), NSStringFromCGRect(pill));
+                        chip.hidden = YES;
+                        layout();
+                        HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], before));
+                    }
+                }
+                if (!clip) {
+                    chip.hidden = NO;
+                    SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, 0);
+                    band.center = CGPointMake(original.x, original.y + 6);
+                    layout();
+                    HARNESS_CHECK(line.userInteractionEnabled && !line.accessibilityValue);
+                    band.center = CGPointMake(original.x, original.y + 36);
+                    layout();
+                    HARNESS_CHECK(!line.userInteractionEnabled);
+                }
+                SGRSetLyricsTextShown(SGRLyricsTextTranslation, NO);
+                SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, 0);
                 NSLog(@"[harness] lyric-line passed (chip)");
                 exit(0);
             }
+            HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"한순간이였지"] && clip == SGRPlayerMotionShowing());
             HARNESS_CHECK(CGRectEqualToRect(text, preview) && words.textAlignment == NSTextAlignmentLeft);
             HARNESS_CHECK(CGColorEqualToColor(words.textColor.CGColor, UIColor.whiteColor.CGColor));
             if (handover) {
@@ -5412,7 +5485,7 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     }
     [NSUserDefaults.standardUserDefaults setBool:[scenario() hasPrefix:@"lyric-line"] forKey:@"spotifyglass.redesign.player.lyricLine"];
     if ([scenario() isEqualToString:@"motion"] || [scenario() isEqualToString:@"settings"] ||
-        [scenario() isEqualToString:@"lyric-line-clip"] || [scenario() isEqualToString:@"lyric-line-switch"]) {
+        [scenario() isEqualToString:@"lyric-line-clip"] || [scenario() isEqual:@"lyric-line-chip-clip"] || [scenario() isEqualToString:@"lyric-line-switch"]) {
         [NSUserDefaults.standardUserDefaults setInteger:3 forKey:@"spotifyglass.redesign.player.background"];
         setenv("HARNESS_CANVAS", "https://canvas.harness/clip.mp4", 1);
         [NSURLProtocol registerClass:SGRHarnessPictureServer.class];

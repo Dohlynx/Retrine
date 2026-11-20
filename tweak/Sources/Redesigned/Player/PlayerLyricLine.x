@@ -7,7 +7,7 @@
 // It is a view of the mod's in SPTNowPlayingView (NowPlayingViewController's view), placed on every layout pass
 // of the player, cover and chips. The words occupy Spotify's preview cell above the bottom stack,
 // including when a clip replaces the art. The unshrunk cover limits the ink, not the cell's transparent
-// padding. Over a clip a chip takes the place instead. With less room than the
+// padding. A visible chip lifts the rows only far enough to leave a grid gap, including over a clip. With less room than the
 // line and a gap either side, a player wider than it is tall, or Spotify's own lyric preview under the cover,
 // it is not shown. While translations are shown (below) and the track has synced lines of the line's own, the line
 // takes the preview's place instead (SGRPlayerLineTakesPreview): the preview is hidden by an empty mask of the
@@ -36,6 +36,7 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/LyricsTranslation/LyricsTranslation.h"
 #import "Shared/Player/PlayerState.h"
+#import "Shared/Player/PlayerSettings.h"
 #import "Redesigned/Lyrics/AutoTranslation.h"
 #import "Redesigned/Lyrics/LyricsLook.h"
 #import "Redesigned/Lyrics/LyricsText.h"
@@ -53,6 +54,7 @@ static __weak UIView *sg_host;              // SPTNowPlayingView
 static __weak UIViewController *sg_floating; // the chips over the title (FloatingElementsUnit)
 static BOOL lineHasPlace(void);
 static void placeLine(void);
+static CGFloat visibleChipTop(UIView *host);
 
 BOOL SGRPlayerLyricLineOn(void) {
     static BOOL on;
@@ -65,10 +67,12 @@ BOOL SGRPlayerLyricLineOn(void) {
 @property (nonatomic) BOOL fits;   // set by the layout: there is room for it
 @property (nonatomic) BOOL overClip;
 @property (nonatomic) CGRect slot;
+@property (nonatomic) CGFloat chipTop;
 - (void)setRightToLeft:(BOOL)rtl;
 @property (nonatomic) CGRect room; // set by the layout: the gap under the cover, CGRectNull without one
 - (void)tick;
 - (BOOL)place;
+- (BOOL)placeWithChipTop:(CGFloat)top;
 @end
 
 @interface SGRLyricLineView () <SGPlayerStateObserver>
@@ -88,6 +92,7 @@ BOOL SGRPlayerLyricLineOn(void) {
     UILabel *_translationLabel;
     NSString *_translation;      // the line being sung's translation, nil for none
     BOOL _translationShown;      // it is under the line: there is one and the room holds both
+    CGFloat _slotLift;
     // The kept lines the saved translations were last read onto, and in which language.
     NSArray<SGKaraokeLine *> *_restored;
     NSString *_restoredLanguage;
@@ -101,6 +106,7 @@ BOOL SGRPlayerLyricLineOn(void) {
     if (!(self = [super initWithFrame:frame])) return nil;
     _index = NSNotFound;
     _room = CGRectNull;
+    _chipTop = CGFLOAT_MAX;
     self.alpha = 0;
     self.userInteractionEnabled = NO;
     self.accessibilityElementsHidden = YES;
@@ -196,15 +202,38 @@ BOOL SGRPlayerLyricLineOn(void) {
     _label.textAlignment = _translationLabel.textAlignment = rtl ? NSTextAlignmentRight : NSTextAlignmentLeft;
 }
 
+- (BOOL)placeWithChipTop:(CGFloat)top {
+    BOOL moving = _chipTop != top && self.userInteractionEnabled;
+    _chipTop = top;
+    if (!moving) return [self place];
+    __block BOOL fits;
+    SGRAnimate(SGRMotionLayout, ^{
+        fits = [self place];
+        [self layoutIfNeeded];
+    }, nil);
+    return fits;
+}
+
 - (BOOL)place {
     if (CGRectIsNull(_room)) return NO;
-    CGFloat half = [self lineHeight] / 2, middle = CGRectGetMidY(_slot);
-    CGFloat above = middle - CGRectGetMinY(_room), below = CGRectGetMaxY(_room) - middle;
-    SGRPlayerLineFit fit = SGRPlayerLineFitIn(above, below, 2 * half, _translation ? [self translationHeight] : 0, SGRGrid / 2);
-    if (!fit.line) return NO;
-    BOOL pair = fit.translation;
+    CGFloat half = [self lineHeight] / 2, native = CGRectGetMidY(_slot);
+    CGFloat translation = _translation ? [self translationHeight] : 0;
+    CGFloat middle;
+    for (;;) {
+        middle = MIN(native, _chipTop - SGRGrid - half - translation);
+        SGRPlayerLineFit fit = SGRPlayerLineFitIn(middle - CGRectGetMinY(_room), CGRectGetMaxY(_room) - middle,
+                                                  2 * half, translation, SGRGrid / 2);
+        if (fit.line && (!translation || fit.translation)) break;
+        if (!translation) return NO;
+        translation = 0; // Retry the line at its own least displacement.
+    }
+    BOOL pair = translation > 0;
+    if (_slotLift != native - middle) {
+        _slotLift = native - middle;
+        [self setNeedsLayout];
+    }
     CGFloat top = MAX(CGRectGetMinY(_room), middle - MAX(kTapHeight / 2, half));
-    CGFloat end = MIN(CGRectGetMaxY(_room), middle + MAX(kTapHeight / 2, half + (pair ? [self translationHeight] : 0)));
+    CGFloat end = MIN(MIN(_chipTop, CGRectGetMaxY(_room)), middle + MAX(kTapHeight / 2, half + translation));
     CGRect frame = CGRectMake(_slot.origin.x, top, _slot.size.width, end - top);
     if (!CGRectEqualToRect(self.frame, frame)) {
         self.frame = frame;
@@ -224,7 +253,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGRect bounds = self.bounds;
-    _label.frame = CGRectOffset(_slot, -self.frame.origin.x, -self.frame.origin.y);
+    _label.frame = CGRectOffset(_slot, -self.frame.origin.x, -self.frame.origin.y - _slotLift);
     CGFloat width = MIN(bounds.size.width, ceil([_translationLabel sizeThatFits:CGSizeMake(bounds.size.width, CGFLOAT_MAX)].width));
     _translationLabel.frame = CGRectMake(_label.textAlignment == NSTextAlignmentRight ? bounds.size.width - width : 0,
         CGRectGetMidY(_label.frame) + [self lineHeight] / 2, width, [self translationHeight]);
@@ -417,6 +446,11 @@ BOOL SGRPlayerLyricLineOn(void) {
     // Spotify's own preview can come up with no pass of a view this file hooks (its cover cell unhidden as the song
     // changes), so every update looks again: while the line takes its place it is hidden again, else the line stands
     // down by its next portion at the latest. The layout gives the room back once the preview goes.
+    // Spotify can fade or move the chip without laying out the player. Reuse the existing lyric clock.
+    if (!CGRectIsNull(_room)) {
+        CGFloat top = visibleChipTop(self.superview);
+        if (top != _chipTop) _fits = [self placeWithChipTop:top];
+    }
     if (!lineHasPlace()) _fits = NO;
     UIView *covers = SGRPlayerCoverList();
     BOOL shown = _fits && _text && !SGRPlayerLyricsOpen() && (!covers || covers.alpha > 0.01);
@@ -490,19 +524,29 @@ static BOOL showsIn(UIView *view, UIView *root) {
     return YES;
 }
 
-// The chips the floating unit shows (its buttons, labels and images with a size), as one frame in `host`;
-// CGRectNull when it shows none. The unit's own alpha is left out: it is 0 while the lyrics are open.
-static CGRect chipsIn(UIView *host) {
+// The video switch owns its whole pill, not just the inset text or image. For other chips
+// use the visible controls, labels and images. Carry clipping and visibility down the tree.
+static CGFloat chipTopInBranch(UIView *view, UIView *host, CGRect clip) {
+    if (view.hidden || view.alpha < 0.01) return CGFLOAT_MAX;
+    CGRect visible = CGRectIntersection(clip, [host convertRect:view.bounds fromView:view]);
+    CGFloat top = CGRectIsEmpty(visible) ? CGFLOAT_MAX : CGRectGetMinY(visible);
+    if ([view.accessibilityIdentifier isEqualToString:SGVideoSwitchIdentifier]) return top;
+    if (![view isKindOfClass:UIControl.class] && ![view isKindOfClass:UILabel.class] && ![view isKindOfClass:UIImageView.class])
+        top = CGFLOAT_MAX;
+    for (UIView *child in view.subviews) {
+        CGFloat other = chipTopInBranch(child, host, view.clipsToBounds ? visible : clip);
+        top = MIN(top, other);
+    }
+    return top;
+}
+
+static CGFloat visibleChipTop(UIView *host) {
     UIView *floating = sg_floating.viewIfLoaded;
-    if (!floating.window || floating.window != host.window || floating.hidden) return CGRectNull;
-    __block CGRect chips = CGRectNull;
-    SGForEachView(floating, ^(UIView *view) {
-        if (view == floating || view.bounds.size.width < 1 || view.bounds.size.height < 1) return;
-        if (![view isKindOfClass:UIControl.class] && ![view isKindOfClass:UILabel.class] && ![view isKindOfClass:UIImageView.class]) return;
-        for (UIView *v = view; v && v != floating; v = v.superview) if (v.hidden || v.alpha < 0.01) return;
-        chips = CGRectUnion(chips, [host convertRect:view.bounds fromView:view]);
-    });
-    return chips;
+    if (!floating.window || floating.window != host.window || !showsIn(floating, host.window)) return CGFLOAT_MAX;
+    CGRect clip = host.bounds;
+    for (UIView *v = floating.superview; v && v != host; v = v.superview)
+        if (v.clipsToBounds) clip = CGRectIntersection(clip, [host convertRect:v.bounds fromView:v]);
+    return chipTopInBranch(floating, host, clip);
 }
 
 // Spotify's own lyric preview under the cover, beside the tilt view, shown when Spotify's lyrics setting has it:
@@ -614,6 +658,7 @@ static void placeLine(void) {
     UIView *title = SGRFindByIdentifier(stack, @"now-playing-title-label", &kTitleKey);
     BOOL rtl = title.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
     CGFloat priorWidth = line.slot.size.width;
+    CGFloat chipTop = CGFLOAT_MAX;
     if (clear && title && host.bounds.size.height > host.bounds.size.width) {
         CGRect anchor = [host convertRect:title.bounds fromView:title];
         CGRect stackFrame = [host convertRect:stack.bounds fromView:stack];
@@ -624,18 +669,15 @@ static void placeLine(void) {
                                      art.bounds.size.width, art.bounds.size.height);
         CGFloat top = clip ? host.safeAreaInsets.top : CGRectGetMaxY([host convertRect:unshrunk fromView:tilt]);
         CGFloat bottom = CGRectGetMinY(anchor);
-        CGRect chips = chipsIn(host);
-        if (!CGRectIsNull(chips)) {
-            bottom = MIN(bottom, CGRectGetMinY(chips));
-        }
-        if ((!clip || CGRectIsNull(chips)) && bottom > top)
+        chipTop = visibleChipTop(host);
+        if (bottom > top)
             room = CGRectMake(slot.origin.x, top, slot.size.width, bottom - top);
         if (!CGRectEqualToRect(line.slot, slot)) { line.slot = slot; [line setNeedsLayout]; }
     }
     BOOL changed = line.overClip != clip;
     line.overClip = clip;
     line.room = room;
-    BOOL fits = [line place];
+    BOOL fits = [line placeWithChipTop:chipTop];
     if (fits != line.fits || changed || priorWidth != line.slot.size.width) {
         line.fits = fits;
         [line tick];

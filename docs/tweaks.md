@@ -1657,7 +1657,11 @@ Redesigned:
                   and white text at the player's position less the Lyrics page's Delay; a tap opens the lyrics.
                   Size under Lyrics Line and Under the cover in Lyrics Style scale the same preview font.
                   A field clip or full-screen still keeps the same text rectangle, with the clip's dim behind it.
-                  A chip takes the line's place over a clip.
+                  A visible chip lifts the rows only enough to leave one grid gap above it. If that would
+                  crowd the cover, it tries the sung line alone before hiding it. The same lift over a clip
+                  or full-screen still carries the dim with it. The line rechecks visible chips on its lyric
+                  clock as well as on layout: a late switch or a fade needs no player layout pass. The video
+                  switch is measured from the outer pill, not its inset text.
                   It stands down where Spotify shows its own lyric preview under the cover,
                   which in 9.1.90 is Lyrics_NPVElementsKitImpl.LyricsElementWrapperView beside the tilt view, hooked apart
                   from the other placements because that preview gets its height when its lyrics arrive, after the cover's
