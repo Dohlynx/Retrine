@@ -149,9 +149,21 @@ come late, out of order, or not at all.
   emptied ends take no touches, so a touch on next where it lies over repeat's end is next's; right to left mirrored; in
   landscape and for a podcast's row in the same holders, Spotify's places and the ends' touches back. The log ends with
   `controls checks: n of 18 right -- PASS` or `FAIL`; it exits with the result, as does `scroll`.
-- `cover` is issue #77. The cover is checked untouched first, then given Spotify's layout for a track with
-  lyrics, a smaller cover over the lyric preview, and must take its room back as a centered square the
-  Kit also reports. The log ends with `cover checks: n of 4 right -- PASS` or `FAIL`.
+- `cover` is issue #27. The cover is checked untouched first, drawn as the Music app's (24 pt in from the
+  sides, its top 33 pt under the safe area, on a 402 pt iPhone), taking touches where it is drawn (5 pt under its
+  top, through the header row, the stack of elements inside it and the stack holding it, as 9.2.0's are) with VoiceOver's frame and activation point there; with
+  Hide where it plays from switched off through the Player page's row, under the header row, which keeps its
+  touches, and under where the row is now as its stack is moved 8 and 48 pt lower and back with no layout of the
+  row (never below Spotify's own place), and no longer under it once it is moved out of the player within the window,
+  and back at the Music app's top once switched on again; then given Spotify's layout for a track with lyrics, a
+  smaller cover over the lyric preview, which keep Spotify's sizes with the cover's top where the Music app's is, as
+  the Kit reports. A control shown in the put-away row over the cover (an iPad side panel's button) takes its
+  touches, the row's band on the cover goes to the cover, and beside or over the cover stays the row's. Last, with
+  nothing of Spotify's switched off: the row moved to another stack in the player and out
+  of it leaves the stacks it left taking the strip as before, and back it lets the strip through again; another
+  ordinary header put in its stack, beside the old one and after it, lets the strip through; that one released and
+  the AI DJ's header put in the same stack, its row and button take their touches; the row put back, the strip is the
+  cover's. The log ends with `cover checks: n of 14 right -- PASS` or `FAIL`.
 - `immersive` opens the lyrics and waits past the rest: only the bottom stack under the title row
   (progress bar, buttons, volume row, footer) fades, the lines grow down only, a touch where the buttons
   were lands on the lines, the thumbnail takes its own, and the lines' tap is off. Then the tap that
@@ -224,11 +236,17 @@ come late, out of order, or not at all.
   row: with the row moved one row height lower with no layout of the header, as Spotify 9.2.0 moves it by its top
   constraint (a pill in the row rode along to 114pt, where the phone had it), the pill stays, sits in the middle of
   its 44pt touch area and a finger on it closes the player. With the lyrics up and left alone (Everything), the
-  pill fades with the row and takes no touch, and the waking tap brings it back in the same turn as the row. The log
-  also checks that removing a retained row detaches the grabber and disables its close action. It
-  covers a direct move within the same window before the next layout and
-  ends with `header checks: n of 17 right -- PASS` or `FAIL`, and the app exits with it. The ⋯ beside the title is the menu's
-  button, which this harness does not build; `harness/system-menu`'s `beside` run covers it.
+  pill fades with the row and takes no touch, and the waking tap brings it back in the same turn as the row. A row
+  Spotify still holds that leaves its player takes the grabber with it, with no layout of the header: taken out of
+  the window it leaves no close button, put back it has the grabber again, and moved straight into another view of
+  the same window the old player at once routes nothing (no touch, no activation) and loses the grabber by the next
+  layout. The log ends with `header checks: n of 19 right -- PASS` or `FAIL`, and the app exits with it. The ⋯ beside
+  the title is the menu's button, which this harness does not build; `harness/system-menu`'s `beside` run covers it.
+- `header-inset`, run on an iPad (whose window has a top inset only while its status bar shows), is the `header` run
+  up to the touch area, then hides the status bar and shows it again with no layout of the header reaching the
+  redesign: with no inset the pill is 7pt under the player's top and the whole 44pt touch area, the pill in it, is
+  in the player (each corner hit-tested) and a finger at its top edge closes the player; with the inset back the pill
+  is back under it. `header checks: n of 11 right`.
 - `header-noroute` is the same header with an arrow that has no action to close by: the arrow stays drawn, read by
   VoiceOver and touched, the ⋯ is still put away, and the grabber is only drawn (not read, not touched, its
   activation and escape answering NO). `header checks: n of 6 right`.
@@ -236,11 +254,13 @@ come late, out of order, or not at all.
 - `timerow` is the time row under the progress bar (`PlayerControls.x`, `Shared/Player/AudioQuality.x`) on a mock
   of Spotify's bar (trees/clean: a 17pt slider, 11pt digits in 15.33pt Encore labels), Spotify reporting High. It
   checks the digits at least 12pt under the bar and the badge at least 8pt under it with its text on the times'
-  baseline (the Music app's player: 14pt and 9.5pt), the badge's words (High Quality), the bar's fill and track
+  baseline (the Music app's player: 14pt and 9.5pt), the badge's words (High Quality), its shape and fill as the
+  Music app's (18.33pt tall, circular corners a capsule's are not, light 17 of 255; issue #27, 12 of 13 before it)
+  and a more opaque fill under Increase Contrast, the bar's fill and track
   translucent (opacity 0.5–0.7 and 0.15–0.25), the fill lit whole and the times a step lower while a finger scrubs
   (the badge staying put) and back after, the details (glyph, tier, About 160 kbps, a sentence, the footnote naming
   Spotify's High), and the native look's badge as it was (Spotify's word, centered on the times). The log ends with
-  `timerow checks: n of 10 right -- PASS` or `FAIL`; on the sources before the change it read 3 of 10.
+  `timerow checks: n of 13 right -- PASS` or `FAIL`; on the sources before the time row's change it read 3 of 10.
 
 - `volumebar` is the volume row (`PlayerVolume.m`) beside the progress bar as the redesign draws it (the `timerow`
   mock), the Music app's two bars alike. On the row's Connect slider at half (the simulator does not draw

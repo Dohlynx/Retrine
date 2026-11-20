@@ -347,8 +347,33 @@ static dispatch_semaphore_t openingFinished;
 @interface _TtC20NowPlaying_ModesImpl28PlaybackControlsElementsUnit : UIViewController @end
 @implementation _TtC20NowPlaying_ModesImpl28PlaybackControlsElementsUnit @end
 
+// The header scenarios' root, whose status bar the grabber's edge checks hide: an iPad's window has a top inset only
+// while its status bar shows.
+@interface SGRHarnessStatusRoot : UIViewController
+@property (nonatomic) BOOL bare;
+@end
+@implementation SGRHarnessStatusRoot
+- (BOOL)prefersStatusBarHidden { return self.bare; }
+@end
+
+// The header unit's layouts, counted so the header scenario can tell the grabber kept up without one.
+static NSUInteger sg_headerLayouts;
 @interface _TtC20NowPlaying_ModesImpl18HeaderElementsUnit : UIViewController @end
-@implementation _TtC20NowPlaying_ModesImpl18HeaderElementsUnit @end
+@implementation _TtC20NowPlaying_ModesImpl18HeaderElementsUnit
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    sg_headerLayouts++;
+}
+@end
+
+// The header unit for a while whose layouts reach none of the redesign's hooks (header-inset): UIKit may lay the row
+// out as the window's inset changes, and the grabber has to follow without it.
+@interface SGRHarnessStillHeaderUnit : _TtC20NowPlaying_ModesImpl18HeaderElementsUnit @end
+@implementation SGRHarnessStillHeaderUnit
+- (void)viewDidLayoutSubviews {
+    sg_headerLayouts++;
+}
+@end
 
 @interface _TtC20NowPlaying_ModesImpl18FooterElementsUnit : UIViewController @end
 @implementation _TtC20NowPlaying_ModesImpl18FooterElementsUnit @end
@@ -667,7 +692,8 @@ static void loadLyrics(void) {
     if (getenv("HARNESS_NO_LYRICS")) SGKaraokeKeepLines(SGKaraokePlayingTrack(), nil);
     SGRHarnessPlayFrom(2400);
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    UIViewController *root = [scenario() isEqualToString:@"adaptive"] ? [SGRHarnessAdaptiveRoot new] : [UIViewController new];
+    UIViewController *root = [scenario() isEqualToString:@"adaptive"] ? [SGRHarnessAdaptiveRoot new]
+                           : [scenario() hasPrefix:@"header"] ? [SGRHarnessStatusRoot new] : [UIViewController new];
     root.view.backgroundColor = [UIColor colorWithRed:0.09 green:0.07 blue:0.17 alpha:1];
     self.window.rootViewController = root;
     if ([scenario() isEqualToString:@"adaptive"]) {
@@ -750,8 +776,11 @@ static void loadLyrics(void) {
     [coverElement addSubview:cover];
     box(inner, _TtC22Lyrics_NPVContainerKit19LyricsContainerView.class, CGRectMake(0, inner.bounds.size.height, coverSide, 0), nil);
 
-    // the header row
-    UIView *header = box(host, UIStackView.class, CGRectMake(0, headerTop, W, headerHeight), nil);
+    // the header row; for the cover scenario alone in the stack of its own size Spotify 9.2.0 holds it in, which took
+    // the touches the row let go over the lifted cover's top (issue #27)
+    CGRect headerFrame = CGRectMake(0, headerTop, W, headerHeight);
+    UIView *headerHolder = [scenario() isEqualToString:@"cover"] ? box(host, UIStackView.class, headerFrame, nil) : host;
+    UIView *header = box(headerHolder, UIStackView.class, headerHolder == host ? headerFrame : headerHolder.bounds, nil);
     UIControl *arrow = (UIControl *)glyphButton(header, CGRectMake(12, 0, 48, 48), @"chevron.down", @"now-playing-minimize-button");
     // Spotify's arrow closes the player on a tap; header-noroute's has nothing to close by.
     if (![scenario() isEqualToString:@"header-noroute"])
@@ -764,6 +793,13 @@ static void loadLyrics(void) {
     UILabel *contextLabel = [[UILabel alloc] initWithFrame:context.bounds];
     contextLabel.text = @"TECHNO BUNKER";
     [context addSubview:contextLabel];
+    // Spotify 9.2.0's row holds its buttons and where it plays from in a stack of their own, whose elements take a touch
+    // landing between what they draw (the 9.2.0 phone tree: a tap at y 100 landed on that stack): under them here.
+    if (headerHolder != host) {
+        UIView *elements = box(header, UIStackView.class, CGRectMake(12, 0, W - 24, headerHeight), nil);
+        [header sendSubviewToBack:elements];
+        box(elements, UIView.class, CGRectMake(60, 0, W - 144, headerHeight), nil);
+    }
 
     // the bottom stack: information, duration, controls, volume, footer
     UIView *bottom = box(host, UIStackView.class, CGRectMake(0, bottomTop, W, bottomHeight), @"npv.bottomStackView");
@@ -922,8 +958,10 @@ static void loadLyrics(void) {
     [self layOut];
     // Spotify lays its units out again as a track's elements arrive, which is what the redesign's
     // transforms and narrowed labels have to survive. The options scenario leaves layout to UIKit, so a switch
-    // on the Player page is seen to reach the open player by itself.
-    if (![scenario() isEqualToString:@"options"] && ![scenario() isEqualToString:@"renderer"] && !getenv("HARNESS_OPENING")) {
+    // on the Player page is seen to reach the open player by itself; the header scenarios too, so the grabber is
+    // seen to need no layout of the header.
+    if (![scenario() isEqualToString:@"options"] && ![scenario() isEqualToString:@"renderer"] && ![scenario() hasPrefix:@"header"]
+        && !getenv("HARNESS_OPENING")) {
         [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t) { [self layOut]; }];
     }
 
@@ -963,7 +1001,7 @@ static void loadLyrics(void) {
     else if ([scenario() isEqualToString:@"autoviz"]) [self runAutoVisualiserChecks];
     else if ([scenario() isEqualToString:@"shuffle"]) [self runShuffleChecks];
     else if ([scenario() isEqualToString:@"heat"]) [self runHeatChecks];
-    else if ([scenario() isEqualToString:@"header"] || [scenario() isEqualToString:@"header-noroute"])
+    else if ([scenario() hasPrefix:@"header"])
         [self performSelector:@selector(runHeaderChecks) withObject:nil afterDelay:1];
     else if ([scenario() isEqualToString:@"options"]) [self runOptionsChecks];
     else if ([scenario() isEqualToString:@"renderer"]) [self runRendererChecks];
@@ -988,6 +1026,7 @@ static void loadLyrics(void) {
 
 static void runScript(NSArray<NSArray *> *script, NSUInteger index);
 static UIView *firstOfClass(UIView *root, NSString *name);
+static UISlider *spotifyBar(UIView *unit, NSArray<UILabel *> **labels);
 #include "adaptive-check.inc"
 
 #pragma mark - tracks
@@ -3255,9 +3294,9 @@ static UIView *controlSlot(UIStackView *row, CGFloat side, Class cls, NSString *
 
 #pragma mark - the cover's room
 
-// Issue #77: Spotify keeps room for the lyric preview under the cover of a track with lyrics, so the cover
-// was smaller and higher with a blank band under it. Here the cover is untouched first (a track without
-// lyrics), then given Spotify's layout for one with lyrics, and must fill its room again.
+// Spotify keeps room for the lyric preview under the cover of a track with lyrics, and the redesign keeps Spotify's
+// sizes (as Spotify's Lyrics setting has them). Here the cover is untouched first (a track without lyrics), then given
+// Spotify's layout for one with lyrics; either way its top is the Music app's (issue #27).
 - (void)runCoverChecks {
     __block NSUInteger right = 0, checks = 0;
     void (^check)(NSString *, BOOL, NSString *) = ^(NSString *step, BOOL ok, NSString *detail) {
@@ -3272,9 +3311,107 @@ static UIView *controlSlot(UIStackView *row, CGFloat side, Class cls, NSString *
     }
     CGFloat side = MIN(room.bounds.size.width, room.bounds.size.height);
     CGRect square = CGRectMake(round((room.bounds.size.width - side) / 2), round((room.bounds.size.height - side) / 2), side, side);
+    // Issue #27: drawn as the Music app's on a 402 pt iPhone, 24 pt in from the sides and 33 pt under the safe area.
+    UIWindow *window = self.window;
+    CGRect (^musicCover)(void) = ^CGRect {
+        return CGRectMake(24, window.safeAreaInsets.top + 33, window.bounds.size.width - 48, window.bounds.size.width - 48);
+    };
     after(1.5, ^{
         check(@"without lyrics", CGRectEqualToRect(tilt.frame, square), NSStringFromCGRect(tilt.frame));
+        CGRect drawn = SGRPlayerCoverFrameIn(window);
+        check(@"drawn where the Music app's is", CGRectEqualToRect(CGRectIntegral(drawn), musicCover()),
+              [NSString stringWithFormat:@"%@, want %@", NSStringFromCGRect(drawn), NSStringFromCGRect(musicCover())]);
+        // Its top, above the views holding the tilt view, still takes the cover's touches, in the 15 pt the header row
+        // and the stack holding it lie over as Spotify's do on the phone (62 to 110); under it, they are gone.
+        CGPoint top = CGPointMake(CGRectGetMidX(musicCover()), CGRectGetMinY(musicCover()) + 5);
+        CGPoint under = CGPointMake(CGRectGetMidX(musicCover()), CGRectGetMaxY([window convertRect:tilt.bounds fromView:tilt]) - 4);
+        UIView *topHit = [window hitTest:top withEvent:nil], *underHit = [window hitTest:under withEvent:nil];
+        check(@"the cover's touches where it is drawn", topHit == tilt && underHit != tilt && ![underHit isDescendantOfView:tilt],
+              [NSString stringWithFormat:@"its top hits %@, under it %@", NSStringFromClass(topHit.class), NSStringFromClass(underHit.class)]);
+        // VoiceOver's cover, the tilt view, focuses and activates where the cover is drawn.
+        CGRect focus = tilt.accessibilityFrame, screen = UIAccessibilityConvertFrameToScreenCoordinates(drawn, window);
+        CGPoint activation = tilt.accessibilityActivationPoint;
+        check(@"VoiceOver's frame and activation point on the drawn cover",
+              CGRectEqualToRect(CGRectIntegral(focus), CGRectIntegral(screen)) && fabs(activation.x - CGRectGetMidX(screen)) <= 0.5
+                  && fabs(activation.y - CGRectGetMidY(screen)) <= 0.5,
+              [NSString stringWithFormat:@"frame %@ at %@, want %@", NSStringFromCGRect(focus), NSStringFromCGPoint(activation), NSStringFromCGRect(screen)]);
         NSLog(@"[harness] cover: screenshot without lyrics now");
+    });
+    // Where it plays from shown (Hide where it plays from switched off on the Player page, the switch's own path): the
+    // row takes its touches again and the cover stays under it; switched on again, the cover is back at the Music app's
+    // top, all without a relaunch.
+    UIView *header = _units.firstObject.view;
+    SGModRow *contextRow = nil;
+    for (SGModSection *section in ((SGModPage *)SGRPlayerSettingsPage(@[])).sections)
+        for (SGModRow *row in section.rows)
+            if ([row.title isEqualToString:@"Hide where it plays from"]) contextRow = row;
+    void (^hideContext)(BOOL) = ^(BOOL on) {
+        SGSetEnabled(SGRKeyPlayerHideContext, on);
+        contextRow.changed(on);
+    };
+    // The row's band over the cover, left of the grabber, and just under the row.
+    NSString *(^band)(CGPoint *, CGPoint *) = ^NSString *(CGPoint *inRow, CGPoint *underRow) {
+        CGRect row = [header convertRect:header.bounds toView:nil];
+        *inRow = CGPointMake(CGRectGetMinX(musicCover()) + 60, CGRectGetMaxY(row) - 4);
+        *underRow = CGPointMake(inRow->x, CGRectGetMaxY(row) + 4);
+        UIView *rowHit = [window hitTest:*inRow withEvent:nil], *underHit = [window hitTest:*underRow withEvent:nil];
+        return [NSString stringWithFormat:@"cover %@ under the row to %.0f; at %.0f %@, at %.0f %@", NSStringFromCGRect(SGRPlayerCoverFrameIn(window)),
+                CGRectGetMaxY(row), inRow->y, [rowHit isDescendantOfView:header] ? @"the row" : NSStringFromClass(rowHit.class),
+                underRow->y, underHit == tilt ? @"the cover" : NSStringFromClass(underHit.class)];
+    };
+    after(1.6, ^{ hideContext(NO); });
+    after(1.8, ^{
+        CGPoint inRow, underRow;
+        NSString *seen = band(&inRow, &underRow);
+        CGRect drawn = SGRPlayerCoverFrameIn(window), row = [header convertRect:header.bounds toView:nil];
+        check(@"where it plays from shown, the cover under its row, the row's touches its own",
+              contextRow && fabs(CGRectGetMinY(drawn) - CGRectGetMaxY(row)) <= 0.5 && CGRectGetWidth(drawn) == CGRectGetWidth(musicCover())
+                  && [[window hitTest:inRow withEvent:nil] isDescendantOfView:header] && [window hitTest:underRow withEvent:nil] == tilt,
+              seen);
+        // Spotify moving the row's stack with no layout of the row (9.2.0 does it by the stack's top constraint,
+        // PlayerHeader.x): the cover's top follows the row's bottom, never under Spotify's own place for it.
+        UIView *holder = header.superview;
+        CGRect rest = holder.frame;
+        CGFloat own = CGRectGetMinY([window convertRect:tilt.bounds fromView:tilt]);
+        NSMutableArray<NSString *> *moves = [NSMutableArray array];
+        BOOL follows = YES;
+        for (NSNumber *by in @[@8, @48, @0]) {
+            holder.frame = CGRectOffset(rest, 0, by.doubleValue);
+            [window layoutIfNeeded];
+            CGFloat bottom = CGRectGetMaxY([header convertRect:header.bounds toView:nil]);
+            CGFloat want = MIN(own, MAX(CGRectGetMinY(musicCover()), bottom)), top = CGRectGetMinY(SGRPlayerCoverFrameIn(window));
+            follows = follows && fabs(top - want) <= 0.5;
+            [moves addObject:[NSString stringWithFormat:@"row to %.0f: top %.1f, want %.1f", bottom, top, want]];
+        }
+        holder.frame = rest;
+        check(@"the row moved by Spotify, the cover under where it is now", follows, [moves componentsJoinedByString:@"; "]);
+        // The live row moved out of the player, still in the window, low on it, with no layout of the header reaching the
+        // redesign: the cover no longer stays under it.
+        UIViewController *unit = self->_units.firstObject;
+        Class unitClass = object_setClass(unit, SGRHarnessStillHeaderUnit.class);
+        CGRect place = header.frame;
+        [window.rootViewController.view addSubview:header];
+        header.frame = CGRectOffset(place, 0, 200);
+        [window layoutIfNeeded];
+        CGRect away = SGRPlayerCoverFrameIn(window);
+        object_setClass(unit, unitClass);
+        [holder addSubview:header];
+        header.frame = place;
+        [header setNeedsLayout];
+        [window layoutIfNeeded];
+        CGRect home = SGRPlayerCoverFrameIn(window);
+        check(@"the live row moved out of the player, the cover no longer under it",
+              CGRectEqualToRect(CGRectIntegral(away), musicCover()) && fabs(CGRectGetMinY(home) - CGRectGetMaxY([header convertRect:header.bounds toView:nil])) <= 0.5,
+              [NSString stringWithFormat:@"out of it %@, back in its stack %@", NSStringFromCGRect(away), NSStringFromCGRect(home)]);
+        hideContext(YES);
+    });
+    after(1.95, ^{
+        CGPoint inRow, underRow;
+        NSString *seen = band(&inRow, &underRow);
+        check(@"hidden again, the cover back at the Music app's top through the row's band",
+              CGRectEqualToRect(CGRectIntegral(SGRPlayerCoverFrameIn(window)), musicCover()) && [window hitTest:inRow withEvent:nil] == tilt, seen);
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:SGRKeyPlayerHideContext];
+        SGPrefsChanged();
     });
     after(2, ^{
         // What Spotify does for a track with lyrics: the preview under the cover, the cover shrunk above it.
@@ -3286,17 +3423,116 @@ static UIView *controlSlot(UIStackView *row, CGFloat side, Class cls, NSString *
         [self->_covers layoutIfNeeded];
     });
     after(2.5, ^{
-        check(@"the preview takes no room", CGSizeEqualToSize(preview.frame.size, CGSizeZero)
-              && CGSizeEqualToSize(preview.intrinsicContentSize, CGSizeZero) && CGSizeEqualToSize([preview sizeThatFits:room.bounds.size], CGSizeZero),
-              [NSString stringWithFormat:@"frame %@, intrinsic %@", NSStringFromCGRect(preview.frame), NSStringFromCGSize(preview.intrinsicContentSize)]);
-        check(@"with lyrics, the cover fills its room", CGRectEqualToRect(tilt.frame, square), NSStringFromCGRect(tilt.frame));
-        CGRect drawn = SGRPlayerCoverFrameIn(room);
-        check(@"the Kit sees it", CGRectEqualToRect(CGRectIntegral(drawn), square),
-              [NSString stringWithFormat:@"%@, the picture %@", NSStringFromCGRect(drawn), NSStringFromCGSize(self->_cover.bounds.size)]);
+        CGFloat small = side - 72;
+        check(@"with lyrics, Spotify's preview and cover", preview.frame.size.height == 64 && tilt.frame.size.width == small,
+              [NSString stringWithFormat:@"preview %@, cover %@", NSStringFromCGRect(preview.frame), NSStringFromCGRect(tilt.frame)]);
+        CGRect drawn = SGRPlayerCoverFrameIn(window);
+        CGRect want = CGRectMake(CGRectGetMinX([window convertRect:tilt.bounds fromView:tilt]), window.safeAreaInsets.top + 33, small, small);
+        check(@"the Kit sees it at the Music app's top", CGRectEqualToRect(CGRectIntegral(drawn), want),
+              [NSString stringWithFormat:@"%@, want %@, the picture %@", NSStringFromCGRect(drawn), NSStringFromCGRect(want),
+               NSStringFromCGSize(self->_cover.bounds.size)]);
         NSLog(@"[harness] cover: screenshot with lyrics now");
     });
-    after(3, ^{
-        NSLog(@"[harness] cover checks: %lu of %lu right -- %@", (unsigned long)right, (unsigned long)checks, right == checks ? @"PASS" : @"FAIL");
+    // The cover's top under the put-away row: a touch there goes through the row and the stack holding it alone as they
+    // are at the touch, and nothing of Spotify's is switched off for it. Wherever the row goes, nothing it leaves takes
+    // or loses touches: the stack it left, emptied, is Spotify's as it was; another ordinary header put in its stack,
+    // put away too, lets the strip through, beside the old one and after it; that one released and the AI DJ's header
+    // put in the same stack, its button and row take their touches; the row put back, the strip is the cover again.
+    // A control Spotify still shows in the put-away row (an iPad side panel's button to widen the player, in the row's
+    // stack of elements; here over the cover's top) takes its touches, a touch landing inside it too; the row's empty
+    // band over the cover still goes on to the cover, and beside or over the cover stays the row's, as Spotify's is.
+    after(2.55, ^{
+        UIView *elements = nil;
+        for (UIView *view in header.subviews) if ([view isKindOfClass:UIStackView.class]) elements = view;
+        CGRect drawn = SGRPlayerCoverFrameIn(window);
+        CGFloat toggleX = [elements convertPoint:CGPointMake(CGRectGetMinX(drawn) + 20, 0) fromView:window].x;
+        UIView *toggle = glyphButton(elements, CGRectMake(toggleX, 0, 48, 48), @"sidebar.leading", @"now-playing-toggle-button");
+        UIView *glyph = toggle.subviews.firstObject;
+        glyph.userInteractionEnabled = YES;
+        [window layoutIfNeeded];
+        CGFloat toggleMidX = CGRectGetMidX([window convertRect:toggle.bounds fromView:toggle]);
+        UIView *glyphHit = [window hitTest:CGPointMake(toggleMidX, CGRectGetMinY(drawn) + 2) withEvent:nil];
+        UIView *toggleHit = [window hitTest:CGPointMake(toggleMidX, CGRectGetMinY(drawn) + 12) withEvent:nil];
+        UIView *bandHit = [window hitTest:CGPointMake(CGRectGetMidX(drawn), CGRectGetMinY(drawn) + 5) withEvent:nil];
+        UIView *besideHit = [window hitTest:CGPointMake(CGRectGetMaxX(drawn) + 8, CGRectGetMinY(drawn) + 5) withEvent:nil];
+        UIView *overHit = [window hitTest:CGPointMake(CGRectGetMinX(drawn) + 76, CGRectGetMinY(drawn) - 8) withEvent:nil];
+        BOOL besideRow = [besideHit isDescendantOfView:header], overRow = [overHit isDescendantOfView:header];
+        [toggle removeFromSuperview];
+        check(@"a control shown in the put-away row its own, the row's band the cover's only on the cover",
+              elements && glyphHit == glyph && toggleHit == toggle && bandHit == tilt && besideRow && overRow,
+              [NSString stringWithFormat:@"over the cover the control's glyph hits %@, the control %@; the band on the cover %@, beside it the row's %d, over it the row's %d",
+               NSStringFromClass(glyphHit.class), NSStringFromClass(toggleHit.class), NSStringFromClass(bandHit.class), besideRow, overRow]);
+    });
+    __block UIView *holder = nil;
+    __block CGPoint strip = CGPointZero;
+    __block __weak UIView *weakIncoming = nil;
+    __block __weak UIViewController *weakIncomingUnit = nil;
+    UIView *(^stripHit)(void) = ^UIView * {
+        [window layoutIfNeeded];
+        return [window hitTest:strip withEvent:nil];
+    };
+    after(2.6, ^{
+        holder = header.superview;
+        CGRect drawn = SGRPlayerCoverFrameIn(window);
+        strip = CGPointMake(CGRectGetMidX(drawn), CGRectGetMinY(drawn) + 5);
+        BOOL before = stripHit() == tilt;
+        UIStackView *other = [[UIStackView alloc] initWithFrame:holder.frame];
+        [self->_host addSubview:other];
+        [other addSubview:header];
+        BOOL moved = stripHit() == holder;
+        [window.rootViewController.view addSubview:header];
+        BOOL outside = stripHit() == other;
+        [other removeFromSuperview];
+        [holder addSubview:header];
+        BOOL back = stripHit() == tilt;
+        check(@"the row moved and back, the stacks it left Spotify's as they were", before && moved && outside && back,
+              [NSString stringWithFormat:@"through it %d, the stack it left in the player takes the strip %d, out of the player %d, back %d",
+               before, moved, outside, back]);
+
+        UIView *(^ordinaryHeader)(UIViewController *) = ^UIView *(UIViewController *unit) {
+            UIView *row = [[UIStackView alloc] initWithFrame:holder.bounds];
+            UIControl *arrow = (UIControl *)glyphButton(row, CGRectMake(12, 0, 48, 48), @"chevron.down", @"now-playing-minimize-button");
+            [arrow addAction:[UIAction actionWithHandler:^(UIAction *action) {}] forControlEvents:UIControlEventTouchUpInside];
+            glyphButton(row, CGRectMake(holder.bounds.size.width - 60, 0, 48, 48), @"ellipsis", @"Context menu");
+            unit.view = row;
+            return row;
+        };
+        BOOL beside, replaced;
+        @autoreleasepool {
+            UIViewController *unit = [_TtC20NowPlaying_ModesImpl18HeaderElementsUnit new];
+            UIView *incoming = ordinaryHeader(unit);
+            [holder addSubview:incoming];
+            beside = stripHit() == tilt;
+            [header removeFromSuperview];
+            replaced = stripHit() == tilt;
+            [incoming removeFromSuperview];
+            weakIncoming = incoming;
+            weakIncomingUnit = unit;
+        }
+        check(@"an ordinary header in the stack after another, the strip still the cover's", beside && replaced,
+              [NSString stringWithFormat:@"beside the old one %d, after it %d", beside, replaced]);
+        // The second one gone from the stack and released by the run loop's next turns (UIKit lets a unit laid out in a
+        // window go only then), the AI DJ's header goes in.
+        after(0.3, ^{
+            BOOL released = !weakIncoming && !weakIncomingUnit;
+            UIViewController *djUnit = [_TtC19Endless_DJMusicImpl35DJMHeaderElementsUnitViewController new];
+            UIView *dj = [[UIView alloc] initWithFrame:holder.bounds];
+            UIView *button = glyphButton(dj, CGRectMake(12, 0, 48, 48), @"chevron.down", @"now-playing-minimize-button");
+            glyphButton(dj, CGRectMake(holder.bounds.size.width - 60, 0, 48, 48), @"ellipsis", @"Context menu");
+            djUnit.view = dj;
+            [holder addSubview:dj];
+            UIView *rowHit = stripHit();
+            UIView *buttonHit = [window hitTest:[window convertPoint:button.center fromView:dj] withEvent:nil];
+            [dj removeFromSuperview];
+            [holder addSubview:header];
+            BOOL again = stripHit() == tilt;
+            BOOL untouched = holder.userInteractionEnabled && header.userInteractionEnabled;
+            check(@"the old header released, the AI DJ's in its stack live, the row back through it",
+                  released && rowHit == dj && buttonHit == button && again && untouched,
+                  [NSString stringWithFormat:@"released %d, the DJ's row takes %@, its button %@; the row back %d, nothing switched off %d",
+                   released, NSStringFromClass(rowHit.class), NSStringFromClass(buttonHit.class), again, untouched]);
+            NSLog(@"[harness] cover checks: %lu of %lu right -- %@", (unsigned long)right, (unsigned long)checks, right == checks ? @"PASS" : @"FAIL");
+        });
     });
 }
 
@@ -3472,6 +3708,32 @@ static CGFloat middleAlpha(UIImage *image) {
     return pixel[3] / 255.0;
 }
 
+// The opacity, 0 to 255, of the pixels at `points` (in pixels, 3 per point) of `view`'s own drawing, nothing behind it.
+static NSArray<NSNumber *> *drawnAlphas(UIView *view, NSArray<NSValue *> *points) {
+    [view setNeedsDisplay];
+    [view.layer displayIfNeeded];
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 3;
+    format.opaque = NO;
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:view.bounds.size format:format]
+        imageWithActions:^(UIGraphicsImageRendererContext *context) { [view.layer renderInContext:context.CGContext]; }];
+    CGImageRef cg = image.CGImage;
+    size_t width = CGImageGetWidth(cg), height = CGImageGetHeight(cg);
+    uint8_t *pixels = calloc(width * height, 4);
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels, width, height, 8, width * 4, space, kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), cg);
+    CGContextRelease(context);
+    NSMutableArray<NSNumber *> *alphas = [NSMutableArray array];
+    for (NSValue *value in points) {
+        CGPoint p = value.CGPointValue;
+        [alphas addObject:@(pixels[((size_t)p.y * width + (size_t)p.x) * 4 + 3])];
+    }
+    free(pixels);
+    return alphas;
+}
+
 // A track image as Spotify's bar has it: a 7x7 rounded square in one color, resizable in the middle.
 static UIImage *spotifyTrack(UIColor *color) {
     UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(7, 7)] imageWithActions:^(UIGraphicsImageRendererContext *context) {
@@ -3551,7 +3813,22 @@ static UISlider *spotifyBar(UIView *unit, NSArray<UILabel *> **labels) {
     [self expect:CGRectGetMinY(badge.frame) - track >= 8 step:@"the badge clear of the bar"
           detail:[NSString stringWithFormat:@"%.1f pt under it (want 8 or more)", CGRectGetMinY(badge.frame) - track]];
     [self expect:[badge.accessibilityLabel isEqualToString:@"Audio quality, High Quality"] step:@"the badge's words" detail:badge.accessibilityLabel];
-    CGFloat fill = middleAlpha([slider minimumTrackImageForState:UIControlStateNormal]), rest = middleAlpha([slider maximumTrackImageForState:UIControlStateNormal]);
+    // Issue #27, the Music app's (iOS 26, 3x): 55 px tall, corners of a 14 px circle (the pixel 4 px in from a corner
+    // inside, as a capsule's is not), a fill of 17 of 255 at the pixel 4 px from the top. Increase Contrast fills more.
+    NSArray<NSValue *> *probes = @[[NSValue valueWithCGPoint:CGPointMake(4, 4)], [NSValue valueWithCGPoint:CGPointMake(30, 4)]];
+    NSArray<NSNumber *> *lit = drawnAlphas(badge, probes);
+    [self expect:fabs(badge.bounds.size.height - 55 / 3.0) < 0.2 && lit[0].intValue > 8 && abs(lit[1].intValue - 17) <= 2
+            step:@"the badge's shape and fill as the Music app's"
+          detail:[NSString stringWithFormat:@"%.2f pt tall (want 18.33), corner pixel %@ (want over 8), fill %@ (want 17)",
+                  badge.bounds.size.height, lit[0], lit[1]]];
+    badge.traitOverrides.accessibilityContrast = UIAccessibilityContrastHigh;
+    [badge updateTraitsIfNeeded];
+    NSArray<NSNumber *> *contrast = drawnAlphas(badge, probes);
+    [badge.traitOverrides removeTrait:UITraitAccessibilityContrast.class];
+    [badge updateTraitsIfNeeded];
+    [self expect:contrast[1].intValue > lit[1].intValue + 17 step:@"Increase Contrast more opaque"
+          detail:[NSString stringWithFormat:@"fill %@, %@ without it", contrast[1], lit[1]]];
+    CGFloat fill =middleAlpha([slider minimumTrackImageForState:UIControlStateNormal]), rest = middleAlpha([slider maximumTrackImageForState:UIControlStateNormal]);
     [self expect:fill > 0.5 && fill < 0.7 && rest > 0.15 && rest < 0.25 step:@"the bar translucent"
           detail:[NSString stringWithFormat:@"fill %.2f (want 0.5 to 0.7), track %.2f (want 0.15 to 0.25)", fill, rest]];
 
@@ -4075,7 +4352,7 @@ static UIControl *grabberIn(UIView *header) {
 }
 
 - (void)runHeaderChecks {
-    BOOL routed = [scenario() isEqualToString:@"header"];
+    BOOL routed = ![scenario() isEqualToString:@"header-noroute"];
     UIViewController *headerUnit = _units.firstObject;
     UIView *header = headerUnit.view;
     UIControl *arrow = nil, *more = nil;
@@ -4094,6 +4371,12 @@ static UIControl *grabberIn(UIView *header) {
     // 9pt over it). The mock's player is in a scroll view, which takes the safe area from it; Spotify's is not.
     CGFloat safeTop = self.window.safeAreaInsets.top;
     header.frame = CGRectMake(header.frame.origin.x, safeTop, header.bounds.size.width, header.bounds.size.height);
+    // The row in a branch of the player, as 9.2.0 has it (a UIStackView the player places by its top constraint),
+    // which is what Spotify moves.
+    UIView *branch = [[UIView alloc] initWithFrame:header.frame];
+    [_host insertSubview:branch aboveSubview:header];
+    header.frame = branch.bounds;
+    [branch addSubview:header];
     __block NSUInteger closes = 0;
     if (routed) [arrow addAction:[UIAction actionWithHandler:^(UIAction *action) { closes++; }] forControlEvents:UIControlEventTouchUpInside];
     // The header laid out while the player slides up (9.2.0: its last layout before it is up), and not again.
@@ -4105,14 +4388,14 @@ static UIControl *grabberIn(UIView *header) {
     // Spotify then moves the row one row height lower and back, with no layout of the header (9.2.0 simulator: by the
     // row's top constraint, which carried the pill to 114pt, where the phone had it); the display pass after each
     // move lays out the rest.
-    CGRect row = header.frame;
+    CGRect row = branch.frame;
     UIView *movedPill = grabberIn(header).subviews.firstObject;
-    header.frame = CGRectOffset(row, 0, row.size.height);
+    branch.frame = CGRectOffset(row, 0, row.size.height);
     [self.window layoutIfNeeded];
     CGRect movedDrawn = [movedPill convertRect:movedPill.bounds toView:_host];
     [self expect:movedPill && fabs(CGRectGetMinY(movedDrawn) - (safeTop + 7)) <= 0.5 step:@"the grabber stays when Spotify moves the row"
-          detail:[NSString stringWithFormat:@"%@ in the player with the row at %.0f, safe top %.0f", NSStringFromCGRect(movedDrawn), CGRectGetMinY(header.frame), safeTop]];
-    header.frame = row;
+          detail:[NSString stringWithFormat:@"%@ in the player with the row at %.0f, safe top %.0f", NSStringFromCGRect(movedDrawn), CGRectGetMinY(branch.frame), safeTop]];
+    branch.frame = row;
     [self.window layoutIfNeeded];
     // Spotify gives the ⋯ its alpha back as playback starts, with no layout of the header.
     more.alpha = 1;
@@ -4164,6 +4447,10 @@ static UIControl *grabberIn(UIView *header) {
     }
     [self expect:area.size.width >= 44 && area.size.height >= 44 && !missed.count step:@"the grabber's whole 44pt touch area takes touches"
           detail:[NSString stringWithFormat:@"%@ in the window, missed at %@", NSStringFromCGRect(area), missed.count ? [missed componentsJoinedByString:@" "] : @"none"]];
+    if ([scenario() isEqualToString:@"header-inset"]) {
+        [self runGrabberInsetChecks:grabber unit:headerUnit closes:^NSUInteger { return closes; }];
+        return;
+    }
     // A finger at the touch area's top edge, which lies over the pill.
     CGPoint finger = CGPointMake(CGRectGetMidX(inner), CGRectGetMinY(inner));
     SGHarnessTap(self.window, finger);
@@ -4178,19 +4465,19 @@ static UIControl *grabberIn(UIView *header) {
         [self expect:closes == 3 step:@"a finger on the grabber closes the player"
               detail:[NSString stringWithFormat:@"at %@, the arrow's action ran %lu times", NSStringFromCGPoint(finger), (unsigned long)closes]];
         // Spotify keeps the row one row height lower.
-        header.frame = CGRectOffset(row, 0, row.size.height);
+        branch.frame = CGRectOffset(row, 0, row.size.height);
         [self.window layoutIfNeeded];
         CGRect drawnPill = [pill convertRect:pill.bounds toView:nil], touch = [grabber convertRect:grabber.bounds toView:nil];
         CGFloat expectedCenter = MAX(CGRectGetMidY(drawnPill), CGRectGetMinY([self->_host convertRect:self->_host.bounds toView:nil]) + touch.size.height / 2);
         [self expect:CGRectContainsRect(touch, drawnPill) && fabs(CGRectGetMidY(touch) - expectedCenter) <= 0.5 && touch.size.height >= 44 && pillTakesTouch()
                 step:@"the pill over the moved row in the middle of its touch area"
-              detail:[NSString stringWithFormat:@"pill %@, touch area %@, the row at %.0f", NSStringFromCGRect(drawnPill), NSStringFromCGRect(touch), CGRectGetMinY(header.frame)]];
+              detail:[NSString stringWithFormat:@"pill %@, touch area %@, the row at %.0f", NSStringFromCGRect(drawnPill), NSStringFromCGRect(touch), CGRectGetMinY(branch.frame)]];
         CGPoint there = onPill();
         SGHarnessTap(self.window, there);
         after(0.6, ^{
             [self expect:closes == 4 step:@"a finger on the pill over the moved row closes the player"
                   detail:[NSString stringWithFormat:@"at %@, the arrow's action ran %lu times", NSStringFromCGPoint(there), (unsigned long)closes]];
-            header.frame = row;
+            branch.frame = row;
             [self.window layoutIfNeeded];
             // The lyrics alone fade everything with the row, and a tap brings it back. The choice goes back as it was
             // before the app exits, so later scenarios on this simulator read their own.
@@ -4231,17 +4518,92 @@ static UIControl *grabberIn(UIView *header) {
             if (hideBefore) [NSUserDefaults.standardUserDefaults setObject:hideBefore forKey:SGRKeyLyricsAutoHide];
             else [NSUserDefaults.standardUserDefaults removeObjectForKey:SGRKeyLyricsAutoHide];
             SGPrefsChanged();
-            // A direct reparent need not leave the window. Even before header layout the old target must be inert.
-            [self.window addSubview:header];
-            [self expect:![grabber pointInside:CGPointMake(CGRectGetMidX(grabber.bounds), CGRectGetMidY(grabber.bounds)) withEvent:nil]
-                        && ![grabber accessibilityActivate] && closes == 4
-                    step:@"the old player cannot route a tap after a same-window move" detail:@"row moved outside player"];
-            [headerUnit viewDidLayoutSubviews];
-            [self expect:!grabber.superview && ![grabber accessibilityActivate] && closes == 4
-                    step:@"a retained detached row leaves no close button" detail:NSStringFromClass(grabber.superview.class) ?: @"detached"];
+            [self runGrabberLeaveChecks:grabber header:header branch:branch closes:^NSUInteger { return closes; }];
+        });
+    });
+}
+
+// A retained row leaving its player (PlayerHeader.x): out of the window and back, then moved within the window, the
+// old player routing nothing at once and losing the grabber with no layout of the header.
+- (void)runGrabberLeaveChecks:(UIControl *)grabber header:(UIView *)header branch:(UIView *)branch closes:(NSUInteger (^)(void))closes {
+    UIView *pill = grabber.subviews.firstObject, *host = _host;
+    UIWindow *window = self.window;
+    CGFloat safeTop = window.safeAreaInsets.top;
+    NSUInteger before = closes();
+    CGFloat (^pillTop)(void) = ^CGFloat { return CGRectGetMinY([pill convertRect:pill.bounds toView:host]); };
+    NSUInteger slot = [host.subviews indexOfObject:branch];
+    [branch removeFromSuperview];
+    [self expect:!grabber.superview && ![grabber accessibilityActivate] && closes() == before
+            step:@"a retained row out of the window leaves no close button" detail:NSStringFromClass(grabber.superview.class) ?: @"detached"];
+    [host insertSubview:branch atIndex:slot];
+    after(0.3, ^{
+        [self expect:grabber.superview == host && grabberIn(header) == grabber && !grabber.hidden && fabs(pillTop() - (safeTop + 7)) <= 0.5
+                step:@"the row back in its player has the grabber again"
+              detail:[NSString stringWithFormat:@"in %@, hidden %d, pill at %.1f", NSStringFromClass(grabber.superview.class), grabber.hidden, pillTop()]];
+        // Moved straight into another view of the same window: no window change for the row.
+        NSUInteger moved = sg_headerLayouts;
+        [window addSubview:branch];
+        [self expect:![grabber pointInside:CGPointMake(CGRectGetMidX(grabber.bounds), CGRectGetMidY(grabber.bounds)) withEvent:nil]
+                     && ![grabber accessibilityActivate] && closes() == before
+                step:@"moved within the window, the old player routes nothing" detail:@"before any layout"];
+        after(0.3, ^{
+            [self expect:!grabber.superview && sg_headerLayouts == moved
+                    step:@"moved within the window, the grabber leaves the player with no layout of the header"
+                  detail:[NSString stringWithFormat:@"in %@, header laid out %lu times", NSStringFromClass(grabber.superview.class) ?: @"nothing",
+                          (unsigned long)(sg_headerLayouts - moved)]];
             NSLog(@"[harness] header checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
                   self->_failures ? @"FAIL" : @"PASS");
             exit(self->_failures ? 1 : 0);
+        });
+    });
+}
+
+// header-inset, on an iPad, whose window has a top inset only while its status bar shows: the inset going to none and
+// back with no layout of the header reaching the redesign (SGRHarnessStillHeaderUnit).
+// With no inset, the pill is 7pt under the player's top and the whole 44pt touch area, the pill in it, is in the
+// player, takes touches and closes it; with the inset back, the pill is back under it.
+- (void)runGrabberInsetChecks:(UIControl *)grabber unit:(UIViewController *)unit closes:(NSUInteger (^)(void))closes {
+    UIView *pill = grabber.subviews.firstObject, *host = _host;
+    UIWindow *window = self.window;
+    CGFloat safeTop = window.safeAreaInsets.top;
+    NSUInteger before = closes(), layouts = sg_headerLayouts;
+    CGFloat (^pillTop)(void) = ^CGFloat { return CGRectGetMinY([pill convertRect:pill.bounds toView:host]); };
+    Class unitClass = object_setClass(unit, SGRHarnessStillHeaderUnit.class);
+    SGRHarnessStatusRoot *root = (SGRHarnessStatusRoot *)window.rootViewController;
+    root.bare = YES;
+    [root setNeedsStatusBarAppearanceUpdate];
+    [window layoutIfNeeded];
+    after(0.3, ^{
+        CGRect area = [grabber convertRect:grabber.bounds toView:nil], shown = [pill convertRect:pill.bounds toView:nil];
+        CGRect inner = CGRectInset(area, 1, 1);
+        NSMutableArray<NSString *> *missed = [NSMutableArray array];
+        for (NSValue *point in @[@(CGPointMake(CGRectGetMinX(inner), CGRectGetMinY(inner))), @(CGPointMake(CGRectGetMaxX(inner), CGRectGetMinY(inner))),
+                                 @(CGPointMake(CGRectGetMinX(inner), CGRectGetMaxY(inner))), @(CGPointMake(CGRectGetMaxX(inner), CGRectGetMaxY(inner)))]) {
+            if ([window hitTest:point.CGPointValue withEvent:nil] != grabber) [missed addObject:NSStringFromCGPoint(point.CGPointValue)];
+        }
+        [self expect:safeTop > 0 && window.safeAreaInsets.top == 0 && fabs(pillTop() - 7) <= 0.5 && area.size.height >= 44 && CGRectContainsRect(area, shown)
+                     && !missed.count
+                step:@"no top inset: the pill 7pt under the player's top, all 44pt of its touch area reached"
+              detail:[NSString stringWithFormat:@"inset %.0f from %.0f, pill at %.1f in the player, touch area %@ and pill %@ in the window, missed at %@, "
+                      "the header laid out %lu times with no hook", window.safeAreaInsets.top, safeTop, pillTop(), NSStringFromCGRect(area), NSStringFromCGRect(shown),
+                      missed.count ? [missed componentsJoinedByString:@" "] : @"none", (unsigned long)(sg_headerLayouts - layouts)]];
+        CGPoint finger = CGPointMake(CGRectGetMidX(inner), CGRectGetMinY(inner));
+        SGHarnessTap(window, finger);
+        after(0.6, ^{
+            [self expect:closes() == before + 1 step:@"no top inset: a finger at the touch area's top closes the player"
+                  detail:[NSString stringWithFormat:@"at %@, the arrow's action ran %lu times", NSStringFromCGPoint(finger), (unsigned long)closes()]];
+            root.bare = NO;
+            [root setNeedsStatusBarAppearanceUpdate];
+            [window layoutIfNeeded];
+            after(0.3, ^{
+                [self expect:window.safeAreaInsets.top == safeTop && fabs(pillTop() - (safeTop + 7)) <= 0.5
+                        step:@"the inset back, the pill back under it"
+                      detail:[NSString stringWithFormat:@"inset %.0f, pill at %.1f", window.safeAreaInsets.top, pillTop()]];
+                object_setClass(unit, unitClass);
+                NSLog(@"[harness] header checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
+                      self->_failures ? @"FAIL" : @"PASS");
+                exit(self->_failures ? 1 : 0);
+            });
         });
     });
 }

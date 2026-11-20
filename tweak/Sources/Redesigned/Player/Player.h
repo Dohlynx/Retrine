@@ -132,6 +132,10 @@ CGRect SGRPlayerArtworkAreaIn(UIView *host);
 // Hides the cover on screen and its shadow, or shows them again, for a stand-in to fly in its place
 // (PlayerMorph.x). Until NO, every cover laid out on screen is hidden too, the first open's included.
 void SGRPlayerSetCoverHidden(BOOL hidden);
+// A header row taking touches (`live`) or letting them go (PlayerHeader.x, on each of its layouts), in `player`, the
+// player's own view holding it, or nil: the cover, lifted to the Music app's top, stays under every live row in its own
+// player, wherever the row is moved in it.
+void SGRPlayerCoverUnderRow(UIView *row, BOOL live, UIView *player);
 
 #pragma mark - the title (PlayerTitle.x)
 

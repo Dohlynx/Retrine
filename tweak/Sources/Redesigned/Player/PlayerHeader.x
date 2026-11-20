@@ -21,7 +21,9 @@
 // It takes the row's look: the row and each view between it and the player are watched for their alpha and hidden,
 // which every fade of the row sets (the lyrics on their own, PlayerLyrics.x, the AI DJ's row with them; Spotify's
 // own), inside its animation, so the grabber goes and comes back with the row in the same animation, Reduce
-// Motion's included. The row holds it, and it leaves the player when the row goes.
+// Motion's included. The row holds it, and it leaves the player when the row does, out of the window or within it.
+// The window's top inset is followed as it changes, apart from any layout of the row; with no inset, the touch area
+// keeps its 44pt inside the player and the pill stays 7pt under the top.
 //
 // The AI DJ's circles: glass is the control layer floating over the field, so it goes behind the round buttons only.
 // Each circle is a subview of the button it sits behind (SGRGlassInside), below what the button draws and taking no
@@ -215,6 +217,8 @@ static char kRowLookContext;
 @property (nonatomic, readonly) UIView *pill;
 // The header row it stands for, whose look it takes.
 @property (nonatomic, weak, readonly) UIView *row;
+// The row's hold on it (SGRGrabberHold), a view in the row, through which the touch area takes its height.
+@property (nonatomic, weak) UIView *hold;
 - (void)follow:(UIView *)row in:(UIView *)player;
 - (void)detach;
 - (void)updateTopInset;
@@ -238,7 +242,7 @@ static char kRowLookContext;
 
 @implementation SGRPlayerGrabber {
     NSHashTable<UIView *> *_watched;   // the row and each view between it and the player
-    NSLayoutConstraint *_pin, *_middle, *_edge;
+    NSLayoutConstraint *_pin, *_middle, *_edge, *_tie;
     SGRGrabberInsetObserver *_insets;
 }
 
@@ -253,8 +257,11 @@ static char kRowLookContext;
     _pill.translatesAutoresizingMaskIntoConstraints = NO;
     NSLayoutConstraint *center = [self.centerYAnchor constraintEqualToAnchor:_pill.centerYAnchor];
     center.priority = UILayoutPriorityRequired - 1; // Keep all 44pt reachable when the window has no top inset.
+    // The height the touch area falls to once the row's tie (follow:) is gone.
+    NSLayoutConstraint *collapsed = [self.heightAnchor constraintEqualToConstant:0];
+    collapsed.priority = UILayoutPriorityFittingSizeLevel;
     [NSLayoutConstraint activateConstraints:@[
-        [self.widthAnchor constraintEqualToConstant:kGrabberSize.width + kGrabberTouch], [self.heightAnchor constraintEqualToConstant:kGrabberTouch],
+        [self.widthAnchor constraintEqualToConstant:kGrabberSize.width + kGrabberTouch], collapsed,
         center, [_pill.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
         [_pill.widthAnchor constraintEqualToConstant:kGrabberSize.width], [_pill.heightAnchor constraintEqualToConstant:kGrabberSize.height],
     ]];
@@ -278,9 +285,6 @@ static char kRowLookContext;
     [_watched removeAllObjects];
 }
 
-// In the player just above the row's branch of it, the pill pinned `top` under the player's top and centered over
-// the row, and the row and each view between it and the player watched for their look. Taking the row out of the
-// player takes the two constraints across with it; a row put in again gets them anew.
 - (void)detach {
     [self unwatch];
     _close = nil;
@@ -288,8 +292,30 @@ static char kRowLookContext;
     _pin.active = NO;
     _edge.active = NO;
     _middle.active = NO;
+    _tie.active = NO;
     [_insets removeFromSuperview];
     [self removeFromSuperview];
+}
+
+// The row, or a view it is in, has left the player, staying in the window (a move with no window change, which
+// neither the hold's window nor the header's layout hears of): UIKit takes out every constraint tying the moved
+// views to the rest (removeFromSuperview's contract), the tie with them, so the touch area falls to no height and is
+// laid out here. A row moved within the player is laid out to be followed again; one gone from it takes the grabber
+// out with it, after this pass.
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    UIView *player = self.superview, *row = _row;
+    if (!player || _tie.active) return;
+    if ([row isDescendantOfView:player]) {
+        [row setNeedsLayout];
+        return;
+    }
+    self.hidden = YES;
+    __weak SGRPlayerGrabber *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        SGRPlayerGrabber *grabber = weakSelf;
+        if (grabber.superview && ![grabber.row isDescendantOfView:grabber.superview]) [grabber detach];
+    });
 }
 
 - (void)updateTopInset {
@@ -298,6 +324,10 @@ static char kRowLookContext;
     if (window && _pin.constant != top) _pin.constant = top;
 }
 
+// In the player just above the row's branch of it, the pill pinned under the player's top at the window's safe area
+// and centered over the row, the touch area tied to the row's hold, and the row and each view between it and the
+// player watched for their look. Taking the row out of the player takes the constraints to it across with it; a row
+// put in again gets them anew.
 - (void)follow:(UIView *)row in:(UIView *)player {
     _row = row;
     NSMutableArray<UIView *> *chain = [NSMutableArray array];
@@ -329,6 +359,11 @@ static char kRowLookContext;
         _middle = [self.centerXAnchor constraintEqualToAnchor:row.centerXAnchor];
         _middle.active = YES;
     }
+    UIView *hold = self.hold;
+    if (!_tie.active || _tie.secondItem != hold) {
+        _tie = [self.heightAnchor constraintEqualToAnchor:hold.heightAnchor constant:kGrabberTouch];
+        _tie.active = YES;
+    }
     BOOL same = chain.count == _watched.count;
     for (UIView *view in chain) same = same && [_watched containsObject:view];
     if (!same) {
@@ -343,7 +378,10 @@ static char kRowLookContext;
 }
 
 // The row's alpha and hidden as the player draws it. A fade sets them inside its animation, where the observer is
-// told at once, so the grabber's are set in the same animation.
+// told at once, so the grabber's are set in the same animation. Its end is the product of the chain's alphas; while
+// two of them animate at once the grabber goes straight to that product, drawn apart from the row's mid-fade. Only
+// the row itself fades in Spotify 9.2.0 (its stack never: lyrics alone and woken, Reduce Motion on, track change,
+// swipe-down and grabber close, reopen, iPhone, iPad side panel and two-column; simulator, 2026-11-20).
 - (void)takeRowsLook {
     UIView *row = _row;
     CGFloat alpha = 1;
@@ -395,6 +433,7 @@ static char kRowLookContext;
     self.userInteractionEnabled = NO;
     self.accessibilityElementsHidden = YES;
     _grabber = [SGRPlayerGrabber new];
+    _grabber.hold = self;
     return self;
 }
 - (void)didMoveToWindow {
@@ -405,20 +444,21 @@ static char kRowLookContext;
 }
 @end
 
+// The player's own full screen view (SPTNowPlayingView) holding `view`, or nil.
+static UIView *playerHolding(UIView *view) {
+    for (UIView *v = view.superview; v; v = v.superview) {
+        if ([v.nextResponder isKindOfClass:%c(_TtC19NowPlaying_ViewImpl24NowPlayingViewController)]) return v;
+    }
+    return nil;
+}
+
 // `route`: the arrow to close by, or nil, when the grabber is only drawn; `close`: the arrow, whose words it reads.
-static void placeGrabber(UIView *header, UIView *close, UIControl *route) {
+// `player`: the player's own view holding the header (playerHolding), whose top is the screen's once the player is up,
+// under the window's safe area: the player's own safe area and the window's coordinates both take in the player's open
+// as it slides up (9.2.0, 2026-11-18: the grabber 500pt over the screen).
+static void placeGrabber(UIView *header, UIView *close, UIControl *route, UIView *player) {
     UIWindow *window = header.window;
     if (!window) return;
-    // The player's own full screen view (SPTNowPlayingView), whose top is the screen's once the player is up, under
-    // the window's safe area: the player's own safe area and the window's coordinates both take in the player's open
-    // as it slides up (9.2.0, 2026-11-18: the grabber 500pt over the screen).
-    UIView *player = nil;
-    for (UIView *v = header.superview; v && v != window; v = v.superview) {
-        if ([v.nextResponder isKindOfClass:%c(_TtC19NowPlaying_ViewImpl24NowPlayingViewController)]) {
-            player = v;
-            break;
-        }
-    }
     SGRGrabberHold *hold = objc_getAssociatedObject(header, &kGrabberKey);
     if (!player) {
         [hold.grabber detach];
@@ -451,6 +491,63 @@ static void placeGrabber(UIView *header, UIView *close, UIControl *route) {
     });
 }
 
+#pragma mark - touches through the put-away row
+
+// The ordinary header put away: its buttons gone for the grabber, which closes by its arrow, and where it plays from
+// hidden, nothing in its row is left to take a touch. The row keeps its touches while it shows where it plays from,
+// which is a button, or the arrow, which stays Spotify's and live with no action to close by; the AI DJ's keeps its
+// buttons. Read from the row and the setting as they are, never kept.
+static BOOL rowPutAway(UIView *row) {
+    return SGEnabled(SGRKeyPlayerHideContext) && closeRoute(buttonIn(row, closeIDs(), &kCloseKey)) != nil;
+}
+
+// Whether a touch landing on `view` itself goes on to what is under it in the player, the lifted cover (PlayerArtwork.x):
+// `view` is a put-away ordinary header row, or holds nothing but such rows, down views holding nothing else. Spotify
+// 9.2.0 keeps the unit's view alone in a stack of the row's own size, which took the touch the row let go
+// (phone-sized simulator, 2026-11-20: a tap at y 100 landed on that stack). Never a view holding anything else, nor a
+// view controller's own, the player's included. Decided from the views as they are at the touch, with nothing set on
+// Spotify's: a row taken out of its stack, released, moved or replaced there by another header (the AI DJ's, whose
+// buttons are live) leaves nothing behind. A put-away row lets go of a touch on the drawn cover anywhere in it but on
+// a control (the hit-test hook below): its own stack's elements take one between what they draw (9.2.0 simulator,
+// 2026-11-20: a tap at y 100 on the stack inside the row). Off the drawn cover every touch stays Spotify's (onDrawnCover).
+static BOOL passesTouches(UIView *view) {
+    UIResponder *owner = view.nextResponder;
+    if ([owner isKindOfClass:%c(_TtC20NowPlaying_ModesImpl18HeaderElementsUnit)]) return rowPutAway(view);
+    NSArray<UIView *> *held = view.subviews;
+    if (!held.count || [owner isKindOfClass:UIViewController.class]) return NO;
+    for (UIView *sub in held) {
+        if (!passesTouches(sub)) return NO;
+    }
+    return YES;
+}
+
+// A touch in a put-away row that landed on a control of Spotify's still drawn there, or inside one: the buttons put
+// away go by alpha, which hit testing passes over, so this is one Spotify shows beside them (an iPad side panel's
+// button to widen the player) and keeps.
+static BOOL onControl(UIView *hit, UIView *row) {
+    for (UIView *view = hit; view && view != row; view = view.superview) {
+        if ([view isKindOfClass:UIControl.class]) return YES;
+    }
+    return NO;
+}
+
+// A touch at `point` in `view` lands on the cover as drawn, lifted under the row. Elsewhere the row keeps it as Spotify's
+// does: the cover's cell under it opens the cover's viewer on a tap anywhere in it, 40 pt over the picture in an iPad's
+// side panel (9.2.0 simulator, 2026-11-20).
+static BOOL onDrawnCover(UIView *view, CGPoint point) {
+    return CGRectContainsPoint(SGRPlayerCoverFrameIn(view), point);
+}
+
+%hook UIView
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = %orig;
+    if (!hit) return nil;
+    if ([self.nextResponder isKindOfClass:%c(_TtC20NowPlaying_ModesImpl18HeaderElementsUnit)])
+        return rowPutAway(self) && !onControl(hit, self) && onDrawnCover(self, point) ? nil : hit;
+    return hit == self && passesTouches(self) && onDrawnCover(self, point) ? nil : hit;
+}
+%end
+
 // `ordinary`: the ordinary player's header, its buttons put away; else the AI DJ's, its buttons on glass.
 static void layOutHeader(UIViewController *unit, BOOL ordinary) {
     UIView *header = unit.viewIfLoaded;
@@ -459,8 +556,12 @@ static void layOutHeader(UIViewController *unit, BOOL ordinary) {
     UIControl *route = closeRoute(close);
     if (ordinary) putButtonsAway(header, close, route);
     else glassInside(unit);
+    UIView *player = playerHolding(header);
+    // A touch in the put-away row's band falls through to the lifted cover under it (passesTouches); a live row keeps
+    // its touches, and the cover stays under it.
+    SGRPlayerCoverUnderRow(header, !ordinary || !rowPutAway(header), player);
     contextVisibility(header);
-    placeGrabber(header, close, route);
+    placeGrabber(header, close, route, player);
     SGRPlayerWatchLook(header);
 }
 

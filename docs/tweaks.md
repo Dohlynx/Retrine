@@ -916,7 +916,10 @@ Shared:
                   switched on, followed at once) shows the quality of the song playing the way the Music app shows
                   Lossless: a small capsule in semibold caption type and the secondary label color, centered under the
                   progress bar between the two times and on their middle (AudioQuality.x, AudioQualityRules.m). The
-                  redesigned player draws it as the Music app does: the times 8 pt further from the bar
+                  redesigned player draws it as the Music app does: a rounded rectangle 18.3 pt tall with circular
+                  4.6 pt corners (a quarter of its height) in regular caption type, lit by adding light to what is behind it
+                  (plusL: 17 of 255 for the fill, 107 more for the text and glyph, measured on the Music app's iOS 26
+                  player), in the label colors over the backdrop under Increase Contrast, so more opaque there; the times 8 pt further from the bar
                   (PlayerControls.x kTimesDrop), the badge's text on the times' baseline (placed again from the elapsed
                   time's own layout, since a change of text size resizes the times without a pass of the unit), a
                   template waveform glyph before every tier, and the Music app's words: Low, Normal, High and Highest
@@ -1513,9 +1516,20 @@ Redesigned:
                   touches meanwhile, so a tap where next lies over repeat's end is next's; a shuffle or repeat Spotify
                   brings back ends the spread on its arrival. With either shown, on a podcast's row whose ends hold the
                   15 s skips, or in landscape, the slots stay Spotify's. In portrait on an iPhone-shaped one column player
-                  the Music app's measures hold (Player.h, PlayerFooter.x keepRhythm): the cover, title row, progress bar and
+                  the Music app's measures hold (Player.h, PlayerFooter.x keepRhythm): the title row, progress bar and
                   volume row stand 32 pt in from the sides (SGRPlayerSideMargin, set through the constants of Spotify's own
-                  side constraints so the content lays out for the width), and the gaps from the artist to the bar, the bar
+                  side constraints so the content lays out for the width), the cover keeps Spotify's tilt view's size (24 pt
+                  in on a 402 pt iPhone, 354 pt, as the Music app's) and is drawn up to 33 pt under the window's safe area
+                  where Spotify's tilt view stands lower (PlayerArtwork.x; only up, never in landscape or on an iPad,
+                  never over a header row that takes touches: with Hide where it plays from off, Spotify's arrow live
+                  or the AI DJ's buttons, it stops at the row's bottom where the row is now in its own player, followed
+                  live as the switch changes and as Spotify moves the row with no layout of it; with the row put away, a
+                  touch on the drawn cover landing in the row, off any control Spotify still shows there (an iPad's button
+                  to widen the player), or on a view holding nothing but the row goes on to the cover, decided at the touch
+                  from the views as they are, with nothing switched off on Spotify's (PlayerHeader.x passesTouches); the
+                  row's controls and its parts off the cover stay Spotify's; it takes
+                  touches, and VoiceOver's frame and activation point, where it is drawn; laid out again when the
+                  window's safe area changes; checked by harness/player/ `cover`), and the gaps from the artist to the bar, the bar
                   to play's middle and play's middle to the footer's middle are taken to 38, 91 and 91 pt (plus 48 pt for
                   the volume row, which stands that far over the footer's middle); where the room is shorter Spotify's
                   gaps stay and the earlier shared-move layout applies. A spacing change moves Spotify's views only on

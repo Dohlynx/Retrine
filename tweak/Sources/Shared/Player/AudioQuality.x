@@ -8,6 +8,10 @@
 
 // The Music app's badge: semibold caption type in a capsule, a glyph before Lossless (before every tier in the redesign).
 static const CGFloat kFontSize = 11, kFontMax = 15, kPadX = 7, kPadY = 2, kGlyphGap = 3;
+// The redesign's, measured on the Music app's player (iOS 26, 3x): regular type in a rounded rectangle 18.3 pt tall
+// with 4.6 pt corners, lit by adding light to what is behind it: 17 of 255 for the fill, 107 more for the ink.
+// Increase Contrast draws it over the backdrop in the label colors instead, as the native look's.
+static const CGFloat kRedesignPadY = 2.6, kRedesignCornerShare = 0.25, kRedesignFillLight = 17 / 255.0, kRedesignInkLight = 107 / 255.0;
 // Kept clear between the badge and either time, and around the badge for a finger.
 static const CGFloat kTimeGap = 8, kTouchOutset = 4;
 static const NSTimeInterval kFade = 0.25;
@@ -377,8 +381,23 @@ static void checkDetails(void) {
 }
 
 - (UIFont *)font {
-    return [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption2] scaledFontForFont:[UIFont systemFontOfSize:kFontSize weight:UIFontWeightSemibold]
+    UIFontWeight weight = _redesigned ? UIFontWeightRegular : UIFontWeightSemibold;
+    return [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption2] scaledFontForFont:[UIFont systemFontOfSize:kFontSize weight:weight]
                                                                        maximumPointSize:kFontMax compatibleWithTraitCollection:self.traitCollection];
+}
+
+// The redesign's light added to the backdrop, unless Increase Contrast asks for the label colors' more opaque look.
+- (BOOL)lit {
+    return _redesigned && self.traitCollection.accessibilityContrast != UIAccessibilityContrastHigh;
+}
+
+- (void)setRedesigned:(BOOL)redesigned {
+    _redesigned = redesigned;
+    [self updateCompositing];
+}
+
+- (void)updateCompositing {
+    self.layer.compositingFilter = self.lit ? @"plusL" : nil;
 }
 
 // The redesign's before every tier, the native look's before the lossless ones only.
@@ -392,15 +411,33 @@ static void checkDetails(void) {
     UIImage *glyph = [self glyphIn:font];
     CGFloat text = [self.text ?: @"" sizeWithAttributes:@{NSFontAttributeName: font}].width;
     CGFloat glyphWidth = glyph ? glyph.size.width + kGlyphGap : 0;
-    return CGSizeMake(ceil(2 * kPadX + glyphWidth + text), ceil(font.lineHeight + 2 * kPadY));
+    if (!_redesigned) return CGSizeMake(ceil(2 * kPadX + glyphWidth + text), ceil(font.lineHeight + 2 * kPadY));
+    // On the screen's pixels rather than whole points, which would add up to a point to the measured height.
+    CGFloat scale = MAX(self.traitCollection.displayScale, 1);
+    return CGSizeMake(ceil(2 * kPadX + glyphWidth + text), round((font.lineHeight + 2 * kRedesignPadY) * scale) / scale);
 }
 
 - (void)drawRect:(CGRect)rect {
     CGRect bounds = self.bounds;
     UITraitCollection *traits = self.traitCollection;
-    UIColor *ink = [UIColor.secondaryLabelColor resolvedColorWithTraitCollection:traits];
-    [[UIColor.quaternaryLabelColor resolvedColorWithTraitCollection:traits] setFill];
-    [[UIBezierPath bezierPathWithRoundedRect:bounds cornerRadius:bounds.size.height / 2] fill];
+    BOOL lit = self.lit;
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    UIColor *ink = lit ? [UIColor colorWithWhite:1 alpha:kRedesignInkLight] : [UIColor.secondaryLabelColor resolvedColorWithTraitCollection:traits];
+    UIColor *fill = lit ? [UIColor colorWithWhite:1 alpha:kRedesignFillLight] : [UIColor.quaternaryLabelColor resolvedColorWithTraitCollection:traits];
+    [fill setFill];
+    if (_redesigned) {
+        // Circular corners: the Music app's edge follows a circle's, not UIBezierPath's continuous curve.
+        CGFloat radius = bounds.size.height * kRedesignCornerShare;
+        CGPathRef shape = CGPathCreateWithRoundedRect(bounds, radius, radius, NULL);
+        CGContextAddPath(context, shape);
+        CGContextFillPath(context);
+        CGPathRelease(shape);
+    } else {
+        [[UIBezierPath bezierPathWithRoundedRect:bounds cornerRadius:bounds.size.height / 2] fill];
+    }
+    // The ink adds its light to the fill's, as the Music app's does over its own.
+    CGBlendMode inkBlend = lit ? kCGBlendModePlusLighter : kCGBlendModeNormal;
+    CGContextSetBlendMode(context, inkBlend);
 
     UIFont *font = self.font;
     NSString *text = self.text ?: @"";
@@ -413,7 +450,8 @@ static void checkDetails(void) {
     CGFloat glyphX = rightToLeft ? x + textSize.width + kGlyphGap : x, textX = rightToLeft ? x : x + glyphWidth;
     if (glyph) {
         CGRect glyphRect = CGRectMake(glyphX, CGRectGetMidY(bounds) - glyph.size.height / 2, glyph.size.width, glyph.size.height);
-        [[glyph imageWithTintColor:ink renderingMode:UIImageRenderingModeAlwaysOriginal] drawInRect:glyphRect];
+        [[glyph imageWithTintColor:ink renderingMode:UIImageRenderingModeAlwaysOriginal] drawInRect:glyphRect
+                                                                                          blendMode:inkBlend alpha:1];
     }
     [text drawAtPoint:CGPointMake(textX, CGRectGetMidY(bounds) - font.lineHeight / 2) withAttributes:attributes];
 }
@@ -424,6 +462,10 @@ static void checkDetails(void) {
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previous {
     [super traitCollectionDidChange:previous];
+    if (previous.accessibilityContrast != self.traitCollection.accessibilityContrast) {
+        [self updateCompositing];
+        [self setNeedsDisplay];
+    }
     if (![previous.preferredContentSizeCategory isEqualToString:self.traitCollection.preferredContentSizeCategory]) {
         [self setNeedsDisplay];
         [self.superview setNeedsLayout];

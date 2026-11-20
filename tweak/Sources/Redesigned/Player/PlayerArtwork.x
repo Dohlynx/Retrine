@@ -26,6 +26,9 @@
 static const CGFloat kPausedScale = 0.84;
 // The bar's 40pt cover lives in a tilt view of its own; the player's is 354.
 static const CGFloat kCoverMinWidth = 200;
+// The Music app's cover top under the window's safe area (its player, iOS 26 at 3x: 95 pt under a 62 pt inset, 22 pt
+// under the grabber). Its cover is as wide as Spotify's tilt view, 24 pt in from the sides.
+static const CGFloat kCoverTopUnderSafeArea = 33;
 
 static char kPlateKey;
 static NSHashTable<UIView *> *sg_tilts;
@@ -57,13 +60,123 @@ static UIView *coverCellOf(UIView *tilt) {
     return nil;
 }
 
-// How far in from each side of its tilt view the cover is drawn, so it stands SGRPlayerSideMargin in from the player's
-// sides (the cell is the player's width) as the Music app's does, where Spotify's tilt view stands nearer (24 pt, so
-// the cover is 338 rather than 354 on a 402 pt iPhone). Nothing where Spotify's own is as far in, an iPad's.
-static CGFloat coverInset(UIView *tilt, UIView *cell) {
-    CGRect inCell = [cell convertRect:tilt.bounds fromView:tilt];
-    CGFloat nearest = MIN(CGRectGetMinX(inCell) - CGRectGetMinX(cell.bounds), CGRectGetMaxX(cell.bounds) - CGRectGetMaxX(inCell));
-    return MAX(0, SGRPlayerSideMargin - nearest);
+// The header rows taking touches in a player (SGRPlayerCoverUnderRow): one showing where it plays from, Spotify's live
+// arrow, the AI DJ's buttons.
+static NSHashTable<UIView *> *sg_liveRows;
+// Each live row's SGRCoverRowFollower, in the player the row was laid out in.
+static char kFollowerKey;
+
+// How far up from the top of its tilt view the cover is drawn, so its top stands kCoverTopUnderSafeArea under the
+// window's safe area as the Music app's does, where Spotify's tilt view stands lower (118 pt on a 402x874 iPhone, the
+// Music app's 95), but never above the bottom of a live header row in the cover's own player where the row is now
+// (followed as Spotify moves it, SGRCoverRowFollower), which it would draw over and take touches from; a row moved out
+// of that player limits it no more. The cell is the whole player, its top the player's, from which the grabber is
+// placed the same way (PlayerHeader.x). Positions without transforms, so the lyrics' moves and Spotify's tilt leave it
+// be. Only ever up, away from the title row, and only in a phone's portrait player: Spotify's landscape and iPad
+// layouts are its own.
+static CGFloat coverLift(UIView *tilt, UIView *cell) {
+    UIWindow *window = cell.window;
+    if (!window || cell.traitCollection.userInterfaceIdiom != UIUserInterfaceIdiomPhone || cell.bounds.size.width >= cell.bounds.size.height) return 0;
+    CGFloat top = 0;
+    for (UIView *view = tilt; view && view != cell; view = view.superview) {
+        top += view.center.y - view.bounds.size.height / 2 - view.superview.bounds.origin.y;
+    }
+    CGFloat highest = window.safeAreaInsets.top + kCoverTopUnderSafeArea;
+    for (UIView *row in sg_liveRows) {
+        UIView *player = ((UIView *)objc_getAssociatedObject(row, &kFollowerKey)).superview;
+        if (player && [cell isDescendantOfView:player] && [row isDescendantOfView:player]) {
+            highest = MAX(highest, CGRectGetMaxY([cell convertRect:row.bounds fromView:row]));
+        }
+    }
+    return MAX(0, top - highest);
+}
+
+static void layOutCoversIn(UIWindow *window) {
+    for (UIView *tilt in sg_tilts) {
+        if (tilt.window == window) [tilt setNeedsLayout];
+    }
+}
+
+// A view in a live row's player, from the player's top to the row's bottom. Spotify 9.2.0 moves the row by its top
+// constraint with no layout of the row (PlayerHeader.x); the engine resizes this with it, and its layout lays the covers
+// in its window out again under the row's new place. First in the player, it is laid out before the covers in the same
+// pass. Taking the row out of the player takes the tie with it (removeFromSuperview's contract); this then leaves.
+@interface SGRCoverRowFollower : UIView
+@property (nonatomic, strong) NSLayoutConstraint *tie;
+@end
+
+@implementation SGRCoverRowFollower
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (!(self = [super initWithFrame:frame])) return nil;
+    self.userInteractionEnabled = NO;
+    self.accessibilityElementsHidden = YES;
+    self.translatesAutoresizingMaskIntoConstraints = NO;
+    // The height it falls to once the tie is gone.
+    NSLayoutConstraint *untied = [self.heightAnchor constraintEqualToConstant:0];
+    untied.priority = UILayoutPriorityFittingSizeLevel;
+    [NSLayoutConstraint activateConstraints:@[[self.widthAnchor constraintEqualToConstant:0], untied]];
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    layOutCoversIn(self.window);
+    if (self.tie.active) return;
+    __weak SGRCoverRowFollower *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!weakSelf.tie.active) [weakSelf removeFromSuperview];
+    });
+}
+@end
+
+void SGRPlayerCoverUnderRow(UIView *row, BOOL live, UIView *player) {
+    if (!sg_liveRows) sg_liveRows = [NSHashTable weakObjectsHashTable];
+    SGRCoverRowFollower *follower = objc_getAssociatedObject(row, &kFollowerKey);
+    live = live && player;
+    if (!live) {
+        [follower removeFromSuperview];
+    } else if (follower.superview != player || !follower.tie.active) {
+        if (!follower) {
+            follower = [SGRCoverRowFollower new];
+            objc_setAssociatedObject(row, &kFollowerKey, follower, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        [follower removeFromSuperview];
+        [player insertSubview:follower atIndex:0];
+        follower.tie = [follower.bottomAnchor constraintEqualToAnchor:row.bottomAnchor];
+        [NSLayoutConstraint activateConstraints:@[
+            [follower.topAnchor constraintEqualToAnchor:player.topAnchor],
+            [follower.leadingAnchor constraintEqualToAnchor:player.leadingAnchor], follower.tie,
+        ]];
+    }
+    if ([sg_liveRows containsObject:row] == live) return;
+    if (live) [sg_liveRows addObject:row];
+    else [sg_liveRows removeObject:row];
+    for (UIView *tilt in sg_tilts) [tilt setNeedsLayout];
+}
+
+// The window's safe area can come after the cover's layout (a player laid out as its window is still being set up), and
+// the cells' own safe areas do not follow it: a view of the window's size in each cover's window hears of a change and
+// lays the covers in that window out again.
+@interface SGRCoverInsetObserver : UIView
+@end
+
+@implementation SGRCoverInsetObserver
+- (void)safeAreaInsetsDidChange {
+    [super safeAreaInsetsDidChange];
+    layOutCoversIn(self.window);
+}
+@end
+
+static void watchInsets(UIWindow *window) {
+    if (!window) return;
+    for (UIView *view in window.subviews) {
+        if ([view isKindOfClass:SGRCoverInsetObserver.class]) return;
+    }
+    SGRCoverInsetObserver *observer = [[SGRCoverInsetObserver alloc] initWithFrame:window.bounds];
+    observer.userInteractionEnabled = NO;
+    observer.accessibilityElementsHidden = YES;
+    observer.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [window insertSubview:observer atIndex:0];
 }
 
 static void scaleCover(UIView *tilt, CGFloat scale) {
@@ -319,7 +432,38 @@ static void watchHold(UIView *tilt) {
     objc_setAssociatedObject(tilt, &kHoldKey, hold, OBJC_ASSOCIATION_ASSIGN);
 }
 
+// Where the cover of a player's tilt view stands in it, its paused shrink left out; CGRectNull for any other tilt view.
+static CGRect coverPlaceIn(UIView *tilt) {
+    UIView *cover = [sg_tilts containsObject:tilt] ? coverIn(tilt) : nil;
+    if (!cover) return CGRectNull;
+    CGSize size = cover.bounds.size;
+    return CGRectMake(cover.center.x - size.width / 2, cover.center.y - size.height / 2, size.width, size.height);
+}
+
 %hook _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
+// A cover laid out out of a window had no safe area to be lifted under.
+- (void)didMoveToWindow {
+    %orig;
+    if (((UIView *)self).window) [(UIView *)self setNeedsLayout];
+}
+
+// The cover's touches (the hold, Spotify's own) are where it is drawn, lifted above the tilt view's top, not under it.
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    CGRect place = coverPlaceIn((UIView *)self);
+    if (CGRectIsNull(place)) return %orig;
+    return CGRectContainsPoint(place, point);
+}
+
+// VoiceOver's cover is the tilt view's (its label is Spotify's): its frame, and with it the activation point at its
+// middle, is the cover as drawn, lifted and shrunk.
+- (CGRect)accessibilityFrame {
+    UIView *tilt = (UIView *)self;
+    UIView *cover = [sg_tilts containsObject:tilt] ? coverIn(tilt) : nil;
+    UIWindow *window = cover.window;
+    // Through the window: converting from the cover itself handed back its bounds untouched (iOS 26.5 simulator).
+    return window ? UIAccessibilityConvertFrameToScreenCoordinates([cover convertRect:cover.bounds toView:nil], window) : %orig;
+}
+
 - (void)layoutSubviews {
     UIView *tilt = (UIView *)self;
     UIView *cell = coverCellOf(tilt);
@@ -328,6 +472,7 @@ static void watchHold(UIView *tilt) {
     UIView *cover = coverIn(tilt);
     if (!cover) return;
     [sg_tilts addObject:tilt];
+    watchInsets(tilt.window);
     // Kept hidden, it is whichever cover is showing: the first open can lay out a second cell in its place. Not animated,
     // though this pass may run inside Spotify's transition.
     if (sg_coverKeptHidden && cover != sg_hiddenCover && showingTilt() == tilt) {
@@ -336,11 +481,10 @@ static void watchHold(UIView *tilt) {
     watchHold(tilt);
     SGRPlayerMotionCoverLaidOut();
     SGRPlayerMixCoverLaidOut();
-    // The cover fills the tilt view (01.txt:37) less the inset to the player's margin, its top where Spotify's is; bounds
-    // and center, unlike a frame, hold under the scale.
-    CGFloat inset = coverInset(tilt, cell);
-    CGRect bounds = CGRectMake(0, 0, tilt.bounds.size.width - 2 * inset, tilt.bounds.size.height - 2 * inset);
-    CGPoint middle = CGPointMake(CGRectGetMidX(tilt.bounds), CGRectGetMinY(tilt.bounds) + bounds.size.height / 2);
+    // The cover fills the tilt view (01.txt:37), lifted to the Music app's top; bounds and center, unlike a frame, hold
+    // under the scale.
+    CGRect bounds = CGRectMake(0, 0, tilt.bounds.size.width, tilt.bounds.size.height);
+    CGPoint middle = CGPointMake(CGRectGetMidX(tilt.bounds), CGRectGetMidY(tilt.bounds) - coverLift(tilt, cell));
     if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
     if (!CGPointEqualToPoint(cover.center, middle)) cover.center = middle;
     // Its image is placed again for the new size (the ImageViewProxy hook below makes it fill the cover).
@@ -366,6 +510,23 @@ static void watchHold(UIView *tilt) {
 
     static dispatch_once_t once;
     dispatch_once(&once, ^{ SGLog(@"redesign player: cover %@ rounded %.0f with a shadow plate, scale %.2f", NSStringFromClass(cover.class), SGRRadiusArtwork, SGRPlayerCoverScale()); });
+}
+%end
+
+// The lifted cover's top stands above the views holding its tilt view, where hit testing never reaches the tilt view: a
+// touch there that would land on one of those holders is the tilt view's, as anywhere else on the cover.
+%hook _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = %orig;
+    UIView *cell = (UIView *)self;
+    if (!hit) return nil;
+    for (UIView *tilt in sg_tilts) {
+        if (tilt != hit && [tilt isDescendantOfView:hit] && [tilt isDescendantOfView:cell] && SGShownUnder(tilt, cell)
+            && [tilt pointInside:[cell convertPoint:point toView:tilt] withEvent:event]) {
+            return tilt;
+        }
+    }
+    return hit;
 }
 %end
 
