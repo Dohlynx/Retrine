@@ -124,8 +124,14 @@ come late, out of order, or not at all.
 
 - `lyrics` (default) opens the lyrics at 2 s, closes them at 6 and opens them again at 10.
 - `look` plays one track, then a track from another album at 8 s, whose picture reaches the screens
-  0.4 s later. It shows the field, the moving background and its crossfade, and the footer row. At 3 s
-  it logs whether touches on the lowered footer row (issue #54) still reach it.
+  0.4 s later. It shows the field, the moving background and its crossfade, and the footer row, with Spotify
+  9.2.0's plain view over the strip under the bottom stack. At 3 s it checks that touches at the middle and 8 pt
+  under it of the queue and AirPlay glyphs on the lowered footer row (issue #54) reach the row. From 10 s it
+  switches to a podcast episode's player (a footer unit of its own in its own bottom stack, its row not hanging
+  out) and back as Spotify does, its views taken out and put back on top, twice and then once with no layout of
+  the episode's row between: the episode leaves no band in the player and its Lyrics takes its touch, and each
+  track after it takes those touches again with one band. The log ends with `look checks: n of 23 right -- PASS`
+  or `FAIL`, and the app exits with it; on the sources before the fix it read 6 of 23.
 - `artwork` is issue #58. Tracks change while the covers on screen lag behind (3.5 s late, past the
   Kit's last look), two skips come in a row with the older picture answering last, and one track plays
   offline. Each step checks by color that the Kit and the field show that track's picture, and the log

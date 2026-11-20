@@ -803,6 +803,10 @@ static void loadLyrics(void) {
 
     // the bottom stack: information, duration, controls, volume, footer
     UIView *bottom = box(host, UIStackView.class, CGRectMake(0, bottomTop, W, bottomHeight), @"npv.bottomStackView");
+    // Spotify 9.2.0's plain view over the strip under the bottom stack, after it in the player, which takes a touch there
+    // (the phone's tree: UIView {{0, 785}, {390, 59}} after npv.bottomStackView). The footer scenario's.
+    if ([scenario() isEqualToString:@"look"])
+        box(host, UIView.class, CGRectMake(0, CGRectGetMaxY(bottom.frame), W, H - CGRectGetMaxY(bottom.frame)), nil);
 
     UIView *floatingView = box(bottom, UIView.class, CGRectMake(0, -32, W, 32), nil);
     UIView *chip = box(floatingView, UIView.class, CGRectMake(24, 0, 148, 32), nil);
@@ -5071,38 +5075,105 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     runScript(script, 0);
 }
 
+// Issue #54: the footer row moved down past the bottom stack's bounds must still take its touches, at the bottom edge of
+// each glyph Spotify draws as well as the middle.
+- (void)expectFooterTouches:(NSString *)when {
+    CGFloat bottom = 0;
+    // The Music app's queue and AirPlay glyphs the footer draws over Spotify's (Music app icons, on by default).
+    for (NSString *symbol in @[@"list.bullet", @"airplayaudio"]) {
+        UIView *found = nil;
+        NSMutableArray *queue = [NSMutableArray arrayWithObject:self.window];
+        while (queue.count && !found) {
+            UIView *v = queue.firstObject;
+            [queue removeObjectAtIndex:0];
+            if ([v isKindOfClass:SGRGlyphView.class] && [((SGRGlyphView *)v).symbol isEqualToString:symbol]) found = v;
+            [queue addObjectsFromArray:v.subviews];
+        }
+        CGRect drawn = [found convertRect:found.bounds toView:self.window];
+        bottom = CGRectGetMaxY(drawn);
+        for (NSNumber *dy in @[@0, @8]) {
+            CGPoint at = CGPointMake(CGRectGetMidX(drawn), CGRectGetMidY(drawn) + dy.doubleValue);
+            UIView *hit = [self.window hitTest:at withEvent:nil];
+            BOOL inRow = NO;
+            for (UIView *v = hit; v; v = v.superview) inRow = inRow || [NSStringFromClass(unitOf(v).class) containsString:@"FooterElementsUnit"] || [v.accessibilityIdentifier isEqualToString:@"QueueButtonNowPlaying"];
+            [self expect:found && inRow step:[NSString stringWithFormat:@"%@: a touch on %@ +%.0f pt", when, symbol, dy.doubleValue]
+                  detail:[NSString stringWithFormat:@"at y %.0f lands on %@", at.y, NSStringFromClass(hit.class)]];
+        }
+    }
+    NSLog(@"[harness] footer glyphs end at %.0f of %.0f", bottom, self.window.bounds.size.height);
+}
+
+static NSUInteger footerBandsIn(UIView *player) {
+    NSUInteger bands = 0;
+    for (UIView *view in player.subviews) bands += [view isKindOfClass:NSClassFromString(@"SGRFooterReach")];
+    return bands;
+}
+
 - (void)runLook {
     UIImage *second = secondArtwork();
-    // Issue #54: the footer row moved down past the bottom stack's bounds must still take its touches,
-    // at the bottom edge of each glyph as well as the middle.
-    after(3, ^{
-        CGFloat bottom = 0;
-        for (NSString *symbol in @[@"list.bullet", @"airpods.pro"]) {
-            __block UIView *found = nil;
-            NSMutableArray *queue = [NSMutableArray arrayWithObject:self.window];
-            while (queue.count && !found) {
-                UIView *v = queue.firstObject;
-                [queue removeObjectAtIndex:0];
-                if ([v isKindOfClass:UIImageView.class] && [((UIImageView *)v).image isEqual:[UIImage systemImageNamed:symbol]]) found = v;
-                [queue addObjectsFromArray:v.subviews];
-            }
-            CGRect drawn = [found convertRect:found.bounds toView:self.window];
-            bottom = CGRectGetMaxY(drawn);
-            for (NSNumber *dy in @[@0, @8]) {
-                CGPoint at = CGPointMake(CGRectGetMidX(drawn), CGRectGetMidY(drawn) + dy.doubleValue);
-                UIView *hit = [self.window hitTest:at withEvent:nil];
-                BOOL inRow = NO;
-                for (UIView *v = hit; v; v = v.superview) inRow = inRow || [NSStringFromClass(unitOf(v).class) containsString:@"FooterElementsUnit"] || [v.accessibilityIdentifier isEqualToString:@"QueueButtonNowPlaying"];
-                NSLog(@"[harness] touch on %@ at y %.0f (+%.0f): %@ -- %@", symbol, at.y, dy.doubleValue, NSStringFromClass(hit.class), inRow ? @"the footer's" : @"MISSED");
-            }
-        }
-        NSLog(@"[harness] footer glyphs end at %.0f of %.0f", bottom, self.window.bounds.size.height);
-    });
+    after(3, ^{ [self expectFooterTouches:@"a track"]; });
     after(8, ^{
         serve(imageURI(@"ffff"), second, 0.25, NO);
         [self playTrack:@"spotify:track:harnessF" image:imageURI(@"ffff")];
     });
     after(8.4, ^{ [self showOnScreen:second]; });
+
+    // A podcast episode's player as Spotify 9.2.0 lays it out in the same player view: a footer unit of its own in a
+    // bottom stack of its own, its row as low as the Music app's already, so not hanging out of the stack; on every
+    // switch Spotify takes the other kind's views out of the player and puts this kind's back on top.
+    UIView *host = _host;
+    UIView *music = SGRFindByIdentifier(host, @"npv.bottomStackView", NULL);
+    UIView *strip = host.subviews[[host.subviews indexOfObject:music] + 1];
+    CGFloat W = host.bounds.size.width, H = host.bounds.size.height, footerHeight = 44, stackHeight = 144, stackBottom = 20;
+    UIStackView *episode = [[UIStackView alloc] initWithFrame:CGRectMake(0, H - stackBottom - stackHeight, W, stackHeight)];
+    UIView *episodeFooter = box(episode, UIView.class, CGRectMake(0, stackHeight - footerHeight, W, footerHeight), nil);
+    box(episodeFooter, UIStackView.class, CGRectMake(12, 0, W - 24, footerHeight), nil);
+    UIViewController *episodeUnit = [_TtC20NowPlaying_ModesImpl18FooterElementsUnit new];
+    episodeUnit.view = episodeFooter;
+    void (^toEpisode)(void) = ^{
+        [music removeFromSuperview];
+        [strip removeFromSuperview];
+        [host addSubview:episode];
+    };
+    void (^toMusic)(void) = ^{
+        [episode removeFromSuperview];
+        [host addSubview:music];
+        [host addSubview:strip];
+    };
+    void (^expectEpisode)(void) = ^{
+        UIView *lyrics = firstOfClass(episodeFooter, @"SGRGlyphButton");
+        UIView *hit = [self.window hitTest:[lyrics convertPoint:CGPointMake(CGRectGetMidX(lyrics.bounds), CGRectGetMidY(lyrics.bounds)) toView:self.window] withEvent:nil];
+        [self expect:lyrics && [hit isDescendantOfView:lyrics] step:@"an episode: a touch on Lyrics" detail:NSStringFromClass(hit.class)];
+        [self expect:footerBandsIn(host) == 0 step:@"an episode: no band, its row not under its stack"
+              detail:[NSString stringWithFormat:@"%lu", (unsigned long)footerBandsIn(host)]];
+    };
+    void (^expectMusic)(NSString *) = ^(NSString *when) {
+        [self expectFooterTouches:when];
+        [self expect:footerBandsIn(host) == 1 step:[NSString stringWithFormat:@"%@: one band", when]
+              detail:[NSString stringWithFormat:@"%lu", (unsigned long)footerBandsIn(host)]];
+    };
+    runScript(@[
+        @[@10, ^{
+            self->_units = [self->_units arrayByAddingObject:episodeUnit];
+            toEpisode();
+            [self layOut];
+        }],
+        @[@0.5, expectEpisode],
+        @[@0.5, ^{ toMusic(); [self layOut]; }],
+        @[@0.5, ^{ expectMusic(@"a track after an episode"); }],
+        @[@0.5, ^{ toEpisode(); [self layOut]; }],
+        @[@0.5, expectEpisode],
+        @[@0.5, ^{ toMusic(); [self layOut]; }],
+        @[@0.5, ^{ expectMusic(@"a track after the episode again"); }],
+        // There and back with no layout of the episode's row between, as with the player closed.
+        @[@0.5, ^{ toEpisode(); toMusic(); [self layOut]; }],
+        @[@0.5, ^{
+            expectMusic(@"a track after an episode never laid out");
+            NSLog(@"[harness] look checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
+                  self->_failures ? @"FAIL" : @"PASS");
+            exit(self->_failures ? 1 : 0);
+        }],
+    ], 0);
 }
 
 @end

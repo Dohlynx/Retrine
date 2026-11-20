@@ -1600,7 +1600,13 @@ Redesigned:
                   (PlayerFooter.x, DJPlayer.x), and draws the DJ button as a waveform over its masked disc; off, Spotify's
                   glyphs come back in the colors and state Spotify gives them (Encore's microphone on Lyrics and queue on the
                   DJ's Queue, as 9.1.90 has no lyrics glyph) and the blue disc shows again. The hidden share button and its
-                  holder take no touches in either state. The open player follows both at once (SGRPlayerLookChanged lays the watched unit views out
+                  holder take no touches in either state. The footer row sits lower than Spotify puts it, just over the
+                  home indicator (issue #54), and where it hangs out of its bottom stack a band of the redesign's hands the
+                  touches there to the row (PlayerFooter.x SGRPlayerLowerRow). Spotify 9.2.0 holds a podcast episode's player
+                  and a track's in units of their own and, on each switch, puts its views back over the band, a plain view
+                  under the stack among them; so on every pass of the row its band is lifted back over the stack, the band
+                  of a row that has left the player goes, and a row that does not hang out has none: one band for a track,
+                  none for an episode, after any order of switching (harness/player/ `look`). The open player follows both at once (SGRPlayerLookChanged lays the watched unit views out
                   again). Landscape player (Player › Controls, off, iPhone only) turns the open player sideways with its
                   lyrics closed, as the layout for a track without lines (cover, title and controls), in the scene of the
                   player on screen, never while the player is closed, opening or closing; a player opened sideways turns

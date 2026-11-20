@@ -447,11 +447,39 @@ UIView *SGRPlayerConnectGlyphIn(UIView *host, UIView *connect) {
 @implementation SGRFooterReach
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *row = self.row;
-    if (!row.window || row.alpha < 0.01 || row.hidden) return nil;
+    // Its own band only: lifted back on top (placeReach), it is over views that take the touches elsewhere.
+    if (![self pointInside:point withEvent:event] || !row.window || row.alpha < 0.01 || row.hidden) return nil;
     UIView *hit = [row hitTest:[row convertPoint:point fromView:self] withEvent:event];
     return hit == row ? nil : hit;
 }
 @end
+
+// The band of `row`, in `stack`, over `band` of `player`. Spotify holds a podcast episode's player and a track's in units
+// of their own, each row in a bottom stack of its own, and on every switch between them takes its views out of the player
+// and puts the new kind's back on top: the bottom stack and, after it, a plain view over the strip under it, the band's
+// strip (Spotify 9.2.0, music, an episode, music again). A band put in before stays under them, its touches taken by that
+// view, and the band of a row that has left stays in the player. So a band whose row is no longer in the player goes,
+// a row that does not hang out of its stack by a pixel has none, and a band its stack has come over goes back on top.
+static void placeReach(UIView *row, UIView *stack, UIView *player, CGRect band, CGFloat scale) {
+    SGRFooterReach *reach = objc_getAssociatedObject(row, &kReachKey);
+    for (UIView *view in player.subviews) {
+        if ([view isKindOfClass:SGRFooterReach.class] && view != reach && ![((SGRFooterReach *)view).row isDescendantOfView:player])
+            [view removeFromSuperview];
+    }
+    if (band.size.height * scale < 1) {
+        [reach removeFromSuperview];
+        return;
+    }
+    if (!reach) {
+        reach = [SGRFooterReach new];
+        reach.row = row;
+        objc_setAssociatedObject(row, &kReachKey, reach, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSArray<UIView *> *siblings = player.subviews;
+    if (reach.superview != player) [player addSubview:reach];
+    else if ([siblings indexOfObject:reach] < [siblings indexOfObject:stack]) [player bringSubviewToFront:reach];
+    if (!CGRectEqualToRect(reach.frame, band)) reach.frame = band;
+}
 
 static UIViewController *unitOf(UIView *view) {
     UIResponder *next = view.nextResponder;
@@ -680,18 +708,11 @@ void SGRPlayerLowerRow(UIView *row) {
         SGRPlayerPlaceVolume(stack, nil, row, SGRPlayerSideMargin, rhythm);
     }
 
-    SGRFooterReach *reach = objc_getAssociatedObject(row, &kReachKey);
-    if (!reach) {
-        reach = [SGRFooterReach new];
-        reach.row = row;
-        objc_setAssociatedObject(row, &kReachKey, reach, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    if (reach.superview != player) [player addSubview:reach];
     CGRect stackFrame = [stack convertRect:stack.bounds toView:player];
     CGRect drawn = [row convertRect:row.bounds toView:player];
     CGFloat from = CGRectGetMaxY(stackFrame);
     CGRect band = CGRectMake(CGRectGetMinX(drawn), from, drawn.size.width, MAX(0, CGRectGetMaxY(drawn) - from));
-    if (!CGRectEqualToRect(reach.frame, band)) reach.frame = band;
+    placeReach(row, stack, player, band, window.traitCollection.displayScale);
 
     static dispatch_once_t once;
     dispatch_once(&once, ^{
