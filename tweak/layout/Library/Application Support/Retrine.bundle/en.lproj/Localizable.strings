@@ -1697,7 +1697,7 @@
 "settings.mod.update.intro.is_newest" = "This build, %s, is GitHub's newest release; it%@. What went into it is below.";
 "settings.mod.update.intro.newer_available" = "%@%@, and this build is %s. Everything in between is below.";
 "settings.mod.update.intro.not_checked" = "This build is %s. Nothing has been asked of GitHub yet.";
-"settings.mod.update.intro.up_to_date" = "This build is %s. GitHub has no newer release.";
+"settings.mod.update.intro.up_to_date" = "This build is %s. The last check found no newer release.";
 "settings.mod.update.notice.action.get_it" = "Get it";
 "settings.mod.update.notice.action.not_now" = "Not now";
 "settings.mod.update.notice.action.whats_new" = "What's new";

@@ -1,7 +1,7 @@
 // About: where the build points its user, and whether GitHub has a newer release (Update.m,
 // UpdatePage.m). The status is a string for the Updates row; the page's ticker reads it, so the
 // check needs no callback, and a check that lands posts SGUpdateCheckedNotification for the page
-// that is open at the time. SGCheckForUpdate(NO) respects a six hour cache, SGCheckForUpdate(YES)
+// that is open at the time. SGCheckForUpdate(NO) respects a six hour cache for the same build, SGCheckForUpdate(YES)
 // always asks.
 #import <UIKit/UIKit.h>
 #import "Settings/SGModPage.h"

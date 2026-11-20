@@ -2364,7 +2364,9 @@ Spoof Premium; Block telemetry; Clean shared links; then what the ad
 blocking and the telemetry blocking have stopped) and Labs (features Spotify built and did not ship,
 AI Chat (Martini) first). Last, All flags, Spotify's remote-config flags with a search field and an
 Auto / Off / On control per flag (a text field for the number and text ones), and Mod: Updates
-(the row reads out where the build stands and opens the changelog of everything newer than it, read
+(the row reads out where the build stands and opens the changelog of everything newer than it, or
+the build's own notes if it matches the latest eligible release. A build change bypasses the
+six-hour cache once; an older cached release contributes neither its date nor its notes. Releases are read
 from the releases Release Please cuts, with Check now, the release to get, all the releases and Tell
 me when one is out, the sheet a newer release brings up a few seconds after Spotify opens), the
 build and Spotify's version, the site and the repo, What's New and the welcome tour again, Clear Keychain and Reset all

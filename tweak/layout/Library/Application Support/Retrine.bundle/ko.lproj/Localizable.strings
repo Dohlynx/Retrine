@@ -1747,7 +1747,7 @@
 "settings.mod.update.intro.is_newest" = "현재 빌드(%s)는 GitHub의 최신 릴리스입니다.%@. 포함된 변경 사항은 아래와 같습니다.";
 "settings.mod.update.intro.newer_available" = "%@%@, 현재 빌드는 %s입니다. 그 사이의 모든 변경 사항은 아래와 같습니다.";
 "settings.mod.update.intro.not_checked" = "현재 빌드는 %s입니다. 아직 GitHub에서 확인하지 않았습니다.";
-"settings.mod.update.intro.up_to_date" = "현재 빌드는 %s입니다. GitHub에 최신 릴리스가 없습니다.";
+"settings.mod.update.intro.up_to_date" = "현재 빌드는 %s입니다. 마지막으로 확인했을 때 더 새로운 릴리스는 없었습니다.";
 "settings.mod.update.notice.action.get_it" = "받기";
 "settings.mod.update.notice.action.not_now" = "지금 안 함";
 "settings.mod.update.notice.action.whats_new" = "새로운 기능";

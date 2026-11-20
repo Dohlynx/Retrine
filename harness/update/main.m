@@ -8,6 +8,7 @@
 #import "App/About/About.h"
 #import "../harness-fail.h"
 #import "../timer-lifecycle.h"
+#import "cache-check.inc"
 
 // Spotify's welcome tour is not built here, and nothing holds the screen against the notice.
 BOOL SGOnboardingShowing(void) {
@@ -39,9 +40,14 @@ static UIViewController *plainScreen(void) {
 
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     NSArray<NSString *> *arguments = NSProcessInfo.processInfo.arguments;
+    if ([arguments containsObject:@"cache-check"]) {
+        checkCache([arguments containsObject:@"legacy"]);
+        exit(0);
+    }
     if ([arguments containsObject:@"footers"] || [arguments containsObject:@"background-check"]) {
         // Fresh cached releases keep SGUpdatePage's normal check offline.
         [NSUserDefaults.standardUserDefaults setVolatileDomain:@{
+            @"spotifyglass.update.checkedBuild": @(SG_VERSION),
             @"spotifyglass.update.checked": @(NSDate.date.timeIntervalSince1970),
             @"spotifyglass.update.releases": @[
                 @{@"version": @"99.0.0", @"notes": @"### Fixes\n* A cached fix"}
