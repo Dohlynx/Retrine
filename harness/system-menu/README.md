@@ -53,6 +53,16 @@ selection or dismissal, then deliver or withhold Spotify's sheet.
   in a second menu whose rows never come (after 4 s); neither the X, the add button nor a row fires. In a third menu
   left up with no rows coming, Don't play this comes back after the quick row once they are given up on. In a
   fourth, in a playlist whose Hide is grayed out, the X's item stays once the live rows are in.
+- `popover`: Spotify's sheet a popover from its ⋯ in the app's window, as on an iPad (kept a popover at any width):
+  it is up in the mod's window, unseen, and the menu lays out its rows as `rows` does; picking Go to album taps
+  Spotify's row. Without the source moved into the mod's window, UIKit drops the popover and the sheet never comes up.
+- `notup`, `notup-stored`: the sheet taken into the mod's window but never up there (a popover anchored by a source
+  item, which UIKit drops): within the three-second request window the loading row gives way to "Spotify's options did
+  not load" (`notup`) and Save to Your Library and Don't play this are in the menu, also where stored Like and Hide
+  rows stood for them (`notup-stored`); picking Don't play this fires Spotify's X.
+- `slowsheet`: Add to Queue picked while Spotify's sheet is up in the mod's window but its presentation's completion
+  comes 3.5 s late and its rows 3.4 s after it loads, both past the request window: the pick still waits for its row
+  and fires Spotify's Add to queue once, the sheet never shown.
 - `timing`: one cold opening and one warm opening after the menu and backing sheet dismiss.
   Checks the one-second cold and 250 ms warm limits, without repeated screenshot/timing rehearsals.
 - `rows`: the menu lays out Go to album, the grayed-out Lyrics and Sleep timer (below the sheet's fold), not the
@@ -125,5 +135,9 @@ directory. `delayed-pick` must fail because the outstanding request no longer su
 For presentation recognition, restore the any-non-alert predicate: `delayed-mod-panel` must fail its panel
 visibility check. For the title row items, drop the line in `leadGroup` that leaves out an item whose identifier
 is a shown row's: `playlist` must fail; make `fireTitle:` fire the first lead item that carries an identifier where
-its live rows lack the title, or drop `refreshLead` where the row poll gives up: `stalecache` must fail. Mutate only a temporary source copy, never the working source.
+its live rows lack the title, or drop `refreshLead` where the row poll gives up: `stalecache` must fail. For the
+iPad popover, skip moving its source into the mod's window in `adoptSheet:`: `popover` must fail; let the request
+window's timeout end with adoption again (`if (!session || sg_requesting != session) return;`): `notup` and
+`notup-stored` must fail; drop the request window's branch for a sheet still being presented (its presenting
+controller set): `slowsheet` must fail. Mutate only a temporary source copy, never the working source.
 Remove only those temporary build/source directories after the runs.

@@ -1433,7 +1433,15 @@ Redesigned:
                   a button's menu on touch down only while it holds one, and the session's replaces it as the touch
                   asks); Spotify's ⋯ action is then run from code and its sheet presented
                   in a window of the mod's under the app's (the menu, a presentation of UIKit's from the player,
-                  leaves no room for another there), read, and used to run a pick. Spotify's rows show the last
+                  leaves no room for another there), read, and used to run a pick. On an iPad that sheet is a popover
+                  from Spotify's ⋯ (a UIPopoverPresentationController of NavigationUI_SheetImpl's), which UIKit drops
+                  without a word when it is presented from the mod's window with its source view in the app's, so
+                  its source is moved first to the same place on screen in the mod's window. A sheet that does not
+                  come, or comes and is never presented in the mod's window (no presenting controller), within the
+                  three-second request window ends the wait: the loading row gives way to "Spotify's options did not
+                  load" and the lead items come back. One still being presented then goes on to the rows' own
+                  bounded wait, so a pick made before keeps waiting for its row.
+                  Spotify's rows show the last
                   complete set stored for that kind of track (spotifyglass.redesign.player.menuRows.<kind>), or the
                   system's loading row the first time, and are put right in place as the live rows come. A page's ⋯
                   works the other way round: its tap opens Spotify's sheet, presented unanimated in a container hidden

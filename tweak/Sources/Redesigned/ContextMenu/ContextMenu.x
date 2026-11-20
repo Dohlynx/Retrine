@@ -36,7 +36,8 @@ static const NSTimeInterval kSettle = 1;
 static const NSTimeInterval kRowsPoll = 0.1;
 // How long a pick made before the sheet has its live rows waits for them before the sheet is shown.
 static const NSTimeInterval kQuickWait = 4;
-// How long the player's menu waits for Spotify's sheet once its ⋯ action has been run for it.
+// How long the player's menu waits for Spotify's sheet to be up in the mod's window once its ⋯ action has been run
+// for it.
 static const NSTimeInterval kRequestWindow = 3;
 
 static NSString *const kSheetClass = @"_TtC24ContextMenu_InternalImpl25ContextMenuViewController";
@@ -423,9 +424,9 @@ static void raiseHost(UIWindow *window) {
     // The menu is asked for while the sheet's presentation is still under way, which UIKit takes only some of
     // the time; if it does not come, it is asked for again once the sheet is up.
     BOOL _early, _wasEarly;
-    // Direct: Spotify's sheet asked for, and when; it did not come; the menu closed with nothing for it to do,
-    // so it goes as it comes; a row picked on it presented something of Spotify's.
-    BOOL _requested, _failed, _dropOnArrival, _rowPresented;
+    // Direct: Spotify's sheet asked for, and when; it is up in the mod's window; it did not come or come up; the menu
+    // closed with nothing for it to do, so it goes as it comes; a row picked on it presented something of Spotify's.
+    BOOL _requested, _arrived, _failed, _dropOnArrival, _rowPresented;
     CFTimeInterval _requestedAt;
 }
 
@@ -590,11 +591,23 @@ static void raiseHost(UIWindow *window) {
     __weak SGRMenuSession *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kRequestWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         SGRMenuSession *session = weakSelf;
-        // Adoption or supersession already ended this request; its old timeout must do nothing.
-        if (!session || sg_requesting != session) return;
+        // The sheet up in the mod's window, or a newer request, ended this one; its old timeout must do nothing.
+        if (!session || session->_arrived || (sg_requesting && sg_requesting != session)) return;
+        // Taken and being presented there (UIKit gave it a presenting controller), only not done yet: what waits goes
+        // on to the rows' own bounded wait, as for a sheet that is up, so a pick made before keeps waiting for its row.
+        if (session.presented.presentingViewController) {
+            SGLog(@"system menu: Spotify's sheet is still being presented in the mod's window %.0f s after it was asked for, its rows waited for",
+                  kRequestWindow);
+            [session pollRows];
+            return;
+        }
+        // Taken but never presented (UIKit dropped it) is no more use than a sheet that never came: the rows are
+        // waited for from its arrival on (pollRows), and nothing else would end the wait.
+        BOOL came = sg_requesting != session;
         sg_requesting = nil;
         session->_failed = YES;
-        SGLog(@"system menu: Spotify's sheet did not come %.0f s after it was asked for", kRequestWindow);
+        SGLog(came ? @"system menu: Spotify's sheet came but was not up in the mod's window %.0f s after it was asked for"
+                   : @"system menu: Spotify's sheet did not come %.0f s after it was asked for", kRequestWindow);
         session->_waiting = NO;
         [session completeRowWaiters];
         [session refreshLead];
@@ -612,6 +625,21 @@ static void raiseHost(UIWindow *window) {
     SGLog(@"system menu: Spotify's sheet (%@) came %.3f s after it was asked for, %.3f s after the touch down; kept in the mod's window",
           controllersIn(presented), self.takenAt - _requestedAt, self.takenAt - self.touchedAt);
     UIViewController *root = host.rootViewController;
+    // On an iPad the sheet is a popover from Spotify's ⋯: its transition (a custom presentation) makes a
+    // NavigationUI_SheetImpl.PopoverPresentationController, a UIPopoverPresentationController whose source view is the
+    // ⋯, and a popover presented from the mod's window with its source view in the app's is dropped by UIKit without
+    // a word: no presenting controller, no completion (Spotify 9.2.0, iPad simulator). Its presentation controller is
+    // made now, as UIKit makes it on presenting and then uses, and its source becomes the same place on screen in the
+    // mod's window, so it points where it would have.
+    UIPresentationController *made = presented.presentationController;
+    UIPopoverPresentationController *popover = [made isKindOfClass:UIPopoverPresentationController.class] ? (UIPopoverPresentationController *)made : nil;
+    UIView *source = popover.sourceView;
+    if (source && source.window != host) {
+        CGRect rect = [source convertRect:CGRectIsEmpty(popover.sourceRect) ? source.bounds : popover.sourceRect toCoordinateSpace:root.view];
+        popover.sourceView = root.view;
+        popover.sourceRect = rect;
+        SGLog(@"system menu: Spotify's sheet is a popover, its source (%@) moved into the mod's window at %@", NSStringFromClass(source.class), NSStringFromCGRect(rect));
+    }
     void (^present)(void) = ^{
         sg_redirecting = YES;
         [root presentViewController:presented animated:NO completion:^{
@@ -627,6 +655,7 @@ static void raiseHost(UIWindow *window) {
 }
 
 - (void)sheetArrived {
+    _arrived = YES;
     if (_dropOnArrival && !_waiting) {
         [self.presented.presentingViewController dismissViewControllerAnimated:NO completion:nil];
         return;

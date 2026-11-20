@@ -222,6 +222,8 @@ static NSUInteger sg_selectionCount;
 // Hold the presentation itself, not just its rows, until the menu has released its session.
 static BOOL sg_sheetHeld;
 static CFTimeInterval sg_sheetAskedAt;
+// When the sheet got its rows, and when its presentation completed (`slowsheet`).
+static CFTimeInterval sg_rowsGivenAt, sg_sheetCompletedAt;
 // The sheet waits for the harness to give it its rows (sg_rowsAfter seconds after it loads, or never).
 static BOOL sg_rowsHeld, sg_rowsNever;
 static NSTimeInterval sg_rowsAfter;
@@ -265,7 +267,7 @@ static SGHarnessPlayer *sg_player;
 - (void)giveRows;
 @end
 
-@interface SGHarnessPlayer : UIViewController
+@interface SGHarnessPlayer : UIViewController <UIPopoverPresentationControllerDelegate>
 @property (nonatomic, strong) UIButton *more, *arrow, *add;
 @property (nonatomic, strong) UIControl *ban;
 @property (nonatomic, strong) UIView *header, *titleElement, *addElement, *banElement;
@@ -307,6 +309,7 @@ static SGHarnessPlayer *sg_player;
 - (void)giveRows {
     if (self.loaded) return;
     self.loaded = YES;
+    sg_rowsGivenAt = CACurrentMediaTime();
     [self.table reloadData];
     NSLog(@"[harness] the sheet has its rows");
 }
@@ -620,6 +623,20 @@ static void pick(NSString *title) {
 - (void)presentMenuSheet {
     UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:[_TtC24ContextMenu_InternalImpl25ContextMenuViewController new]];
     self.sheet = navigation;
+    if (is(@"popover")) {
+        // As on an iPad (9.2.0): a popover from Spotify's ⋯, in the app's window, kept a popover at any width.
+        navigation.modalPresentationStyle = UIModalPresentationPopover;
+        navigation.popoverPresentationController.sourceView = self.more;
+        navigation.popoverPresentationController.sourceRect = self.more.bounds;
+        navigation.popoverPresentationController.delegate = self;
+    }
+    if (is(@"notup") || is(@"notup-stored")) {
+        // A popover anchored to the ⋯ as a source item, not a source view, which the mod does not move: UIKit drops it
+        // from the mod's window as it did Spotify's iPad popover, so the sheet is taken and never up.
+        navigation.modalPresentationStyle = UIModalPresentationPopover;
+        navigation.popoverPresentationController.sourceItem = self.more;
+        navigation.popoverPresentationController.delegate = self;
+    }
     if (is(@"wrapped") || [scenario() hasPrefix:@"delayed-wrapped-"]) {
         SGHarnessWrapper *wrapper = [SGHarnessWrapper new];
         wrapper.inner = navigation;
@@ -627,6 +644,11 @@ static void pick(NSString *title) {
         return;
     }
     [self presentViewController:navigation animated:YES completion:nil];
+}
+
+- (UIModalPresentationStyle)adaptivePresentationStyleForPresentationController:(UIPresentationController *)controller
+                                                               traitCollection:(UITraitCollection *)traits {
+    return UIModalPresentationNone;
 }
 
 - (void)presentSleepOptions {
@@ -759,9 +781,10 @@ static NSArray<NSString *> *quickTitles(void) {
         NSLog(@"[harness] done");
         exit(0);
     };
-    sg_rowsHeld = is(@"loading") || is(@"quick") || is(@"quicklate") || is(@"podcast") || is(@"stored") || is(@"playlist") || is(@"stalecache");
+    sg_rowsHeld = is(@"loading") || is(@"quick") || is(@"quicklate") || is(@"podcast") || is(@"stored") || is(@"playlist") || is(@"stalecache")
+               || is(@"slowsheet");
     sg_rowsNever = is(@"quicklate");
-    sg_rowsAfter = is(@"quick") ? 1.2 : is(@"loading") || is(@"podcast") ? 1.5 : 0;
+    sg_rowsAfter = is(@"quick") ? 1.2 : is(@"loading") || is(@"podcast") ? 1.5 : is(@"slowsheet") ? 3.4 : 0;
 
     if ([run hasPrefix:@"delayed-"] || [run hasPrefix:@"request-timeout-"] || is(@"request-superseded")) {
         sg_sheetHeld = YES;
@@ -927,6 +950,15 @@ static NSArray<NSString *> *quickTitles(void) {
         self.banElement.hidden = NO;
         [self.view layoutIfNeeded];
     }
+    if ([run hasPrefix:@"notup"]) {
+        // Spotify's sheet taken into the mod's window but never up there, its rows never read: no rows stored
+        // (`notup`), or a playlist's (`notup-stored`) standing for the add button and the X.
+        sg_rowsHeld = sg_rowsNever = YES;
+        if (is(@"notup-stored")) storePlaylistRows();
+        else [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.redesign.player.menuRows.track"];
+        self.banElement.hidden = NO;
+        [self.view layoutIfNeeded];
+    }
 
     if ([run isEqualToString:@"timing"]) {
         [self tap:^(CFTimeInterval cold) {
@@ -957,12 +989,16 @@ static NSArray<NSString *> *quickTitles(void) {
         // rows held back, or with no Like row (titleitems'). Rows that come at once with Spotify's Like row take it
         // out, as do rows stored with it (stalecache's).
         NSString *add = [run isEqualToString:@"titleitems"] ? @"Change Where It's Saved"
-                      : sg_rowsHeld && ![run isEqualToString:@"stalecache"] ? @"Save to Your Library" : nil;
+                      : sg_rowsHeld && ![run isEqualToString:@"stalecache"] && ![run isEqualToString:@"notup-stored"] ? @"Save to Your Library" : nil;
         NSMutableArray<NSString *> *want = [quickTitles() mutableCopy];
         if (add) [want addObject:add];
         if (rows != NSNotFound) [want addObjectsFromArray:@[order[rows], @"Speed, Pitch & Reverb", @"Show Animated Artwork"]];
         check(rows != NSNotFound && inOrder(order, want) && ![order containsObject:@"[More]"],
               [NSString stringWithFormat:@"the quick row, the add button, Spotify's rows, then the player's own: %@", [order componentsJoinedByString:@" | "]]);
+        if ([run hasPrefix:@"notup"]) {
+            [self run:run finish:finish];
+            return;
+        }
         // Spotify's sheet is asked for once the menu is up, into the mod's window, under the app's.
         waitFor(^BOOL { return self.sheetWindow != nil; }, 2, ^{
             check(sg_spotifyTaps == 1, [NSString stringWithFormat:@"Spotify's ⋯ action ran once, from code (%lu)", (unsigned long)sg_spotifyTaps]);
@@ -1002,7 +1038,32 @@ static NSArray<NSString *> *quickTitles(void) {
 }
 
 - (void)run:(NSString *)run finish:(dispatch_block_t)finish {
-    if ([run isEqualToString:@"rows"] || [run isEqualToString:@"sort"] || [run isEqualToString:@"wrapped"]) {
+    if ([run hasPrefix:@"notup"]) {
+        // Never up, the sheet has no rows to give: the wait for them ends with the request window (3 s from Spotify's
+        // ⋯ action), the loading row (`notup`) gives way, and the add button and the X are in the menu, also where
+        // stored rows stood for them (`notup-stored`); the X's item fires the X.
+        BOOL stored = [run isEqualToString:@"notup-stored"];
+        check(stored ? menuShows(@"Hide in this playlist") && !menuShowsAny(@[@"Save to Your Library", @"Don't play this"])
+                     : [shownOrder(self.front) containsObject:@"<loading>"],
+              stored ? @"the stored Like and Hide stand for the add button and the X at first" : @"the loading row stands for Spotify's rows at first");
+        waitFor(^BOOL { return menuShowsAll(@[@"Save to Your Library", @"Don't play this"]) && ![shownOrder(self.front) containsObject:@"<loading>"]; }, 5, ^{
+            NSArray<NSString *> *order = shownOrder(self.front);
+            CFTimeInterval waited = CACurrentMediaTime() - sg_sheetAskedAt;
+            check(![order containsObject:@"<loading>"] && (stored || [order containsObject:@"Spotify's options did not load"]),
+                  [NSString stringWithFormat:@"the loading row is gone %.1f s after Spotify's sheet was asked for: %@", waited, [order componentsJoinedByString:@" | "]]);
+            check(menuShowsAll(@[@"Save to Your Library", @"Don't play this"]) && waited < 4,
+                  [NSString stringWithFormat:@"the add button and the X are in the menu within the request window (%.1f s)", waited]);
+            check(sg_spotifyTaps == 1 && !self.sheetWindow, @"Spotify's sheet was asked for once and never came up");
+            check(openMenu() != nil && sg_selectionCount == 0, @"the menu is still up, nothing fired");
+            pick(@"Don't play this");
+            waitFor(^BOOL { return self.banTaps == 1; }, 2, ^{
+                check(self.banTaps == 1 && self.addTaps == 0, @"picking the X's item fired Spotify's X");
+                finish();
+            });
+        });
+        return;
+    }
+    if ([run isEqualToString:@"rows"] || [run isEqualToString:@"sort"] || [run isEqualToString:@"wrapped"] || [run isEqualToString:@"popover"]) {
         after(0.3, ^{
             waitFor(^BOOL { return menuShows(@"Go to album"); }, 3, ^{
                 check(menuShowsAll(@[@"Go to album", @"Lyrics", @"Sleep timer"]), @"the menu lays out the rest of Spotify's rows, Sleep timer below the sheet's fold too");
@@ -1057,6 +1118,26 @@ static NSArray<NSString *> *quickTitles(void) {
                         }];
                     });
                 });
+            });
+        });
+        return;
+    }
+    if ([run isEqualToString:@"slowsheet"]) {
+        // Add to Queue picked while the sheet, up in the mod's window but its presentation not done, has no rows; the
+        // request window ends (3 s) before the rows (3.4 s after the sheet loads) and the presentation's completion
+        // (3.5 s late): the pick still waits for its row and fires it once, the sheet never shown.
+        pick(@"Add to Queue");
+        waitFor(^BOOL { return sg_selectionCount > 0 || self.sheetShown; }, 6, ^{
+            check([sg_selected isEqualToString:@"Add to queue"] && !self.sheetShown,
+                  [NSString stringWithFormat:@"the pick fired Spotify's Add to queue once its row came (%@), the sheet not shown (%d)", sg_selected, self.sheetShown]);
+            check(sg_rowsGivenAt - sg_sheetAskedAt > 3, [NSString stringWithFormat:@"(the rows came %.1f s after the sheet was asked for, past the request window)",
+                                                         sg_rowsGivenAt - sg_sheetAskedAt]);
+            after(2, ^{
+                check(sg_sheetCompletedAt - sg_sheetAskedAt > 3, @"(the sheet's presentation completed after the request window)");
+                check(sg_selectionCount == 1 && !self.sheetShown, [NSString stringWithFormat:@"it fired once (%lu), nothing shown after the late completion",
+                                                                   (unsigned long)sg_selectionCount]);
+                check(self.sheetGone && !openMenu(), @"the sheet and the menu are gone");
+                finish();
             });
         });
         return;
@@ -1296,6 +1377,26 @@ static NSArray<NSString *> *quickTitles(void) {
 
 @implementation SGHarnessApp
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
+    if (is(@"slowsheet")) {
+        // Over ContextMenu.x's own hook (installed before launch): Spotify's sheet presented in the mod's window goes up at
+        // once, attached and with its presenting controller, but its presentation's completion comes 3.5 s late, after
+        // the request window.
+        Method present = class_getInstanceMethod(UIViewController.class, @selector(presentViewController:animated:completion:));
+        __block IMP hooked = NULL;
+        hooked = method_setImplementation(present, imp_implementationWithBlock(^(UIViewController *from, UIViewController *presented, BOOL animated, void (^completion)(void)) {
+            void (^done)(void) = completion;
+            if (completion && [NSStringFromClass(from.viewIfLoaded.window.class) isEqualToString:@"SGRSheetWindow"] && presented == sg_player.sheet) {
+                done = ^{
+                    after(3.5, ^{
+                        sg_sheetCompletedAt = CACurrentMediaTime();
+                        NSLog(@"[harness] the sheet's presentation completes, %.1f s after it was asked for", sg_sheetCompletedAt - sg_sheetAskedAt);
+                        completion();
+                    });
+                };
+            }
+            ((void (*)(id, SEL, id, BOOL, id))hooked)(from, @selector(presentViewController:animated:completion:), presented, animated, done);
+        }));
+    }
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     sg_player = [SGHarnessPlayer new];
     self.window.rootViewController = sg_player;
