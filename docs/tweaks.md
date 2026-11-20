@@ -1537,7 +1537,18 @@ Redesigned:
                   secondary color, 1.1 times the title's cap height, centered on it, half its size after the last letter
                   and, for a title too long for the row, after the marquee, which then ends that much sooner. It carries
                   the shown mark's accessibility and id, so VoiceOver still reads the track as explicit and Hide explicit
-                  badge clears it (harness/player/title-style-check.sh). Where
+                  badge clears it (harness/player/title-style-check.sh). A button of Spotify's arranged after the title
+                  (an episode's skip ad pill, the AI DJ's) stays beside it, the title and its mark ending Spotify's
+                  spacing short of it; where the add button's slot is gone (an episode's row while the pill is up) the ⋯
+                  stands in the row's end and the row's arranged views end before it, by its trailing layout margin, so
+                  the title, the pill and the ⋯ sit side by side and the row takes its shape back as the pill goes
+                  (issue #28). A podcast's speed button (Spotify's value and "×", turned to two lines by Spotify for a
+                  long value such as 1.25, and past the row's edge for a Korean "1배속×") is kept on one line, scaled
+                  down about its middle only where it would not fit the 48 pt button, so every word is where the
+                  button takes its tap and VoiceOver frames it, short of the 15 s skip (PlayerSpeedLabel.m,
+                  harness/player/speed-label-check.sh). Whether the ⋯ stands in the add button's slot is read from
+                  the slot (shown or hidden by Spotify) rather than from where the ⋯ was drawn, so the pass in which
+                  Spotify takes the pill away and brings the slot back already ends the title before it. Where
                   the footer has no queue button of Spotify's (a Free account's row), the Music app's queue glyph stands
                   in the trailing slot and opens Playing Next; Spotify's own is kept where it has one. The
                   timestamps under the slider are metered (SGRMonospacedDigits) and, with Rolling time digits on (the

@@ -374,6 +374,7 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     SGRPlayerPlayGlyphIn(host);
     BOOL endsEmpty = shuffleAndRepeatGone(host, row);
     if (row) spreadSkips(host, row, endsEmpty);
+    SGRPlayerFitSpeedLabel(host);
 }
 %end
 

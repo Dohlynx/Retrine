@@ -20,6 +20,10 @@
 // secondary color, a little more than the title's cap height, centered on it and half its size after it, where it
 // stays when the title is too long for the row, the title then ending that much sooner. It carries the shown
 // mark's accessibility, and its identifier, so Hide explicit badge (Kit/SGRExplicitBadge.x) clears it too.
+// A button of Spotify's arranged after the title (an episode's skip ad pill, the AI DJ's) stays beside it, the title
+// ending Spotify's spacing and the mark's room short of it; the ⋯ standing in the row's end where the add button's slot
+// is gone (an episode's row while the pill is up) has the row's arranged views end before it, by the row's trailing
+// layout margin (issue #28).
 // Beside the lyrics' thumbnail the arranged view is slid toward the trailing controls (PlayerLyrics.x), and the same
 // spacing narrows it by the slide and a gap -- the row's trailing layout margin where nothing is arranged after it --
 // so the title and the artist scroll or end, and the mark stands, short of them or of the row's end. The
@@ -37,7 +41,9 @@
 #import "Headers/SPTPlayer.h"
 #import "Player.h"
 
-static char kOriginalKey, kRoleKey, kWantsHiddenKey, kMarkKey, kSpacingKey, kMarginsKey;
+static char kOriginalKey, kRoleKey, kWantsHiddenKey, kMarkKey, kSpacingKey, kMarginsKey, kTitleHoldKey, kAddKey;
+// Spotify's add button, whose slot in the title row PlayerMenu.m gives the ⋯.
+static NSString *const kAddButtonID = @"Components.UI.AddToButton";
 // Spotify's own class's setText:, setFont:, setTextColor: and a mark holder's setHidden: for each subclass made, by
 // the subclass and the selector. Found by the class the subclass was made of, never by the view's class at the time
 // of the call: key-value observing can put a subclass of its own above this one, and the class above would then be
@@ -311,42 +317,68 @@ static CGFloat baselineOffset(UILabel *label) {
     return (label.bounds.size.height - line.size.height) / 2 + [layout locationForGlyphAtIndex:0].y;
 }
 
-// The row's own margin arrangement, while its trailing margin holds the title's room back.
-static void restoreMargins(UIStackView *row) {
+// Holds the row's arranged views `hold` in from its trailing edge beyond where Spotify's margins end them, by the row's
+// trailing layout margin; 0 puts Spotify's margin arrangement back. YES when the row's margins changed.
+static BOOL holdTrailing(UIStackView *row, CGFloat hold) {
     NSArray *spotifys = objc_getAssociatedObject(row, &kMarginsKey);
-    if (!spotifys) return;
-    row.layoutMarginsRelativeArrangement = [spotifys[0] boolValue];
-    row.directionalLayoutMargins = [spotifys[1] directionalEdgeInsetsValue];
-    row.insetsLayoutMarginsFromSafeArea = [spotifys[2] boolValue];
-    objc_setAssociatedObject(row, &kMarginsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-// Ends the last arranged view, the title's, `less` further in from the row's trailing edge than it ends now, by the
-// row's trailing layout margin: the room a custom spacing gives where nothing is arranged after the title.
-static void holdBackTrailing(UIStackView *row, CGFloat less) {
-    NSArray *spotifys = objc_getAssociatedObject(row, &kMarginsKey);
+    if (hold < 0.25) {
+        if (!spotifys) return NO;
+        row.layoutMarginsRelativeArrangement = [spotifys[0] boolValue];
+        row.directionalLayoutMargins = [spotifys[1] directionalEdgeInsetsValue];
+        row.insetsLayoutMarginsFromSafeArea = [spotifys[2] boolValue];
+        objc_setAssociatedObject(row, &kMarginsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return YES;
+    }
     if (!spotifys) {
         spotifys = @[@(row.layoutMarginsRelativeArrangement), [NSValue valueWithDirectionalEdgeInsets:row.directionalLayoutMargins],
                      @(row.insetsLayoutMarginsFromSafeArea)];
         objc_setAssociatedObject(row, &kMarginsKey, spotifys, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        if (!row.layoutMarginsRelativeArrangement) {
-            row.insetsLayoutMarginsFromSafeArea = NO;
-            row.directionalLayoutMargins = NSDirectionalEdgeInsetsZero;
-            row.layoutMarginsRelativeArrangement = YES;
-        }
     }
-    if (fabs(less) < 0.25) return;
-    NSDirectionalEdgeInsets margins = row.directionalLayoutMargins;
-    margins.trailing += less;
+    BOOL relative = [spotifys[0] boolValue];
+    NSDirectionalEdgeInsets margins = relative ? [spotifys[1] directionalEdgeInsetsValue] : NSDirectionalEdgeInsetsZero;
+    margins.trailing += hold;
+    if (fabs(row.directionalLayoutMargins.trailing - margins.trailing) < 0.25 && row.layoutMarginsRelativeArrangement) return NO;
+    if (!relative) {
+        row.insetsLayoutMarginsFromSafeArea = NO;
+        row.layoutMarginsRelativeArrangement = YES;
+    }
     row.directionalLayoutMargins = margins;
+    return YES;
 }
 
-// The title's arranged view reaches the ⋯ (PlayerMenu.m), the nearest view on its trailing side that is still to be
-// seen and is not arranged, by a custom spacing after it; `markRoom` short of it when the title is too long to leave
-// the mark room. Where an arranged view of Spotify's is seen first (the skip ad button), nothing follows the title or
-// there is no ⋯ (the AI DJ's row), Spotify's spacing is put back. Slid by the lyrics, it reaches the nearest view on
-// its trailing side, arranged or not, else the row's end, less the slide and kSlidGap: by the spacing after it, or by
-// the row's trailing margin where nothing is arranged after it (the ⋯ then stands in the row's end, PlayerMenu.m).
+// The ⋯ (PlayerMenu.m): the nearest view on the title's trailing side that is still to be seen and is not arranged; nil
+// where there is none (the AI DJ's row).
+static UIView *moreIn(UIStackView *row, UIView *element, BOOL rtl) {
+    NSArray<UIView *> *arranged = row.arrangedSubviews;
+    CGRect own = untransformed(element);
+    UIView *more = nil;
+    for (UIView *view in row.subviews) {
+        if ([arranged containsObject:view] || view.hidden || view.alpha < 0.01 || view.bounds.size.width < 1) continue;
+        CGRect frame = view.frame;
+        if (!(rtl ? CGRectGetMaxX(frame) < CGRectGetMaxX(own) : CGRectGetMinX(frame) > CGRectGetMinX(own))) continue;
+        if (!more || (rtl ? CGRectGetMaxX(frame) > CGRectGetMaxX(more.frame) : CGRectGetMinX(frame) < CGRectGetMinX(more.frame))) more = view;
+    }
+    return more;
+}
+
+// The slot the ⋯ takes as PlayerMenu.m places it after the title's layout: Spotify's add button's arranged slot while
+// Spotify shows it, put away for the ⋯; nil where the ⋯ goes to the row's end. Read from the slot rather than from
+// where the ⋯ was drawn last, which is a pass behind Spotify bringing the slot back or taking it away.
+static UIView *moreSlotIn(UIStackView *row) {
+    UIView *slot = SGRFindByIdentifier(row, kAddButtonID, &kAddKey);
+    while (slot && slot.superview != row) slot = slot.superview;
+    return slot && !slot.hidden ? slot : nil;
+}
+
+// The title row as the Music app's: the title, any button of Spotify's arranged after it (an episode's skip ad pill,
+// the AI DJ's) and the ⋯ (PlayerMenu.m) side by side, never over one another.
+// The ⋯ standing in the row's end (a row without the add button, an episode's while its skip ad pill is up) has the
+// row's arranged views end before it by the row's trailing margin. The title's arranged view then reaches the ⋯ where
+// the ⋯ is the nearest view on its trailing side, by a custom spacing after it, or the margin where nothing is arranged
+// after the title; ends Spotify's spacing short of an arranged view of Spotify's seen first (the pill); and in either,
+// `markRoom` sooner when the title is too long to leave the mark room. Slid by the lyrics, it reaches the nearest view
+// on its trailing side, else the row's end, less the slide and kSlidGap. Where none of these asks for room, Spotify's
+// spacing and margins are put back.
 static void widenRow(UIView *titleView, UILabel *title, CGFloat markRoom) {
     UIView *element = arrangedHolder(titleView, nil);
     UIStackView *row = (UIStackView *)element.superview;
@@ -357,12 +389,20 @@ static void widenRow(UIView *titleView, UILabel *title, CGFloat markRoom) {
     for (NSUInteger i = [arranged indexOfObject:element] + 1; i < arranged.count && !next; i++) {
         if (!arranged[i].hidden) next = arranged[i];
     }
+    UIView *more = moreIn(row, element, rtl), *moreSlot = more ? moreSlotIn(row) : nil;
+    // The ⋯ in the row's end takes its own width there.
+    CGFloat moreRoom = more && !moreSlot ? more.bounds.size.width : 0;
+    // What stands after the title placed first: the title's own hold kept only while nothing is arranged after it.
+    CGFloat titleHold = next ? 0 : [objc_getAssociatedObject(row, &kTitleHoldKey) doubleValue];
+    if (holdTrailing(row, moreRoom + titleHold)) [row layoutIfNeeded];
+
     CGRect own = untransformed(element);
     UIView *edgeView = nil;
     // The row's own end when nothing is seen on the title's trailing side.
     CGFloat edge = rtl ? CGRectGetMinX(row.bounds) : CGRectGetMaxX(row.bounds);
+    // The ⋯ counted where the menu puts it this pass, its slot (put away, alpha 0) or the row's end, not where it is.
     for (UIView *view in row.subviews) {
-        if (view == element || view.hidden || view.alpha < 0.01 || view.bounds.size.width < 1) continue;
+        if (view == element || view == more || view.hidden || (view.alpha < 0.01 && view != moreSlot) || view.bounds.size.width < 1) continue;
         CGRect frame = view.frame;
         BOOL trailing = rtl ? CGRectGetMaxX(frame) < CGRectGetMaxX(own) : CGRectGetMinX(frame) > CGRectGetMinX(own);
         CGFloat x = rtl ? CGRectGetMaxX(frame) : CGRectGetMinX(frame);
@@ -371,33 +411,39 @@ static void widenRow(UIView *titleView, UILabel *title, CGFloat markRoom) {
             edge = x;
         }
     }
+    CGFloat moreEnd = rtl ? CGRectGetMinX(row.bounds) + moreRoom : CGRectGetMaxX(row.bounds) - moreRoom;
+    if (moreRoom > 0 && (rtl ? moreEnd > edge : moreEnd < edge)) {
+        edgeView = more;
+        edge = moreEnd;
+    }
     NSNumber *spotifys = objc_getAssociatedObject(element, &kSpacingKey);
-    BOOL standIn = edgeView && ![arranged containsObject:edgeView];
-    BOOL spaced = next && (sg_slide || standIn), held = !next && sg_slide;
-    BOOL restored = !held && objc_getAssociatedObject(row, &kMarginsKey);
-    if (restored) restoreMargins(row);
-    if (!spaced && spotifys && [row customSpacingAfterView:element] != spotifys.doubleValue) {
-        [row setCustomSpacing:spotifys.doubleValue afterView:element];
-        restored = YES;
+    if (!spotifys) {
+        spotifys = @([row customSpacingAfterView:element]);
+        objc_setAssociatedObject(element, &kSpacingKey, spotifys, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    if (!spaced && !held) {
-        if (restored) [row layoutIfNeeded];
-        return;
-    }
-    CGFloat reach = (rtl ? CGRectGetMaxX(own) - edge : edge - CGRectGetMinX(own)) - (sg_slide ? sg_slide + kSlidGap : 0);
+    BOOL spotifysView = edgeView && edgeView != moreSlot && [arranged containsObject:edgeView];
+    CGFloat spotifysGap = spotifys.doubleValue == UIStackViewSpacingUseDefault ? row.spacing : spotifys.doubleValue;
+    CGFloat stop = sg_slide ? sg_slide + kSlidGap : spotifysView ? spotifysGap : 0;
+    CGFloat reach = (rtl ? CGRectGetMaxX(own) - edge : edge - CGRectGetMinX(own)) - stop;
     CGFloat inset = own.size.width - titleView.bounds.size.width;
     BOOL crowded = markRoom > 0 && title.intrinsicContentSize.width + markRoom > reach - inset;
-    // Measured, so whatever spacing or margin Spotify or an earlier pass set is taken as laid out.
-    CGFloat less = own.size.width - (reach - (crowded ? markRoom : 0));
-    if (held) {
-        holdBackTrailing(row, less);
-    } else {
-        if (!spotifys) objc_setAssociatedObject(element, &kSpacingKey, @([row customSpacingAfterView:element]), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        CGFloat gap = rtl ? CGRectGetMinX(own) - CGRectGetMaxX(next.frame) : CGRectGetMinX(next.frame) - CGRectGetMaxX(own);
-        if (fabs(less) < 0.25) return;
-        [row setCustomSpacing:gap + less afterView:element];
+    BOOL bounded = sg_slide || crowded || (edgeView && !spotifysView);
+    // Where the title's arranged view is to end, from its leading edge and what stands after it, neither of which the
+    // spacing after it or the title's hold moves: each pass sets the same values, never one rounded from the last.
+    CGFloat room = reach - (crowded ? markRoom : 0);
+    CGFloat end = rtl ? CGRectGetMaxX(own) - room : CGRectGetMinX(own) + room;
+    CGFloat spacing = spotifys.doubleValue;
+    if (bounded && next) spacing = rtl ? end - CGRectGetMaxX(next.frame) : CGRectGetMinX(next.frame) - end;
+    // The last arranged view ends at the ⋯ or the row's end (the margin above), less the hold.
+    CGFloat hold = bounded && !next ? stop + (crowded ? markRoom : 0) : 0;
+    BOOL changed = holdTrailing(row, moreRoom + hold);
+    CGFloat current = [row customSpacingAfterView:element];
+    if (spacing == spotifys.doubleValue ? current != spacing : fabs(current - spacing) >= 0.25) {
+        [row setCustomSpacing:spacing afterView:element];
+        changed = YES;
     }
-    [row layoutIfNeeded];
+    objc_setAssociatedObject(row, &kTitleHoldKey, hold ? @(hold) : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (changed) [row layoutIfNeeded];
 }
 
 // The mark `title` ends with, in its container: after its last letter, or after the marquee's end when the title is

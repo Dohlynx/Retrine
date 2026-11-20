@@ -81,7 +81,7 @@ static CGFloat heightFor(NSString *text, UIFont *font) {
 // title marquee over a stack of badges leading the artist marquee 8 pt after it, the two explicit marks each in a
 // 12 pt holder Spotify hides or shows.
 typedef struct {
-    UIView *unit, *thumb, *element, *container, *more, *ageHolder, *explicitHolder, *speed, *addSlot;
+    UIView *unit, *thumb, *element, *container, *more, *ageHolder, *explicitHolder, *speed, *addSlot, *pill;
     UIStackView *row, *badges;
     MarqueeMock *title, *artist;
 } Row;
@@ -122,9 +122,15 @@ static MarqueeMock *marquee(NSString *identifier, NSString *text, UIFont *font) 
 
 // The trailing ends a title row is seen with: the ⋯ in Spotify's put away add button's slot; no add button, Spotify's
 // slots hidden and the ⋯ standing in the row's end (PlayerMenu.m's fallback, as for a local file); the AI DJ's, no ⋯
-// and a 48 pt button of Spotify's arranged after the title; and nothing at all after the title.
-typedef NS_ENUM(NSInteger, RowShape) { RowAddSlot, RowNoAddSlot, RowDJ, RowBare };
-static NSString *const kShapeNames[] = {@"with the ⋯ in the add button's slot", @"without an add button", @"of the AI DJ", @"with nothing after the title"};
+// and a 48 pt button of Spotify's arranged after the title; nothing at all after the title; and an episode's with
+// Spotify's skip ad pill up (SkipAdButtonProps, arranged between the title and the X's slot, 9.2.0 tree), the add
+// button's slot after it holding the ⋯, or hidden with the ⋯ in the row's end (issue #28's iPad).
+typedef NS_ENUM(NSInteger, RowShape) { RowAddSlot, RowNoAddSlot, RowDJ, RowBare, RowPill, RowPillNoAdd };
+static NSString *const kShapeNames[] = {@"with the ⋯ in the add button's slot", @"without an add button", @"of the AI DJ",
+                                        @"with nothing after the title", @"with the skip pill and the ⋯ in the add button's slot",
+                                        @"with the skip pill and no add button"};
+// The pill as 9.2.0 draws "건너뛰기": a 16 pt icon, the word and 13 pt insets (design/issue28/IMG_0116.png, 91 pt).
+static const CGFloat kPillWidth = 91;
 
 static Row buildRow(UIWindow *window, NSString *title, BOOL rtl, RowShape shape, NSString *artistText) {
     Row r = {0};
@@ -140,13 +146,22 @@ static Row buildRow(UIWindow *window, NSString *title, BOOL rtl, RowShape shape,
     [r.addSlot.widthAnchor constraintEqualToConstant:48].active = YES;
     banSlot.alpha = 0;
     r.addSlot.alpha = shape == RowDJ ? 1 : 0;
-    banSlot.hidden = shape != RowAddSlot;
-    r.addSlot.hidden = shape == RowNoAddSlot || shape == RowBare;
+    banSlot.hidden = shape != RowAddSlot && shape != RowPill;
+    r.addSlot.hidden = shape == RowNoAddSlot || shape == RowBare || shape == RowPillNoAdd;
+    if (shape != RowDJ) {
+        UIView *add = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 48, 48)];
+        add.accessibilityIdentifier = @"Components.UI.AddToButton";
+        [r.addSlot addSubview:add];
+    }
     // An episode's own 48 pt thumbnail, which Spotify shows before the title on its own (9.2.0, a video episode).
     r.thumb = [UIView new];
     [r.thumb.widthAnchor constraintEqualToConstant:48].active = YES;
     r.thumb.hidden = YES;
-    for (UIView *view in @[r.thumb, r.element, banSlot, r.addSlot]) [r.row addArrangedSubview:view];
+    r.pill = [UIView new];
+    r.pill.backgroundColor = UIColor.darkGrayColor;
+    [r.pill.widthAnchor constraintEqualToConstant:kPillWidth].active = YES;
+    r.pill.hidden = shape != RowPill && shape != RowPillNoAdd;
+    for (UIView *view in @[r.thumb, r.element, r.pill, banSlot, r.addSlot]) [r.row addArrangedSubview:view];
     r.container = [UIView new];
     r.container.translatesAutoresizingMaskIntoConstraints = NO;
     [r.element addSubview:r.container];
@@ -189,7 +204,7 @@ static Row buildRow(UIWindow *window, NSString *title, BOOL rtl, RowShape shape,
     if (shape == RowDJ || shape == RowBare) return r;
     UIButton *more = [UIButton buttonWithType:UIButtonTypeSystem];
     CGRect bounds = r.row.bounds;
-    more.frame = shape == RowAddSlot ? r.addSlot.frame : CGRectMake(rtl ? 0 : CGRectGetMaxX(bounds) - 48, 0, 48, 48);
+    more.frame = !r.addSlot.hidden ? r.addSlot.frame : CGRectMake(rtl ? 0 : CGRectGetMaxX(bounds) - 48, 0, 48, 48);
     [r.row addSubview:more];
     r.more = more;
     return r;
@@ -470,9 +485,17 @@ static void runShapes(UIWindow *window) {
                                  : (rtl ? CGRectGetMinX(r.row.bounds) : CGRectGetMaxX(r.row.bounds));
             NSString *name = [NSString stringWithFormat:@"%@ %@", kShapeNames[shape], rtl ? @"right to left" : @"left to right"];
             if (shape != RowAddSlot) {
-                check(CGRectEqualToRect(closed, spotifys),
-                      [NSString stringWithFormat:@"the closed row %@ keeps Spotify's title width (%@, Spotify's %@)", name,
-                       NSStringFromCGRect(closed), NSStringFromCGRect(spotifys)]);
+                // Closed, the long title and its mark end at the ⋯, Spotify's 12 pt short of its button, or at the row's end.
+                CGFloat closedStop = shape == RowDJ ? (rtl ? stop + 12 : stop - 12) : stop;
+                CGRect title = inRow(r, r.title), markFrame = inRow(r, drawnMark(r)), artist = inRow(r, r.artist);
+                BOOL clear = YES;
+                for (NSValue *frame in @[[NSValue valueWithCGRect:title], [NSValue valueWithCGRect:markFrame], [NSValue valueWithCGRect:artist]]) {
+                    clear &= rtl ? CGRectGetMinX(frame.CGRectValue) >= closedStop - 0.5 : CGRectGetMaxX(frame.CGRectValue) <= closedStop + 0.5;
+                }
+                check(clear && shownWhole(drawnMark(r)) && (rtl ? CGRectGetMinX(closed) >= CGRectGetMinX(spotifys) - 0.5 : CGRectGetMaxX(closed) <= CGRectGetMaxX(spotifys) + 0.5),
+                      [NSString stringWithFormat:@"the closed row %@ ends its title, mark and artist by %.1f "
+                       "(title %.1f-%.1f, mark %.1f-%.1f, artist %.1f-%.1f)", name, closedStop, CGRectGetMinX(title), CGRectGetMaxX(title),
+                       CGRectGetMinX(markFrame), CGRectGetMaxX(markFrame), CGRectGetMinX(artist), CGRectGetMaxX(artist)]);
             }
             slideRow(r, kLyricsSlide);
             UIView *mark = drawnMark(r);
@@ -490,6 +513,94 @@ static void runShapes(UIWindow *window) {
             slideRow(r, 0);
             check(CGRectEqualToRect(inRow(r, r.element), closed),
                   [NSString stringWithFormat:@"the lyrics closed, the row %@ is as it was (%@)", name, NSStringFromCGRect(inRow(r, r.element))]);
+            [r.unit removeFromSuperview];
+        }
+    }
+}
+
+// PlayerMenu.m's SGRPlayerMenuInTitleRow, run after the title's layout: the row laid out, then the ⋯ in the add
+// button's slot while Spotify shows it, else in the row's 48 pt end.
+static void placeMore(Row r) {
+    [r.row layoutIfNeeded];
+    BOOL rtl = r.row.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    CGRect bounds = r.row.bounds;
+    r.more.frame = !r.addSlot.hidden && r.addSlot.bounds.size.width >= 1 ? r.addSlot.frame
+        : CGRectMake(rtl ? CGRectGetMinX(bounds) : CGRectGetMaxX(bounds) - 48, CGRectGetMidY(bounds) - 24, 48, 48);
+}
+
+// The edges of `frame` in the row's trailing direction: where it starts and where it ends.
+static CGFloat leadOf(CGRect frame, BOOL rtl) { return rtl ? -CGRectGetMaxX(frame) : CGRectGetMinX(frame); }
+static CGFloat trailOf(CGRect frame, BOOL rtl) { return rtl ? -CGRectGetMinX(frame) : CGRectGetMaxX(frame); }
+
+// An episode's row with Spotify's skip ad pill up, in both directions, a long 19+ title and both of Spotify's marks:
+// the title, its mark and the artist end Spotify's 12 pt spacing short of the pill, the pill ends where the ⋯ starts
+// and the ⋯ in the row; each stays to be seen. The pill gone, the row is the one without it, and the pill stays hidden.
+static void runPill(UIWindow *window) {
+    for (RowShape shape = RowPill; shape <= RowPillNoAdd; shape++) {
+        for (int direction = 0; direction < 2; direction++) {
+            BOOL rtl = direction == 1;
+            NSString *titleText = @"Second Date Update: Haunted House Hero (Halloween Special)";
+            NSString *artistText = @"Brooke and Jeffrey: Second Date Update";
+            Row plain = buildRow(window, titleText, rtl, shape == RowPill ? RowAddSlot : RowNoAddSlot, artistText);
+            plain.explicitHolder.hidden = plain.ageHolder.hidden = NO;
+            SGRShownTitleWatch(plain.unit);
+            settle();
+            CGRect plainElement = inRow(plain, plain.element);
+            [plain.unit removeFromSuperview];
+
+            Row r = buildRow(window, titleText, rtl, shape, artistText);
+            r.explicitHolder.hidden = r.ageHolder.hidden = NO;
+            SGRShownTitleWatch(r.unit);
+            settle();
+            NSString *name = [NSString stringWithFormat:@"%@ %@", kShapeNames[shape], rtl ? @"right to left" : @"left to right"];
+            UIView *mark = drawnMark(r);
+            CGRect title = inRow(r, r.title), markFrame = inRow(r, mark), artist = inRow(r, r.artist);
+            CGRect pill = inRow(r, r.pill), more = inRow(r, r.more), bounds = r.row.bounds;
+            CGFloat pillStart = leadOf(pill, rtl);
+            BOOL beforePill = YES;
+            for (NSValue *frame in @[[NSValue valueWithCGRect:title], [NSValue valueWithCGRect:markFrame], [NSValue valueWithCGRect:artist]]) {
+                beforePill &= trailOf(frame.CGRectValue, rtl) <= pillStart - 12 + 0.5;
+            }
+            check(marksSeen(r) == 1 && shownWhole(mark) && beforePill && trailOf(title, rtl) < leadOf(markFrame, rtl),
+                  [NSString stringWithFormat:@"the row %@ ends its title, then its one mark, and the artist 12 pt before the pill at %.1f "
+                   "(title %.1f-%.1f, mark %.1f-%.1f, artist %.1f-%.1f)", name, CGRectGetMinX(pill), CGRectGetMinX(title), CGRectGetMaxX(title),
+                   CGRectGetMinX(markFrame), CGRectGetMaxX(markFrame), CGRectGetMinX(artist), CGRectGetMaxX(artist)]);
+            check(pill.size.width == kPillWidth && trailOf(pill, rtl) <= leadOf(more, rtl) + 0.5
+                  && CGRectContainsRect(CGRectInset(bounds, -0.5, -0.5), more) && CGRectContainsRect(bounds, pill),
+                  [NSString stringWithFormat:@"the row %@ has the whole pill end where the ⋯ starts, both in the row (pill %@, ⋯ %@)", name,
+                   NSStringFromCGRect(pill), NSStringFromCGRect(more)]);
+            r.pill.hidden = YES;
+            [r.row layoutIfNeeded];
+            settle();
+            SGRShownTitleRestyle();
+            settle();
+            check(r.pill.hidden && CGRectEqualToRect(inRow(r, r.element), plainElement),
+                  [NSString stringWithFormat:@"the pill gone, the row %@ is the one without it and the pill stays hidden (%@, without it %@)", name,
+                   NSStringFromCGRect(inRow(r, r.element)), NSStringFromCGRect(plainElement)]);
+            [r.unit removeFromSuperview];
+            if (shape != RowPillNoAdd) continue;
+
+            // Spotify takes the pill away and brings the add button's slot back in one pass: the title's layout, which
+            // runs before the ⋯ moves into the slot, already ends the title, its mark and the artist before the slot.
+            r = buildRow(window, titleText, rtl, shape, artistText);
+            r.explicitHolder.hidden = r.ageHolder.hidden = NO;
+            SGRShownTitleWatch(r.unit);
+            settle();
+            r.pill.hidden = YES;
+            r.addSlot.hidden = NO;
+            [r.unit layoutIfNeeded];
+            placeMore(r);
+            mark = drawnMark(r);
+            title = inRow(r, r.title), markFrame = inRow(r, mark), artist = inRow(r, r.artist), more = inRow(r, r.more);
+            BOOL beforeMore = YES;
+            for (NSValue *frame in @[[NSValue valueWithCGRect:title], [NSValue valueWithCGRect:markFrame], [NSValue valueWithCGRect:artist]]) {
+                beforeMore &= trailOf(frame.CGRectValue, rtl) <= leadOf(more, rtl) + 0.5;
+            }
+            check(marksSeen(r) == 1 && shownWhole(mark) && beforeMore && CGRectEqualToRect(more, inRow(r, r.addSlot)),
+                  [NSString stringWithFormat:@"the pill going as the add button's slot comes back in the same pass %@, the title, mark and "
+                   "artist end before the ⋯ moved into the slot (title %.1f-%.1f, mark %.1f-%.1f, artist %.1f-%.1f, ⋯ %@)",
+                   rtl ? @"right to left" : @"left to right", CGRectGetMinX(title), CGRectGetMaxX(title), CGRectGetMinX(markFrame),
+                   CGRectGetMaxX(markFrame), CGRectGetMinX(artist), CGRectGetMaxX(artist), NSStringFromCGRect(more)]);
             [r.unit removeFromSuperview];
         }
     }
@@ -549,6 +660,7 @@ static void run(UIWindow *window) {
     [unit removeFromSuperview];
     runRow(window);
     runShapes(window);
+    runPill(window);
     printf("title style checks: %d of %d right -- %s\n", checked - failed, checked, failed ? "FAIL" : "PASS");
     fflush(stdout);
     exit(failed ? 1 : 0);

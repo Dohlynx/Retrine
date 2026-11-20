@@ -443,6 +443,10 @@ void SGRPlayerPlayGlyphIn(UIView *host);
 SGRGlyphView *SGRPlayerGlyphFor(UIView *owner, const void *key, NSString *symbol, CGFloat size);
 void SGRPlayerPlaceGlyph(UIView *view, UIView *host, CGFloat dy);
 
+// A podcast's speed button in the controls unit `host`, its words on one line inside the button, where it takes its
+// tap and VoiceOver frames it (PlayerSpeedLabel.m); kept so as Spotify lays the words out again.
+void SGRPlayerFitSpeedLabel(UIView *host);
+
 // The footer's shared parts (PlayerFooter.x), for the AI DJ's footer (DJPlayer.x). `row` is the footer unit's view:
 // moved down over the home indicator with the controls following, the volume row and Follow the cover placed.
 void SGRPlayerLowerRow(UIView *row);
