@@ -6,7 +6,7 @@
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
 #import "Redesigned/Kit/SGRTokens.h"
-#import "LyricsLook.h"
+#import "LyricsLookRows.h"
 #import "SGRKaraokeView.h"
 
 static const CGFloat kPreviewHeight = 230, kCardRadius = 26;
@@ -80,12 +80,6 @@ static SGModRow *lookSlider(NSString *title, double least, double most, double s
     }, format);
 }
 
-// One place's size (LyricsLook.h), picked from a menu on the row.
-static SGModRow *placeRow(NSString *title, SGRLyricsPlace place) {
-    return SGMenuRow(title, SGRLyricsSizeNames(), ^NSString * { return SGRLyricsSizeNames()[(NSUInteger)SGRLyricsSizeChoice(place)]; },
-                     ^(NSInteger index) { SGRSetLyricsSizeChoice(place, index); });
-}
-
 static void presentStyleSheet(UIViewController *owner) {
     static __weak id sheetPage;
     NSArray<SGModRow *> *rows = @[
@@ -103,12 +97,12 @@ static void presentStyleSheet(UIViewController *owner) {
     NSString *footer = SGL(@"settings.lyricslook.footer", @"Blur is how much the lines away from the one sung soften. Glow and Wave are how strongly a held "
                        @"word glows and its letters rise. 100% is Apple Music's.");
     NSArray<SGModRow *> *places = @[
-        placeRow(SGL(@"settings.lyricslook.place.under_cover", @"Under the cover"), SGRLyricsPlaceUnderCover),
-        placeRow(SGL(@"settings.lyricslook.place.player", @"In the player"), SGRLyricsPlacePlayer),
-        placeRow(SGL(@"settings.lyricslook.place.full_screen", @"Landscape and full screen"), SGRLyricsPlaceFullScreen),
+        SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.under_cover", @"Under the cover"), SGRLyricsPlaceUnderCover),
+        SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.player", @"In the player"), SGRLyricsPlacePlayer),
+        SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.full_screen", @"Landscape and full screen"), SGRLyricsPlaceFullScreen),
     ];
-    NSString *placesFooter = SGL(@"settings.lyricslook.place.footer", @"Default keeps each place at Text size, and the line under the cover at "
-                                 @"your iPhone's text size. A percentage sets that place larger or smaller.");
+    NSString *placesFooter = SGL(@"settings.lyricslook.place.footer", @"Default uses your iPhone's text size for Lyrics Line and Text size for the other places. "
+                                 @"A percentage changes only that place. You can also set the line's size on the Player page.");
     SGRLyricsStyleSheet *page = [[SGRLyricsStyleSheet alloc] initWithTitle:SGL(@"settings.lyricslook.title", @"Lyrics Style") intro:nil
                                                                  sections:@[SGNotedSection(nil, rows, footer),
                                                                             SGNotedSection(SGL(@"settings.lyricslook.place.header", @"Size in each place"),

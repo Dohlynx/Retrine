@@ -1653,7 +1653,9 @@ Redesigned:
                   track menu has it, and Spotify sizes the cover for it. Switched on, it is the one line a place with room for
                   one shows, centered across the cover's width in the room between the cover and Spotify's bottom stack
                   (a chip over the title ends that room where it starts), at the player's position less the Lyrics page's
-                  Delay; a tap opens the lyrics. When animated artwork replaces the cover, the line sits one grid gap
+                  Delay; a tap opens the lyrics. Its semibold Body font follows Dynamic Type up to XXXL (17 pt at
+                  the standard text size), scaled by Size under Lyrics Line on the Player page or, equivalently,
+                  Under the cover in Lyrics Style. When animated artwork replaces the cover, the line sits one grid gap
                   above the title, at its leading edge, in white. The clip's existing dim reaches up behind it.
                   It stands down where Spotify shows its own lyric preview under the cover,
                   which in 9.1.90 is Lyrics_NPVElementsKitImpl.LyricsElementWrapperView beside the tilt view, hooked apart
@@ -1675,7 +1677,9 @@ Redesigned:
                   translation (SGLyricsShownTranslation: none, or one that reads the same as the line, adds nothing) sits
                   under it as a footnote in SGRTertiary with the lyrics page's translation weight and brightness (Text
                   sizes), on one row that shrinks to 0.85 and then truncates. It goes under the line only where the room
-                  holds the pair with a grid gap either side (SGRPlayerLineFitIn, PlayerLyricLine.h); else it is left
+                  holds the pair. Under a cover the centered gaps above and below the words may each narrow
+                  to half a grid gap, for the pair or the line alone (SGRPlayerLineFitIn, PlayerLyricLine.h);
+                  the gap over a clip is unchanged. If the pair does not fit, the translation is left
                   out and the line keeps exactly its place without one, the line never shrinking for it. The
                   translations are the lyrics page's, on the same kept lines it translates in place, plus the saved
                   ones read onto them from disk (SGLyricsLoadTranslation, as the Live Activity restores them); the line

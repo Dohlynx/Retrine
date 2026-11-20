@@ -212,7 +212,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 - (BOOL)place {
     if (CGRectIsNull(_room)) return NO;
     SGRPlayerLineFit fit = SGRPlayerLineFitIn(_room.size.height, [self lineHeight], _translation ? [self translationHeight] : 0,
-                                              SGRGrid, kTapHeight);
+                                              _overClip ? 2 * SGRGrid : SGRGrid, kTapHeight);
     if (!fit.line) return NO;
     CGRect frame = CGRectIntegral(CGRectMake(CGRectGetMinX(_room), CGRectGetMinY(_room) + (_room.size.height - fit.height) / 2,
                                              _room.size.width, fit.height));
@@ -257,9 +257,9 @@ BOOL SGRPlayerLyricLineOn(void) {
     _translationLabel.frame = CGRectMake(SGRGrid, top + lineHeight, [self textWidth], translationHeight);
 }
 
-// The phone's text size, times the share the Lyrics page sets for the line under the cover.
+// The phone's Body size, times the line's shared Player/Lyrics size choice.
 + (UIFont *)font {
-    UIFont *font = SGCategoryCappedFont(UIFontTextStyleSubheadline, UIFontWeightSemibold, UIContentSizeCategoryExtraExtraExtraLarge);
+    UIFont *font = SGCategoryCappedFont(UIFontTextStyleBody, UIFontWeightSemibold, UIContentSizeCategoryExtraExtraExtraLarge);
     CGFloat share = SGRLyricsSizeShare(SGRLyricsPlaceUnderCover);
     return share == 1 ? font : [font fontWithSize:round(font.pointSize * share)];
 }
@@ -279,10 +279,12 @@ BOOL SGRPlayerLyricLineOn(void) {
     _label.textColor = _overClip ? UIColor.whiteColor : SGRSecondary();
     [self styleTranslation];
     _portions = nil;
+    // Over a clip the labels are sized to their text here, and the view's frame may not change with the font.
+    [self setNeedsLayout];
     [self.superview setNeedsLayout];
 }
 
-// A size chosen on the Lyrics page shows at once, rather than at the line's next portion.
+// A size change shows at once, rather than at the line's next portion.
 - (void)sizeChanged {
     [self restyle];
     if (_running) [self tick];

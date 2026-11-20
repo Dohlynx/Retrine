@@ -78,6 +78,7 @@
 #import "Core/SGViewTree.h"
 #import "Redesigned/Kit/SGRFluid.h"
 #import "Settings/SGModPage.h"
+#import "Redesigned/Lyrics/LyricsLook.h"
 #import "Shared/Player/PlayerSettings.h"
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Player/AudioQuality.h"
@@ -1003,13 +1004,32 @@ static void loadLyrics(void) {
         CGRect text = [host convertRect:words.bounds fromView:words];
         CGRect row = [host convertRect:title.bounds fromView:title];
         BOOL clip = [scenario() isEqualToString:@"lyric-line-clip"];
-        NSLog(@"[harness] lyric-line frame %@ title %@ clip %d", NSStringFromCGRect(text), NSStringFromCGRect(row), SGRPlayerMotionShowing());
+        NSLog(@"[harness] lyric-line font %.1f frame %@ title %@ room %@ clip %d", words.font.pointSize,
+              NSStringFromCGRect(text), NSStringFromCGRect(row), [line valueForKey:@"room"], SGRPlayerMotionShowing());
         // Leave the settled frame on screen for simctl io screenshot.
         after(2, ^{
+            CGFloat body = [UIFont preferredFontForTextStyle:UIFontTextStyleBody].pointSize;
+            HARNESS_CHECK(words.font.pointSize == body);
             HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"한순간이였지"] && clip == SGRPlayerMotionShowing());
             HARNESS_CHECK(clip ? (words.textAlignment == NSTextAlignmentLeft && fabs(text.origin.x - row.origin.x) < 1 &&
                                   fabs(CGRectGetMinY(row) - CGRectGetMaxY(text) - SGRGrid) < 1)
                                : words.textAlignment == NSTextAlignmentCenter);
+            void (^checkSize)(NSInteger, CGFloat) = ^(NSInteger choice, CGFloat points) {
+                SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, choice);
+                [host layoutIfNeeded];
+                HARNESS_CHECK(words.font.pointSize == points);
+                if (!clip) return;
+                HARNESS_CHECK([words.text isEqual:@"한순간이였지"]);
+                CGRect label = [host convertRect:words.bounds fromView:words];
+                CGRect anchor = [host convertRect:title.bounds fromView:title];
+                CGSize needed = CGSizeMake(ceil(words.intrinsicContentSize.width), ceil(words.font.lineHeight));
+                NSLog(@"[harness] clip %.0f pt label %@ needs %@", points, NSStringFromCGRect(label), NSStringFromCGSize(needed));
+                HARNESS_CHECK(CGSizeEqualToSize(label.size, needed));
+                HARNESS_CHECK(fabs(CGRectGetMinX(label) - CGRectGetMinX(anchor)) < 1 &&
+                              fabs(CGRectGetMinY(anchor) - CGRectGetMaxY(label) - SGRGrid) < 1);
+            };
+            checkSize(SGRLyricsSizeNames().count - 1, round(body * 1.30));
+            checkSize(0, body);
             NSLog(@"[harness] lyric-line passed");
             exit(0);
         });
@@ -2166,6 +2186,20 @@ static void installSettingsWorkProbes(void) {
         nav.modalPresentationStyle = UIModalPresentationOverFullScreen;
         [self.window.rootViewController presentViewController:nav animated:NO completion:^{
             [nav.view layoutIfNeeded];
+            NSIndexPath *linePath = pathOf(rowTitled(@"Lyrics Line"));
+            SGModRow *size = rowTitled(@"Size");
+            HARNESS_CHECK(size && linePath && [pathOf(size) isEqual:[NSIndexPath indexPathForRow:linePath.row + 1 inSection:linePath.section]]);
+            HARNESS_CHECK([size.menu isEqual:SGRLyricsSizeNames()]);
+            size.chosen(size.menu.count - 1);
+            HARNESS_CHECK(SGRLyricsSizeShare(SGRLyricsPlaceUnderCover) == 1.30);
+            SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, 0);
+            HARNESS_CHECK([size.value() isEqual:@"Default"]);
+            if (getenv("HARNESS_SIZE_SCREENSHOT")) {
+                cellOf(size);
+                NSLog(@"[harness] size-settings ready");
+                after(3, ^{ exit(0); });
+                return;
+            }
             settingsPresented = YES;
         }];
     };

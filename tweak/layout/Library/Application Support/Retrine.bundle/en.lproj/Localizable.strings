@@ -1433,7 +1433,7 @@
 "settings.lyricslook.format.pt" = "%.0f pt";
 "settings.lyricslook.glow.title" = "Glow";
 "settings.lyricslook.place.default" = "Default";
-"settings.lyricslook.place.footer" = "Default keeps each place at Text size, and the line under the cover at your iPhone's text size. A percentage sets that place larger or smaller.";
+"settings.lyricslook.place.footer" = "Default uses your iPhone's text size for Lyrics Line and Text size for the other places. A percentage changes only that place. You can also set the line's size on the Player page.";
 "settings.lyricslook.place.full_screen" = "Landscape and full screen";
 "settings.lyricslook.place.header" = "Size in each place";
 "settings.lyricslook.place.player" = "In the player";
@@ -2618,6 +2618,7 @@
 "settings.player.like_dislike.title" = "Like and dislike buttons";
 "settings.player.lockscreen.title" = "Lock screen";
 "settings.player.lyric_line.hint" = "Opens the lyrics.";
+"settings.player.lyric_line.size" = "Size";
 "settings.player.lyric_line.subtitle" = "The line being sung, under the cover. Tap it to open the lyrics.";
 "settings.player.lyric_line.title" = "Lyrics Line";
 "settings.player.lyrics.thumb_a11y" = "Show the player";

@@ -308,12 +308,13 @@ int main(void) {
         sung.translation = @" \n";
         HARNESS_CHECK(SGRPlayerLineTranslation(sung, YES) == nil);
 
-        // Its room: a line 20 tall, a translation 16, a margin of 8 either side, a tap 44 tall.
+        // A line 20 tall, a translation 16, minimum clearance of 4 either side, a tap 44 tall.
         SGRPlayerLineFit alone = SGRPlayerLineFitIn(100, 20, 0, 8, 44);
         HARNESS_CHECK(alone.line && !alone.translation && alone.height == 44);
         SGRPlayerLineFit shallow = SGRPlayerLineFitIn(40, 20, 0, 8, 44);
         HARNESS_CHECK(shallow.line && shallow.height == 40);
-        HARNESS_CHECK(!SGRPlayerLineFitIn(35, 20, 0, 8, 44).line);
+        HARNESS_CHECK(SGRPlayerLineFitIn(28, 20, 0, 8, 44).line);
+        HARNESS_CHECK(!SGRPlayerLineFitIn(27.99, 20, 0, 8, 44).line);
         // Shown: the pair within a tap's height keeps it; a taller pair takes its own.
         SGRPlayerLineFit pair = SGRPlayerLineFitIn(100, 20, 16, 8, 44);
         HARNESS_CHECK(pair.line && pair.translation && pair.height == 44);
@@ -321,9 +322,10 @@ int main(void) {
         HARNESS_CHECK(tall.translation && tall.height == 48);
         HARNESS_CHECK(SGRPlayerLineFitIn(52, 20, 16, 8, 44).translation);
         // Does not fit: the translation goes and the line keeps exactly the place it has without one.
-        SGRPlayerLineFit cramped = SGRPlayerLineFitIn(51, 20, 16, 8, 44);
-        HARNESS_CHECK(cramped.line && !cramped.translation && cramped.height == SGRPlayerLineFitIn(51, 20, 0, 8, 44).height);
-        SGRPlayerLineFit cut = SGRPlayerLineFitIn(60, 26, 22, 8, 44);
+        HARNESS_CHECK(SGRPlayerLineFitIn(44, 20, 16, 8, 44).translation);
+        SGRPlayerLineFit cramped = SGRPlayerLineFitIn(43.99, 20, 16, 8, 44);
+        HARNESS_CHECK(cramped.line && !cramped.translation && cramped.height == SGRPlayerLineFitIn(43.99, 20, 0, 8, 44).height);
+        SGRPlayerLineFit cut = SGRPlayerLineFitIn(55, 26, 22, 8, 44);
         HARNESS_CHECK(cut.line && !cut.translation && cut.height == 44);
 
         // Spotify's own preview under the cover: the line takes its place only while it is on, translations are shown

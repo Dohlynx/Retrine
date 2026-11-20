@@ -18,20 +18,20 @@ static inline NSString *SGRPlayerLineTranslation(SGKaraokeLine *line, BOOL trans
 }
 
 // The line's place in a room `room` tall between the cover and the title. The line shows when the room holds its
-// `lineHeight` and `margin` either side; the translation (`translationHeight`, 0 without one) goes under it only
-// when the room holds both with the margins, else it is left out and the line alone keeps today's place. `height`
+// `lineHeight` plus `clearance` shared evenly above and below (one grid gap total under the cover,
+// two over a clip). The translation (`translationHeight`, 0 without one) needs the same clearance. `height`
 // is the view's: a tap's (`tapHeight`) or the pair's if taller, never more than the room.
 typedef struct {
     BOOL line, translation;
     CGFloat height;
 } SGRPlayerLineFit;
 static inline SGRPlayerLineFit SGRPlayerLineFitIn(CGFloat room, CGFloat lineHeight, CGFloat translationHeight,
-                                                  CGFloat margin, CGFloat tapHeight) {
+                                                  CGFloat clearance, CGFloat tapHeight) {
     SGRPlayerLineFit fit = {NO, NO, 0};
-    if (room < lineHeight + 2 * margin) return fit;
+    if (room < lineHeight + clearance) return fit;
     fit.line = YES;
     CGFloat pair = lineHeight + translationHeight;
-    fit.translation = translationHeight > 0 && room >= pair + 2 * margin;
+    fit.translation = translationHeight > 0 && room >= pair + clearance;
     fit.height = MIN(MAX(tapHeight, fit.translation ? pair : 0), room);
     return fit;
 }

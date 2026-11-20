@@ -51,6 +51,7 @@
 #import "Shared/Player/SGLastTrack.h"
 #import "Player.h"
 #import "PlayerLyricLine.h"
+#import "Redesigned/Lyrics/LyricsLookRows.h"
 
 extern NSString *const SGRKeyPlayerMusicClose;
 
@@ -1230,6 +1231,7 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
                                       SGWithNew(SGOptionRow(SGL(@"settings.player.lyric_line.title", @"Lyrics Line"),
                                                   SGL(@"settings.player.lyric_line.subtitle", @"The line being sung, under the cover. Tap it to open the lyrics."),
                                                   SGRKeyPlayerLyricLine), @"playerLyricLine"),
+                                      SGRLyricsSizeRow(SGL(@"settings.player.lyric_line.size", @"Size"), SGRLyricsPlaceUnderCover),
                                       SGWithNew(SGSwitchRow(SGL(@"settings.player.rolling_digits.title", @"Rolling time digits"),
                                                   SGL(@"settings.player.rolling_digits.subtitle", @"The digits that change under the progress bar roll into place."),
                                                   SGRKeyPlayerRollingDigits), @"playerRollingDigits"),
