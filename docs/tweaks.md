@@ -1653,7 +1653,9 @@ Redesigned:
                   track menu has it, and Spotify sizes the cover for it. Switched on, it is the one line a place with room for
                   one shows, centered across the cover's width in the room between the cover and Spotify's bottom stack
                   (a chip over the title ends that room where it starts), at the player's position less the Lyrics page's
-                  Delay; a tap opens the lyrics. It stands down where Spotify shows its own lyric preview under the cover,
+                  Delay; a tap opens the lyrics. When animated artwork replaces the cover, the line sits one grid gap
+                  above the title, at its leading edge, in white. The clip's existing dim reaches up behind it.
+                  It stands down where Spotify shows its own lyric preview under the cover,
                   which in 9.1.90 is Lyrics_NPVElementsKitImpl.LyricsElementWrapperView beside the tilt view, hooked apart
                   from the other placements because that preview gets its height when its lyrics arrive, after the cover's
                   last pass. A line too wide for the label shrinks to no less than 0.85 of its font (SGRLyricMinScale);

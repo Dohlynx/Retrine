@@ -482,10 +482,8 @@ BOOL SGOpenSpotifyURI(NSURL *uri) {
     return NO;
 }
 
-// PlayerMorph.x's Music-like close switch, which the Player page lists, and PlayerLyricLine.x's line under the cover,
-// which the Visualizer keeps clear of: neither file is built here, and no line is up.
+// PlayerMorph.x's Music-like close switch, which the Player page lists.
 NSString *const SGRKeyPlayerMusicClose = @"spotifyglass.redesign.player.musicClose";
-CGRect SGRPlayerLyricLineIn(UIView *view) { return CGRectNull; }
 
 // The ⋯'s system menu (PlayerMenu.m, ContextMenu.x), which this harness does not build (harness/system-menu does):
 // the Spotify ⋯ PlayerHeader.x hands over is kept for the header scenario, and the title row is left as it is.

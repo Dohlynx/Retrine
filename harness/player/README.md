@@ -180,6 +180,11 @@ come late, out of order, or not at all.
   `immersive checks: n of 15 right -- PASS` or `FAIL`.
 - `badge` shows the hold's 2× badge on the cover by hand, holds again while it fades out and lets go.
   The log ends with `badge checks: n of 3 right -- PASS` or `FAIL`.
+- `lyric-line` and `lyric-line-clip` switch Lyrics Line on (PlayerLyricLine.x; off in every other scenario) with
+  one sung line and no chip over the title. `lyric-line` checks the line centered under the cover.
+  `lyric-line-clip` is Animated artwork as in `motion` (it needs a portrait `HARNESS_CANVAS_FILE`) and checks
+  the line at the title's leading edge, one grid gap above it. Both are run by hand; the log ends with
+  `lyric-line passed`, or the failed check and a nonzero exit.
 
 - `motion` is Animated artwork. The clip, `HARNESS_CANVAS_FILE` (any mp4, `harness/fluid-clip` writes one),
   is served as the track's Canvas before the player's background has laid out; then the background lays

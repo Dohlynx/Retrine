@@ -59,6 +59,7 @@
 #import <CoreImage/CoreImage.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <UIKit/UIKit.h>
+#import "Redesigned/Kit/SGRTokens.h"
 #import "../harness-fail.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -583,6 +584,7 @@ static void loadLyrics(void) {
         @"Now everybody wanna say they knew",
     ];
     NSMutableArray<SGKaraokeLine *> *lines = [NSMutableArray array];
+    if ([scenario() hasPrefix:@"lyric-line"]) texts = @[@"한순간이였지"];
     NSInteger at = 0;
     for (NSString *text in texts) {
         NSArray<NSString *> *words = [text componentsSeparatedByString:@" "];
@@ -595,6 +597,7 @@ static void loadLyrics(void) {
             cursor += 260 + word.length * 40;
             // Each line's last word is held, as sung lines often end, so the held-word glow shows.
             if (word == words.lastObject) cursor += 1600;
+            if ([scenario() hasPrefix:@"lyric-line"]) cursor = 60000;
             w.end = cursor;
             [built addObject:w];
         }
@@ -813,6 +816,7 @@ static void loadLyrics(void) {
     chip.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
     chip.layer.cornerRadius = 16;
     UILabel *chipLabel = [[UILabel alloc] initWithFrame:chip.bounds];
+    if ([scenario() hasPrefix:@"lyric-line"]) chip.hidden = YES;
     chipLabel.text = @"  \u25B6  Switch to video";
     chipLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
     chipLabel.textColor = UIColor.whiteColor;
@@ -992,6 +996,24 @@ static void loadLyrics(void) {
     else if ([scenario() isEqualToString:@"controls"]) [self runControlsChecks];
     else if ([scenario() isEqualToString:@"landscape"]) [self runLandscape];
     else if ([scenario() isEqualToString:@"motion"]) [self runMotionChecks];
+    else if ([scenario() hasPrefix:@"lyric-line"]) after(4, ^{
+        UIView *line = firstOfClass(host, @"SGRLyricLineView");
+        UILabel *words = (UILabel *)line.subviews.firstObject;
+        UIView *title = SGRFindByIdentifier(host, @"now-playing-title-label", NULL);
+        CGRect text = [host convertRect:words.bounds fromView:words];
+        CGRect row = [host convertRect:title.bounds fromView:title];
+        BOOL clip = [scenario() isEqualToString:@"lyric-line-clip"];
+        NSLog(@"[harness] lyric-line frame %@ title %@ clip %d", NSStringFromCGRect(text), NSStringFromCGRect(row), SGRPlayerMotionShowing());
+        // Leave the settled frame on screen for simctl io screenshot.
+        after(2, ^{
+            HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"한순간이였지"] && clip == SGRPlayerMotionShowing());
+            HARNESS_CHECK(clip ? (words.textAlignment == NSTextAlignmentLeft && fabs(text.origin.x - row.origin.x) < 1 &&
+                                  fabs(CGRectGetMinY(row) - CGRectGetMaxY(text) - SGRGrid) < 1)
+                               : words.textAlignment == NSTextAlignmentCenter);
+            NSLog(@"[harness] lyric-line passed");
+            exit(0);
+        });
+    });
     else if ([scenario() isEqualToString:@"still"]) [self runStillChecks];
     else if ([scenario() isEqualToString:@"catalog"]) [self runCatalogChecks];
     else if ([scenario() isEqualToString:@"badge"]) [self runBadgeChecks];
@@ -5271,7 +5293,8 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
         for (NSString *key in @[SGRKeyPlayerAnimatedStill, SGRKeyPlayerAnimatedVisualiser, SGRKeyPlayerHideShuffle, SGRKeyPlayerHideRepeat,
                                 SGKeyHideVideoSwitch, SGRKeyPlayerHeaderGlass, SGRKeyPlayerStarAdd]) [store removeObjectForKey:key];
     }
-    if ([scenario() isEqualToString:@"motion"] || [scenario() isEqualToString:@"settings"]) {
+    [NSUserDefaults.standardUserDefaults setBool:[scenario() hasPrefix:@"lyric-line"] forKey:@"spotifyglass.redesign.player.lyricLine"];
+    if ([scenario() isEqualToString:@"motion"] || [scenario() isEqualToString:@"settings"] || [scenario() isEqualToString:@"lyric-line-clip"]) {
         [NSUserDefaults.standardUserDefaults setInteger:3 forKey:@"spotifyglass.redesign.player.background"];
         setenv("HARNESS_CANVAS", "https://canvas.harness/clip.mp4", 1);
         [NSURLProtocol registerClass:SGRHarnessPictureServer.class];

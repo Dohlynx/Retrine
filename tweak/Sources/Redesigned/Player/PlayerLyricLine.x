@@ -7,7 +7,8 @@
 // It is a view of the mod's in SPTNowPlayingView (NowPlayingViewController's view), placed on every layout pass
 // of the player, of its cover (CoverArtTiltView, which PlayerArtwork.x sizes) and of the chips' unit, centered across the cover's width in the
 // room between the cover's own frame (not its paused shrink) and Spotify's bottom stack, which starts with the
-// title row. A chip over the title (Switch to video) ends that room where it starts. With less room than the
+// title row. When a field clip replaces the cover, the line instead leads into the title at its text edge and
+// the clip's dim reaches behind it. A chip over the title (Switch to video) ends that room where it starts. With less room than the
 // line and a gap either side, a player wider than it is tall, or Spotify's own lyric preview under the cover,
 // it is not shown. While translations are shown (below) and the track has synced lines of the line's own, the line
 // takes the preview's place instead (SGRPlayerLineTakesPreview): the preview is hidden by an empty mask of the
@@ -46,7 +47,7 @@
 
 static const CGFloat kTapHeight = 44;
 
-static char kLineKey, kStackKey;
+static char kLineKey, kStackKey, kTitleKey;
 static __weak UIView *sg_host;              // SPTNowPlayingView
 static __weak UIViewController *sg_floating; // the chips over the title (FloatingElementsUnit)
 static BOOL lineHasPlace(void);
@@ -62,6 +63,8 @@ BOOL SGRPlayerLyricLineOn(void) {
 
 @interface SGRLyricLineView : UIView
 @property (nonatomic) BOOL fits;   // set by the layout: there is room for it
+@property (nonatomic) BOOL overClip;
+- (void)alignForClip:(BOOL)clip rtl:(BOOL)rtl;
 @property (nonatomic) CGRect room; // set by the layout: the gap under the cover, CGRectNull without one
 - (void)tick;
 - (BOOL)place;
@@ -188,6 +191,24 @@ BOOL SGRPlayerLyricLineOn(void) {
 
 // The frame in the room, with the translation under the line when the room holds both; NO when it cannot hold the
 // line, which leaves the frame as it was. The translation fades in or out with its place.
+- (void)alignForClip:(BOOL)clip rtl:(BOOL)rtl {
+    NSTextAlignment alignment = clip ? (rtl ? NSTextAlignmentRight : NSTextAlignmentLeft) : NSTextAlignmentCenter;
+    if (_overClip == clip && _label.textAlignment == alignment) return;
+    // Changing alignment isn't animatable. Start each label at the pixels its words currently occupy;
+    // their frames can then travel with the layout spring without a sideways snap.
+    if (!_overClip) {
+        for (UILabel *label in @[_label, _translationLabel]) {
+            CGRect frame = label.frame;
+            CGFloat width = MIN(frame.size.width, ceil([label sizeThatFits:frame.size].width));
+            label.frame = CGRectInset(frame, (frame.size.width - width) / 2, 0);
+        }
+    }
+    _overClip = clip;
+    _label.textAlignment = _translationLabel.textAlignment = alignment;
+    _label.textColor = clip ? UIColor.whiteColor : SGRSecondary();
+    [self setNeedsLayout];
+}
+
 - (BOOL)place {
     if (CGRectIsNull(_room)) return NO;
     SGRPlayerLineFit fit = SGRPlayerLineFitIn(_room.size.height, [self lineHeight], _translation ? [self translationHeight] : 0,
@@ -195,7 +216,11 @@ BOOL SGRPlayerLyricLineOn(void) {
     if (!fit.line) return NO;
     CGRect frame = CGRectIntegral(CGRectMake(CGRectGetMinX(_room), CGRectGetMinY(_room) + (_room.size.height - fit.height) / 2,
                                              _room.size.width, fit.height));
-    if (!CGRectEqualToRect(self.frame, frame)) self.frame = frame;
+    if (_overClip) frame = CGRectMake(_room.origin.x, CGRectGetMaxY(_room) - SGRGrid - fit.height, _room.size.width, fit.height);
+    if (!CGRectEqualToRect(self.frame, frame)) {
+        self.frame = frame;
+        if (_overClip && _shown) SGRPlayerMotionLineMoved();
+    }
     if (fit.translation != _translationShown) {
         _translationShown = fit.translation;
         [self setNeedsLayout];
@@ -210,6 +235,18 @@ BOOL SGRPlayerLyricLineOn(void) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGRect bounds = self.bounds;
+    if (_overClip) {
+        CGFloat bottom = CGRectGetHeight(bounds);
+        for (UILabel *label in @[_translationLabel, _label]) {
+            if (label == _translationLabel && !_translationShown) continue;
+            CGFloat height = label == _label ? [self lineHeight] : [self translationHeight];
+            CGFloat width = MIN(bounds.size.width, ceil([label sizeThatFits:bounds.size].width));
+            bottom -= height;
+            label.frame = CGRectMake(label.textAlignment == NSTextAlignmentRight ? bounds.size.width - width : 0,
+                                     bottom, width, height);
+        }
+        return;
+    }
     if (!_translationShown) {
         _label.frame = bounds;
         return;
@@ -239,7 +276,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 // The text size changed: the line is measured again for the room, and its portions for the new font.
 - (void)restyle {
     _label.font = [SGRLyricLineView font];
-    _label.textColor = SGRSecondary();
+    _label.textColor = _overClip ? UIColor.whiteColor : SGRSecondary();
     [self styleTranslation];
     _portions = nil;
     [self.superview setNeedsLayout];
@@ -260,6 +297,7 @@ BOOL SGRPlayerLyricLineOn(void) {
     if (_translationShown) text = MAX(text, [_translationLabel sizeThatFits:self.bounds.size].width);
     CGFloat width = MIN(self.bounds.size.width, text + 2 * SGRSideMargin);
     CGRect words = CGRectMake(CGRectGetMidX(self.bounds) - width / 2, 0, width, self.bounds.size.height);
+    if (_overClip) words.origin.x = _label.textAlignment == NSTextAlignmentRight ? self.bounds.size.width - width : 0;
     return CGRectContainsPoint(words, point);
 }
 
@@ -365,7 +403,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 
 // The width the words have to fit in: the line's own, less a gap either side.
 - (CGFloat)textWidth {
-    return MAX(CGRectGetWidth(self.bounds) - 2 * SGRGrid, 0);
+    return MAX(CGRectGetWidth(self.bounds) - (_overClip ? 0 : 2 * SGRGrid), 0);
 }
 
 - (void)tick {
@@ -408,6 +446,7 @@ BOOL SGRPlayerLyricLineOn(void) {
         _shown = shown;
         self.userInteractionEnabled = shown;
         self.accessibilityElementsHidden = !shown;
+        if (_overClip) SGRPlayerMotionLineMoved();
         SGRAnimate(shown ? SGRMotionFade : SGRMotionRespond, ^{ self.alpha = shown ? 1 : 0; }, nil);
     }
     // Armed again from every update, whether or not the line changed: the clock is the only thing that moves it.
@@ -424,6 +463,7 @@ BOOL SGRPlayerLyricLineOn(void) {
     if (![_label.font isEqual:font]) _label.font = font;
     if (!text || [text isEqualToString:_label.text]) return;
     UILabel *label = _label;
+    if (_overClip) [self setNeedsLayout];
     if (!_shown) {
         label.text = text;
         return;
@@ -438,6 +478,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 - (void)showTranslation:(NSString *)translation {
     BOOL crossing = _shown && _translationShown && translation;
     _translation = translation;
+    if (_overClip) [self setNeedsLayout];
     UILabel *label = _translationLabel;
     if (crossing) {
         [UIView transitionWithView:label duration:SGRCrossfade
@@ -600,22 +641,47 @@ static void placeLine(void) {
     CGRect room = CGRectNull;
     // Settled first, in any orientation, so a preview the line hid is given back where the line has no room.
     BOOL clear = tilt && [tilt isDescendantOfView:host] && settlePreview(host, tilt);
+    BOOL clip = SGRPlayerMotionShowing();
+    UIView *title = clip ? SGRFindByIdentifier(stack, @"now-playing-title-label", &kTitleKey) : nil;
+    BOOL rtl = title.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
     if (clear && stack && host.bounds.size.height > host.bounds.size.width) {
         CGRect cover = [host convertRect:tilt.bounds fromView:tilt];
         CGFloat top = CGRectGetMaxY(cover), bottom = CGRectGetMinY([host convertRect:stack.bounds fromView:stack]);
         CGRect chips = chipsIn(host);
-        if (!CGRectIsNull(chips) && CGRectGetMaxY(chips) > top && CGRectGetMinY(chips) < bottom) bottom = MAX(top, CGRectGetMinY(chips));
-        room = CGRectMake(CGRectGetMinX(cover), top, cover.size.width, bottom - top);
+        if (clip) {
+            if (title && CGRectIsNull(chips)) {
+                CGRect anchor = [host convertRect:title.bounds fromView:title];
+                CGFloat inset = rtl ? host.bounds.size.width - CGRectGetMaxX(anchor) : CGRectGetMinX(anchor);
+                top = host.safeAreaInsets.top;
+                if (inset >= 0 && 2 * inset < host.bounds.size.width)
+                    room = CGRectMake(inset, top, host.bounds.size.width - 2 * inset, CGRectGetMinY(anchor) - top);
+            }
+        } else {
+            if (!CGRectIsNull(chips) && CGRectGetMaxY(chips) > top && CGRectGetMinY(chips) < bottom) bottom = MAX(top, CGRectGetMinY(chips));
+            room = CGRectMake(CGRectGetMinX(cover), top, cover.size.width, bottom - top);
+        }
     }
+    BOOL changed = line.overClip != clip;
+    CGFloat priorWidth = line.bounds.size.width;
+    [line alignForClip:clip rtl:rtl];
     line.room = room;
-    BOOL fits = [line place];
-    if (fits != line.fits) {
-        line.fits = fits;
-        static NSUInteger logged;
-        if (logged++ < 4) SGLog(@"redesign player: the line under the cover %@ (%.0fx%.0f at %.0f)", fits ? @"has room" : @"has no room",
-                                line.frame.size.width, line.frame.size.height, line.frame.origin.y);
-        [line tick];
-    }
+    void (^place)(void) = ^{
+        BOOL fits = [line place];
+        if (fits != line.fits || changed || (clip && priorWidth != line.bounds.size.width)) {
+            line.fits = fits;
+            [line tick];
+        }
+        if (changed) [line layoutIfNeeded];
+    };
+    if (changed && line.userInteractionEnabled) SGRAnimate(SGRMotionLayout, place, nil);
+    else place();
+}
+
+void SGRPlayerLyricClipChanged(void) { placeLine(); }
+
+CGRect SGRPlayerVisibleClipLineIn(UIView *view) {
+    SGRLyricLineView *line = objc_getAssociatedObject(sg_host, &kLineKey);
+    return line.overClip && line.userInteractionEnabled && view.window == line.window ? SGRPlayerLyricLineIn(view) : CGRectNull;
 }
 
 CGRect SGRPlayerLyricLineIn(UIView *view) {

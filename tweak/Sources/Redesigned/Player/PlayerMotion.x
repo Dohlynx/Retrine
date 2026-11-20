@@ -69,6 +69,7 @@
 #import "Shared/Player/SGLastTrack.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "Player.h"
+#import "PlayerLyricLine.h"
 
 // Where the clip starts dissolving into its foot, as a share of its height.
 static const CGFloat kFootFrom = 0.9;
@@ -413,8 +414,10 @@ static UIBlurEffect *blurEffect(void) {
     _scrim.frame = CGRectMake(0, 0, width, self.window.safeAreaInsets.top + kStillScrimBelowSafeTop);
     NSNumber *(^at)(CGFloat) = ^NSNumber *(CGFloat y) { return @(MIN(1, y / total)); };
     // Whole again by where the seam's blur starts, so over the title and the controls below it.
-    CGFloat topEnd = MIN(screen * kDimTop, blurFrom), rampFrom = MAX(topEnd, blurFrom - kBlurRamp);
-    _dim.locations = @[@0, at(topEnd), at(MIN(topEnd + kDimFade, rampFrom)), at(rampFrom), at(blurFrom)];
+    CGRect line = SGRPlayerVisibleClipLineIn(self);
+    CGFloat dimFrom = CGRectIsNull(line) ? blurFrom : MIN(blurFrom, MAX(0, CGRectGetMinY(line)));
+    CGFloat topEnd = MIN(screen * kDimTop, dimFrom), rampFrom = MAX(topEnd, dimFrom - kBlurRamp);
+    _dim.locations = @[@0, at(topEnd), at(MIN(topEnd + kDimFade, rampFrom)), at(rampFrom), at(dimFrom)];
     _seamMask.frame = bounds;
     _seamMask.locations = @[at(blurFrom), at(blurFrom + kBlurRamp)];
     [CATransaction commit];
@@ -879,6 +882,8 @@ BOOL SGRPlayerMotionShowing(void) {
     return sg_motion != nil;
 }
 
+void SGRPlayerMotionLineMoved(void) { [sg_motion setNeedsLayout]; }
+
 // The card's one clip and the file it plays: a tap on another background choice takes the view off the card
 // and the next tap puts it back, so the same file is not made a playing looper a second time.
 static SGRPlayerMotionView *sg_previewView;
@@ -1005,9 +1010,10 @@ static BOOL seen(UIView *view) {
 }
 
 // The clip fades out over the cover coming back where the player is seen, and goes at once where not.
-static void clear(BOOL animated) {
+static void clearForReplacement(BOOL animated, BOOL fieldClipFollows) {
     SGRPlayerMotionView *old = sg_motion, *inCover = sg_coverClip;
     sg_motion = nil;
+    if (old && !fieldClipFollows) SGRPlayerLyricClipChanged();
     sg_coverClip = nil;
     sg_shown = nil;
     sg_stillOf = nil;
@@ -1027,6 +1033,8 @@ static void clear(BOOL animated) {
     if (animated) [old disappear:^{ [old removeFromSuperview]; }];
     else [old removeFromSuperview];
 }
+
+static void clear(BOOL animated) { clearForReplacement(animated, NO); }
 
 static void showInCover(NSString *track, NSURL *file, UIImage *poster) {
     SGRPlayerMotionView *clip = [[SGRPlayerMotionView alloc] initWithFrame:CGRectZero];
@@ -1060,6 +1068,7 @@ static void showBehind(NSString *track, NSString *name, void (^draw)(SGRPlayerMo
         clear(YES);
     };
     draw(motion);
+    SGRPlayerLyricClipChanged();
     layOut();
     SGRPlayerHoldField();
     [motion setBlurred:SGRPlayerLyricsOpen() animated:NO];
@@ -1076,8 +1085,9 @@ static void show(NSString *track, NSURL *file) {
     SGMotionPoster(file, ^(UIImage *poster) {
         // A walk begun while the poster was read (switched off, Spotify's video) has the say.
         if (!consumerVisible() || !poster || poster.size.width <= 0 || begun != sg_begun) return;
-        clear(YES);
-        if (poster.size.height / poster.size.width <= kSquareAspect) {
+        BOOL square = poster.size.height / poster.size.width <= kSquareAspect;
+        clearForReplacement(YES, !square);
+        if (square) {
             showInCover(track, file, poster);
             return;
         }
@@ -1108,7 +1118,7 @@ static BOOL showStill(void) {
         }
         return YES;
     }
-    clear(YES);
+    clearForReplacement(YES, YES);
     showBehind(sg_track, @"the cover's still", ^(SGRPlayerMotionView *motion) { [motion showStill:picture]; });
     sg_stillOf = identity;
     SGLog(@"redesign player: no clip for %@, its cover as the still, %.0f px wide", sg_track, picture.size.width * picture.scale);

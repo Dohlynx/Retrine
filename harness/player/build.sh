@@ -6,7 +6,7 @@ OUT=${OUT:-$(dirname "$0")/build}
 if [ "${PLAYER_INCREMENTAL:-0}" != 1 ]; then rm -rf "$OUT"; fi
 mkdir -p "$OUT/gen" "$OUT/PlayerHarness.app"
 
-for f in Redesigned/Player/PlayerLyrics.x Redesigned/Player/PlayerArtwork.x Redesigned/Player/PlayerFooter.x \
+for f in Redesigned/Player/PlayerLyrics.x Redesigned/Player/PlayerLyricLine.x Redesigned/Player/PlayerArtwork.x Redesigned/Player/PlayerFooter.x \
          Redesigned/Player/PlayerScroll.x Redesigned/Player/PlayerField.x Redesigned/Player/PlayerMotion.x Redesigned/Player/PlayerLandscape.x Redesigned/Player/PlayerControls.x Redesigned/Player/PlayerHeader.x Redesigned/Player/PlayerCoverAccent.x Redesigned/Player/DJPlayer.x Redesigned/Player/PlayerMix.x Redesigned/Kit/SGRBridges.x \
          Shared/Player/AudioQuality.x; do
     name=$(basename "$f" .x)
@@ -85,7 +85,7 @@ compile -target arm64-apple-ios17.0-simulator -fobjc-arc -g -O0 \
     "$(dirname "$0")/stubs-automix.m" "$(dirname "$0")/automix-scenario.m" "$(dirname "$0")/share-check.m" "$(dirname "$0")/background-check.m" \
     "$SRC"/Redesigned/Player/ShareCards.m "$SRC"/Redesigned/Lyrics/LyricCardPicker.m \
     "$SRC"/Redesigned/Player/PlayerQueue.m "$SRC"/Shared/AutoMix/AutoMixSettings.m "$SRC"/Shared/AutoMix/AutoMixPreview.m \
-    "$OUT"/gen/*.m \
+    "$OUT"/gen/*.m "$SRC"/Redesigned/Player/PlayerLyricFit.m \
     "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGLocalize.m \
     "$SRC"/Core/SGBackdrop.m "$SRC"/Core/SGFlagForce.m "$SRC"/Core/SGUIMode.m "$SRC"/Core/SGFileHash.m "$SRC"/Core/SGOptionalWork.m \
     "$SRC"/Shared/Gestures/GestureHold.m \
