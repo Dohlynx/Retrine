@@ -1,23 +1,21 @@
-# Optional Pixie native downloads
+# Pixie native downloads
 
-Pixie is an **optional, opt-in** build overlay that adds a native download manager to Retrine.
-Default builds never include it, on any Spotify version. Read the whole page before using it, including
-what is still unverified (see [Supported targets](#supported-targets)).
+Retrine IPA builds include Pixie's native download manager by default and require an exact
+[supported target](#supported-targets). Use `PIXIE=0` to build without it.
 
 ## Building
 
 ```sh
-make release PIXIE=1                                # primary Spotify 9.2.0
-make release PIXIE=1 IPA=ipa/Spotify-9.1.90.ipa     # compatibility lane
+make release                                # primary Spotify 9.2.0
+make release IPA=ipa/Spotify-9.1.90.ipa     # compatibility lane
 ```
 
 These produce `out/retrine-<version>-pixie.ipa` and
 `out/retrine-<version>-pixie-spotify-9.1.90.ipa`, separately from the input and ordinary
 Retrine output. An explicit `IPA=` overrides the Pixie primary target.
-`make build PIXIE=1` and `make install PIXIE=1` use the same overlay
-(the latter also signs and installs). Direct pipeline usage accepts `--pixie`
-(`--require-pixie` is an alias). Default builds never include Pixie on any version;
-`make quick` does not build the overlay.
+`make build` and `make install` use the same overlay (the latter also signs and installs).
+The direct pipeline includes Pixie unless given `--no-pixie` or `PIXIE=0`.
+`make quick` reuses the last full IPA; rebuild it with the desired setting to change variants.
 
 ## Supported targets
 
@@ -33,7 +31,7 @@ quota-field shift. The host also routes nebula account attributes through Pixie'
 conversion. Downloading, keeping a download across an app restart, and deleting
 it were verified on a real device. Jailbreak packaging remains 9.1.90-only.
 
-Default builds still work without Pixie. All builds reject existing Pixie
+All builds reject existing Pixie
 payloads, partial overlays, malformed inputs and encrypted executables.
 The finished Retrine IPA is checked again and overlaid after App Intents merging, before
 any installation. The companion build needs Xcode's iPhoneOS SDK and `ldid`; application

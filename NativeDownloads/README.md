@@ -15,12 +15,11 @@ the exact short version, bundle build, main UUID and SpotifyShared UUID.
 IPA packaging may patch a 9.2.0 executable. Jailbreak remains 9.1.90-only.
 Changing the profile's enabled flag is not runtime-layout verification.
 
-Pixie is opt-in: default builds never include it, on any Spotify version.
-Use `PIXIE=1` with Make, or `--pixie` (`--require-pixie` alias) with the pipeline,
-to require an enabled exact profile. The primary 9.2.0 artifact is
+IPA builds include Pixie by default and require an enabled exact profile.
+The primary 9.2.0 artifact is
 `out/retrine-<version>-pixie.ipa`; the compatibility artifact is
 `out/retrine-<version>-pixie-spotify-9.1.90.ipa`. Make's Pixie default input follows
-the JSON primary target unless `IPA` was explicitly supplied.
+the JSON primary target if present, then the first `ipa/*.ipa`; an explicit `IPA` overrides discovery.
 An unsupported version, build or UUID is fatal when Pixie is requested.
 `PIXIE=0` / `--no-pixie` explicitly excludes it. WireGuard admission is independent
 and unchanged. Every lane, including default and explicit exclusion, rejects

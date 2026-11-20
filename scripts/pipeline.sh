@@ -2,7 +2,8 @@
 # Builds the spotifyglass tweak and injects it (plus FLEX) into a decrypted Spotify IPA.
 #
 #   scripts/pipeline.sh <decrypted.ipa> [-o out.ipa] [--no-flex] [--require-pixie|--no-pixie] [--install] [--name N] [--icon P.png] [--keep-watch] [--no-plugins]
-#   (or: make build / make install)
+#   Pixie is included by default; omit it with --no-pixie (make: PIXIE=0).
+#   Pixie는 기본으로 포함됩니다. 제외하려면 --no-pixie (make: PIXIE=0)를 쓰세요.
 #
 # --keep-watch keeps Spotify's Apple Watch app, untested. Only its arm64 build is decrypted in an IPA dumped on an
 # iPhone (the arm64_32 one older Watches run stays encrypted and is taken out), so it can only run on a Watch from
@@ -16,7 +17,7 @@
 #
 # The IPA is yours to supply: drop a decrypted Spotify .ipa in ipa/ and the Makefile finds it.
 #
-# Needs: Theos in $THEOS (default ~/theos), an iPhoneOS 26+ SDK from the selected Xcode or in $THEOS/sdks,
+# Needs: Theos in $THEOS (default ~/theos), an iPhoneOS 26+ SDK from the selected Xcode (or in $THEOS/sdks without Pixie),
 # gmake, ldid, dpkg-deb (brew) and cyan (uv tool install "cyan @ git+https://github.com/asdfzxcvbn/pyzule-rw").
 set -euo pipefail
 export WIREGUARD="${WIREGUARD-1}"
@@ -33,7 +34,7 @@ FLEX_DEB="$ROOT/vendor/com.hopeless.autoflex_0.0.1_iphoneos-arm.deb"
 # reads that App ID out of the profile and can do it safely.
 BUNDLE_ID="${BUNDLE_ID:-}"
 
-IN="" OUT="" WITH_FLEX=1 INSTALL=0 NAME="" ICON="" KEEP_WATCH="" PIXIE=0 NO_PLUGINS=0
+IN="" OUT="" WITH_FLEX=1 INSTALL=0 NAME="" ICON="" KEEP_WATCH="" PIXIE="${PIXIE:-1}" NO_PLUGINS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) OUT="$2"; shift 2 ;;
@@ -45,7 +46,7 @@ while [ $# -gt 0 ]; do
     --install) INSTALL=1; shift ;;
     --keep-watch) KEEP_WATCH=1; shift ;;
     --no-plugins) NO_PLUGINS=1; shift ;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h|--help) sed -n '1d; /^#/!q; p' "$0"; exit 0 ;;
     *) IN="$1"; shift ;;
   esac
 done

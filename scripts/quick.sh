@@ -42,6 +42,13 @@ fi
 APP="$(ls -d "$CACHE"/Payload/*.app | head -1)"
 [ -d "$APP/Retrine.bundle" ] || { echo "cached IPA lacks Retrine.bundle: run the full build once (make install)" >&2; exit 1; }
 
+cached_pixie=0
+[ ! -f "$APP/Frameworks/SpotifyAudioProbe.dylib" ] || cached_pixie=1
+if [ "$cached_pixie" != "${PIXIE:-1}" ]; then
+  echo "cached app has PIXIE=$cached_pixie; run make install PIXIE=${PIXIE:-1} to change it" >&2
+  exit 1
+fi
+
 if [ "$WIREGUARD" = 1 ]; then
   python3 -B "$ROOT/scripts/spotify-transport-scan.py" "$APP" --wireguard-compatible
 fi

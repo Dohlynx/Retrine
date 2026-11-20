@@ -131,7 +131,7 @@ Spotify 화면을 직접 그리지 않는 기능(광고, 개인정보 보호, �
 
 ## 직접 빌드하기
 
-지원 버전의 복호화된 Spotify IPA가 필요합니다. 빌드하면 서명되지 않은 `retrine-<version>.ipa`가 나오고,
+지원 버전의 복호화된 Spotify IPA가 필요합니다. 9.2.0을 기본 설정으로 빌드하면 `retrine-<version>-pixie.ipa`가 나오고,
 이를 SideStore, Feather 등 원하는 서명 도구로 서명하면 됩니다.
 
 릴리스에는 `.deb`도 없습니다. 트윅만 손으로 주입하면 재설계 화면에 필요한 앱 변경(글래스 탭 바),
@@ -150,6 +150,7 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 | Where to put the result | `artifacts` | `artifacts`, `filebin`, `both` 중 선택. filebin을 고르면 실행 요약에 filebin.net 링크가 표시되며, 며칠 동안 쓰지 않으면 삭제됩니다. |
 | Remove every app extension (PlugIns/) | 꺼짐 | IPA에서 앱 확장을 모두 제거합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 | Include app-local WireGuard / proxy | 켜짐 | **9.1.78과 9.1.88에서는 꺼야 합니다.** [WireGuard](#wireguard--프록시) 항목을 참고하세요. |
+| Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0 또는 9.1.90 빌드와 정확히 일치해야 합니다. **9.1.78과 9.1.88에서는 꺼야 합니다.** |
 | Bundle ID | (비워 둠) | 비워 두면 Spotify의 `com.spotify.client`를 유지합니다. 입력하면 서명할 App ID와 같아야 하며, 앱 확장 ID도 이를 따라갑니다. |
 
 내려받은 파일은 먼저 검사하므로, HTML 로그인 페이지나 중간에 끊긴 파일이면 바로 실패합니다.
@@ -160,7 +161,7 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 <br>
 
 Theos를 `~/theos`에 설치하고, iPhoneOS 26 이상 SDK가 있는 Xcode를 `xcode-select`로 선택합니다.
-`~/theos/sdks`의 SDK만으로도 빌드는 되지만 Live Activity와 Open in Retrine 확장은 빠집니다.
+`~/theos/sdks`의 SDK만 쓴다면 `PIXIE=0`으로 빌드해야 하며, Live Activity와 Open in Retrine 확장도 빠집니다.
 
 ```sh
 brew install make ldid dpkg zsign libimobiledevice
@@ -174,8 +175,9 @@ uv tool install "cyan @ git+https://github.com/asdfzxcvbn/pyzule-rw"
 지정) 다음을 실행합니다.
 
 ```sh
-make release                 # out/retrine-<version>.ipa, 서명 전 IPA
-make release WIREGUARD=0     # WireGuard 제외 (9.1.78 / 9.1.88에서는 필수)
+make release                 # 9.2.0: out/retrine-<version>-pixie.ipa
+make release PIXIE=0         # Pixie 제외: out/retrine-<version>.ipa
+make release PIXIE=0 WIREGUARD=0  # 9.1.78 / 9.1.88에서는 둘 다 제외
 make release NO_PLUGINS=1    # 앱 확장 모두 제거
 make install                 # 빌드 후 본인 인증서로 서명해 기기에 설치
 ```
@@ -217,17 +219,18 @@ make install                 # 빌드 후 본인 인증서로 서명해 기기�
   시작하기 전까지는 꺼져 있습니다.
 - 적용되지 않는 경로: 백그라운드 세션, 웹 로그인, AVURLAsset, 트윅 초기화 전의 트래픽, 로컬 네트워크
   예외, 다른 Connect 기기에서의 재생.
-- WireGuard는 **Spotify 9.1.90과 9.2.0만** 지원합니다. 9.1.78이나 9.1.88은 `WIREGUARD=0`으로
-  빌드하세요(Actions에서는 **Include app-local WireGuard / proxy** 체크 해제).
+- WireGuard는 **Spotify 9.1.90과 9.2.0만** 지원합니다. 9.1.78이나 9.1.88은 `PIXIE=0 WIREGUARD=0`으로
+  빌드하세요(Actions에서는 **Include Pixie native downloads**와 **Include app-local WireGuard / proxy**를 모두 해제).
 - WireGuard 없이 빌드하면 이전에 켜 두었더라도 라우팅과 차단이 전혀 적용되지 않습니다.
 
 적용 범위와 한계 전체: [docs/wireguard.md](docs/wireguard.md)
 
-## Pixie 네이티브 다운로드 (선택, 실험적)
+## Pixie 네이티브 다운로드 (실험적)
 
-`make release PIXIE=1`로 빌드하면 Pixie의 네이티브 다운로드 관리자가 추가됩니다. Spotify 9.2.0과
-9.1.90만 지원합니다. 9.2.0에서는 다운로드, 앱 재시작 후 다운로드 유지, 삭제를 실기기에서 확인했습니다.
-장기 오프라인 라이선스 갱신은 아직 확인하지 않았습니다. 기본 빌드에는 Pixie가 포함되지 않습니다.
+IPA에는 Pixie의 네이티브 다운로드 관리자가 기본으로 포함됩니다. 지원 대상인 Spotify 9.2.0 또는
+9.1.90 빌드와 정확히 일치해야 합니다. 제외하려면 `PIXIE=0`을 지정하세요(파이프라인에서는 `--no-pixie`).
+9.2.0에서는 다운로드, 앱 재시작 후 다운로드 유지, 삭제를 실기기에서 확인했습니다.
+장기 오프라인 라이선스 갱신은 아직 확인하지 않았습니다.
 지원 빌드와 제한 사항은 [docs/pixie.md](docs/pixie.md)(영문)를 참고하세요.
 
 ## 업데이트

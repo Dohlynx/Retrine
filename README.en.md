@@ -131,8 +131,8 @@ goes back to Spotify's own look with everything else the mod adds still on top.
 
 ## Build it yourself
 
-You need a decrypted Spotify IPA of a supported version. The result is an unsigned `retrine-<version>.ipa`
-that you sign with SideStore, Feather or any certificate signer.
+You need a decrypted Spotify IPA of a supported version. On 9.2.0 the default result is `retrine-<version>-pixie.ipa`,
+ready to sign with SideStore, Feather or any certificate signer.
 
 Releases have no `.deb` either: injected by hand, the tweak alone misses the app changes the redesign needs
 (its glass tab bar), the Live Activity, Music Haptics in the background and Connect's local discovery.
@@ -151,6 +151,7 @@ Build the IPA instead.
 | Where to put the result | `artifacts` | `artifacts`, `filebin` or `both`. With filebin, the run summary gets a filebin.net link that is deleted after a few days of inactivity. |
 | Remove every app extension (PlugIns/) | Off | Removes every app extension from the IPA. See [Signing](#signing-and-bundle-id). |
 | Include app-local WireGuard / proxy | On | **Uncheck for 9.1.78 and 9.1.88.** See [WireGuard](#wireguard--proxy). |
+| Include Pixie native downloads | On | Requires the exact supported 9.2.0 or 9.1.90 build. **Uncheck for 9.1.78 and 9.1.88.** |
 | Bundle ID | (empty) | Empty keeps Spotify's `com.spotify.client`. If set, it must match your signing App ID; extension IDs follow it. |
 
 The downloaded file is checked first, so an HTML login page or a truncated download fails right away.
@@ -161,7 +162,7 @@ The downloaded file is checked first, so an HTML login page or a truncated downl
 <br>
 
 Install Theos in `~/theos` and Xcode with an iPhoneOS 26+ SDK (select it with `xcode-select`). An SDK in
-`~/theos/sdks` alone also builds, but without the Live Activity and Open in Retrine extensions.
+`~/theos/sdks` alone requires `PIXIE=0` and omits the Live Activity and Open in Retrine extensions.
 
 ```sh
 brew install make ldid dpkg zsign libimobiledevice
@@ -175,8 +176,9 @@ Put the decrypted `.ipa` in `ipa/` (`Spotify-9.2.0.ipa` is picked first if prese
 `IPA=`), then:
 
 ```sh
-make release                 # out/retrine-<version>.ipa, ready to sign
-make release WIREGUARD=0     # without WireGuard (required for 9.1.78 / 9.1.88)
+make release                 # out/retrine-<version>-pixie.ipa on 9.2.0
+make release PIXIE=0         # without Pixie: out/retrine-<version>.ipa
+make release PIXIE=0 WIREGUARD=0  # required for 9.1.78 / 9.1.88
 make release NO_PLUGINS=1    # remove every app extension
 make install                 # build, sign with your certificate and install on the device
 ```
@@ -219,17 +221,18 @@ that includes the Watch. `make install` does not do that yet.
   it and restart Spotify.
 - Not covered: background sessions, web sign-in, AVURLAsset, traffic before the tweak initializes,
   local-network exemptions and playback on other Connect devices.
-- WireGuard admits only **Spotify 9.1.90 and 9.2.0**. For 9.1.78 or 9.1.88, build with `WIREGUARD=0`
-  (in Actions, uncheck **Include app-local WireGuard / proxy**).
+- WireGuard admits only **Spotify 9.1.90 and 9.2.0**. For 9.1.78 or 9.1.88, build with `PIXIE=0 WIREGUARD=0`
+  (in Actions, uncheck both **Include Pixie native downloads** and **Include app-local WireGuard / proxy**).
 - A build without WireGuard drops all enforcement, even if it was enabled before.
 
 Full coverage and limitations: [docs/wireguard.md](docs/wireguard.md)
 
-## Pixie native downloads (optional, experimental)
+## Pixie native downloads (experimental)
 
-`make release PIXIE=1` adds Pixie's native download manager for Spotify 9.2.0 or 9.1.90 only.
+IPA builds include Pixie's native download manager by default. Only the exact supported Spotify
+9.2.0 and 9.1.90 builds are accepted. To build without it, use `PIXIE=0` (`--no-pixie` with the pipeline).
 On 9.2.0, downloads, persistence across a restart and deletion were verified on a real device.
-Long-term offline licence renewal remains unverified. Default builds do not include Pixie.
+Long-term offline licence renewal remains unverified.
 See [docs/pixie.md](docs/pixie.md) for supported builds and limitations.
 
 ## Updates

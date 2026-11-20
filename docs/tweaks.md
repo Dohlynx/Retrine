@@ -2097,8 +2097,9 @@ Documents/Lossless folder (Files app › Spotify › Lossless) plays in place of
 
 ## Make targets
 
-    make build      # out/retrine-<version>.ipa with FLEX in it
+    make build      # out/retrine-<version>-pixie.ipa on 9.2.0, with FLEX
     make release    # the same without FLEX
+    make release PIXIE=0  # omit Pixie (pipeline: --no-pixie)
     make install    # build without FLEX, sign with your certificate, install over USB or Wi-Fi
     make install FLEX=1   # the same with FLEX, which is what make trees reads through
     make quick      # rebuild only the tweak into the app the last make install made, sign, install (seconds)

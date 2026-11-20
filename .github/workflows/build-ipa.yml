@@ -20,6 +20,10 @@ on:
         description: "Include app-local WireGuard / proxy (inspected Spotify IPA only; off until enabled)"
         type: boolean
         default: true
+      enable_pixie:
+        description: "Include Pixie native downloads (exact Spotify 9.2.0 or 9.1.90 build only)"
+        type: boolean
+        default: true
       bundle_id:
         description: "Bundle ID must match the signing App ID; extension IDs follow it (empty keeps Spotify's ID)"
         default: ""
@@ -109,6 +113,7 @@ jobs:
         env:
           BUNDLE_ID: ${{ inputs.bundle_id }}
           WIREGUARD: ${{ inputs.enable_wireguard && '1' || '0' }}
+          PIXIE: ${{ inputs.enable_pixie && '1' || '0' }}
           MAKEFLAGS: -k
         run: |
           set -o pipefail

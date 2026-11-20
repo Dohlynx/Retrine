@@ -175,7 +175,13 @@ def main():
     if args.check_clean:
         print("Pixie exclusion preflight: clean Spotify input")
         return
-    profile = select_profile(info, main_uuid, shared_uuid)
+    try:
+        profile = select_profile(info, main_uuid, shared_uuid)
+    except ValueError as error:
+        supported = ", ".join(f"{p.version} ({p.build})" for p in PROFILES if p.enabled)
+        raise SystemExit(f"{error}.\nPixie supports these exact Spotify builds: {supported}.\n"
+                         "To omit Pixie, use PIXIE=0. For Spotify 9.1.78 or 9.1.88, use "
+                         "PIXIE=0 WIREGUARD=0 (in the workflow, uncheck both Pixie and WireGuard).") from None
     licenses = required_licenses()
     if not profile.reservation_counters_verified or not profile.runtime_layout_verified:
         print(f"WARNING: Spotify {profile.version} packaging is enabled, but native runtime admission remains disabled: layout/counters are unverified.", file=sys.stderr)

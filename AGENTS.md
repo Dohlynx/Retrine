@@ -68,14 +68,14 @@ Rules:
   has a file. Sources (providers, downloads) are a design only: `docs/lossless-sources.md`. Do not take Sing's
   `SGPlayerSetStage` slot. After audio edits, run the handoff harness (`harness/lossless/handoff-build.sh`).
 
-- Build: `make install PIXIE=1` (signs and pushes to the phone; the phone keeps Pixie's downloads), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). Tweak only:
+- Build: `make install` (signs and pushes to the phone; the phone keeps Pixie's downloads), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). IPA builds include Pixie by default; `PIXIE=0` excludes it. Tweak only:
   `env -u MAKELEVEL gmake -C tweak clean package`.
   IPA builds include app-local WireGuard/proxy by default and require the exact Go release from
   `WireGuard/go.mod`, including release builds. Use `WIREGUARD=0` to exclude it; direct tweak builds
   remain Go-free by default. At runtime it stays off until a profile is imported or a proxy saved,
   explicitly enabled and the app restarted. It is not a leak-proof or device-wide VPN; see
   `docs/wireguard.md` for uncovered paths and the enforcement lost with `WIREGUARD=0`.
-- Handing over an IPA: shared builds include Pixie (`make release PIXIE=1`, `out/retrine-<version>-pixie.ipa`).
+- Handing over an IPA: shared builds include Pixie (`make release`, `out/retrine-<version>-pixie.ipa` on 9.2.0).
   Upload it with `rclone copy <ipa> dropbox:Vitrine/` (the shared folder keeps its name, so existing links stay
   valid), confirm it with `rclone check <ipa> dropbox:Vitrine/ --one-way`, and give the `rclone link` URL with `dl=0`
   changed to `dl=1`. Then delete that IPA from `out/` (leave `out/extension/`, the extension build cache). Never
