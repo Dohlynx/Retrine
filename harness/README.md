@@ -3,7 +3,9 @@
 `.github/workflows/harness.yml` runs the offline macOS / Mac Catalyst checks on
 `macos-latest` for pull requests. Pushes to `main` and the weekly full run are
 checked on the maintainer's own Mac runner from the private Retrine-CI repository,
-so a push here runs no Mac job. Each harness builds
+so a push here runs no Mac job: `.github/workflows/private-checks.yml` only starts
+that repository's poll, which checks the newest commit against the last one it
+checked (its own schedule is the fallback). Each harness builds
 **and runs** its checks; failure does not cancel the other jobs.
 
 CI has two jobs. `plan` (ubuntu) reads the changed files and asks
