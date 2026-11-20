@@ -1433,7 +1433,7 @@
 "settings.lyricslook.format.pt" = "%.0f pt";
 "settings.lyricslook.glow.title" = "Glow";
 "settings.lyricslook.place.default" = "Default";
-"settings.lyricslook.place.footer" = "Default uses your iPhone's text size for Lyrics Line and Text size for the other places. A percentage changes only that place. You can also set the line's size on the Player page.";
+"settings.lyricslook.place.footer" = "Default uses Spotify's preview size for Lyrics Line and Text size for the other places. A percentage changes only that place. You can also set the line's size on the Player page.";
 "settings.lyricslook.place.full_screen" = "Landscape and full screen";
 "settings.lyricslook.place.header" = "Size in each place";
 "settings.lyricslook.place.player" = "In the player";

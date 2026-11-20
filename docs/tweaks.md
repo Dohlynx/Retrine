@@ -1651,17 +1651,18 @@ Redesigned:
                   page, off until switched on, as the Music app keeps nothing between its cover and title; PlayerLyricLine.x,
                   PlayerLyricFit.h). Spotify's own lyric preview under the cover stays as Spotify's Lyrics setting in the
                   track menu has it, and Spotify sizes the cover for it. Switched on, it is the one line a place with room for
-                  one shows, centered across the cover's width in the room between the cover and Spotify's bottom stack
-                  (a chip over the title ends that room where it starts), at the player's position less the Lyrics page's
-                  Delay; a tap opens the lyrics. Its semibold Body font follows Dynamic Type up to XXXL (17 pt at
-                  the standard text size), scaled by Size under Lyrics Line on the Player page or, equivalently,
-                  Under the cover in Lyrics Style. When animated artwork replaces the cover, the line sits one grid gap
-                  above the title, at its leading edge, in white. The clip's existing dim reaches up behind it.
+                  one shows, in the native preview's text rectangle (on the 13 Pro, 24 pt in, centered vertically
+                  in the 100 pt above the bottom stack), clear of the unshrunk cover. It uses the measured
+                  19.098 pt system bold preview font, fixed across phone text sizes,
+                  and white text at the player's position less the Lyrics page's Delay; a tap opens the lyrics.
+                  Size under Lyrics Line and Under the cover in Lyrics Style scale the same preview font.
+                  A field clip or full-screen still keeps the same text rectangle, with the clip's dim behind it.
+                  A chip takes the line's place over a clip.
                   It stands down where Spotify shows its own lyric preview under the cover,
                   which in 9.1.90 is Lyrics_NPVElementsKitImpl.LyricsElementWrapperView beside the tilt view, hooked apart
                   from the other placements because that preview gets its height when its lyrics arrive, after the cover's
-                  last pass. A line too wide for the label shrinks to no less than 0.85 of its font (SGRLyricMinScale);
-                  still too wide, it is shown in successive portions of whole words — cut at word boundaries where the
+                  last pass. Long lines use successive two-row portions at the chosen size (only a word too wide
+                  for one row shrinks, no further than 0.85) — cut at word boundaries where the
                   text spaces them, and character by character through an unspaced Chinese or Japanese run — the portion
                   holding the word being sung while the line is word timed, else the even share of the line's time; no
                   portion is ever cut mid-word. Portions are kept per line, width and font (the font whole, so Bold Text
@@ -1675,11 +1676,11 @@ Redesigned:
                   where the armed timer was heading; kept lines, the Delay and coming back to the foreground re-aim it
                   too. While the lyrics' menu shows translations (SGRKeyLyricsTranslation; no switch of its own), the line's
                   translation (SGLyricsShownTranslation: none, or one that reads the same as the line, adds nothing) sits
-                  under it as a footnote in SGRTertiary with the lyrics page's translation weight and brightness (Text
+                  under it at 80% of the line's chosen size, rounded, in the player's artist color
+                  with the lyrics page's translation weight and brightness (Text
                   sizes), on one row that shrinks to 0.85 and then truncates. It goes under the line only where the room
-                  holds the pair. Under a cover the centered gaps above and below the words may each narrow
-                  to half a grid gap, for the pair or the line alone (SGRPlayerLineFitIn, PlayerLyricLine.h);
-                  the gap over a clip is unchanged. If the pair does not fit, the translation is left
+                  holds the pair at the native text position with half a grid gap clear of the art and title.
+                  If the pair does not fit, the translation is left
                   out and the line keeps exactly its place without one, the line never shrinking for it. The
                   translations are the lyrics page's, on the same kept lines it translates in place, plus the saved
                   ones read onto them from disk (SGLyricsLoadTranslation, as the Live Activity restores them); the line
@@ -1696,8 +1697,8 @@ Redesigned:
                   translations switched off, the player turned wide or a track without synced lines give back every
                   one (SGRPlayerPreviewsToGiveBack), a cell the covers keep for reuse included: only the line's mask
                   comes off, if it is still the preview's. The line then stands down for it as before; the switch
-                  and lines arriving hand over at once. While a preview is hidden the line also takes the touches over
-                  its frame (they open the lyrics), since a tap there would otherwise inspect the cover. Checked on the Mac against harness/player-lyric-line/
+                  and lines arriving hand over at once. Only the touch target over the words opens the lyrics.
+                  Checked on the Mac against harness/player-lyric-line/
     Lyrics/       the full screen lyrics page on glass with Apple Music style lyrics over it, always on (SGRKaraokeView,
                   which the player shows in itself too, Player/PlayerLyrics.x, where with Hide the controls set to
                   Everything, everything else -- the header row, the thumbnail, the title row and the controls --
@@ -1764,7 +1765,7 @@ Redesigned:
                   the player's title and bar are (SGRKaraokeView.m), under a live
                   preview of the view playing a song of its own (LyricsLookSettings.m); its Size in each place sets the
                   line under the cover, the player's lyrics and landscape/full-screen lyrics to 75–130% of their own size,
-                  Default changing nothing, the line under the cover keeping the iPhone's text size and its fitting. Laid out on the Mac against
+                  Default changing nothing, the line under the cover keeping the Spotify preview's size. Laid out on the Mac against
                   harness/lyrics/; the page against harness/lyrics-page/
     Navigation/   Open pages from their artwork, an opt-in on Appearance beside the page-title options
                   (`spotifyglass.redesign.pageZoom`, off, restart to apply, iOS 26 only; PageZoom.x/m).

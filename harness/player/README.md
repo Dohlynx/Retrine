@@ -181,12 +181,13 @@ come late, out of order, or not at all.
 - `badge` shows the hold's 2× badge on the cover by hand, holds again while it fades out and lets go.
   The log ends with `badge checks: n of 3 right -- PASS` or `FAIL`.
 - `lyric-line` and `lyric-line-clip` switch Lyrics Line on (PlayerLyricLine.x; off in every other scenario) with
-  one sung line and no chip over the title. `lyric-line` checks the line centered under the cover.
-  On the 402×874 fixture the volume row leaves 34.67 pt below the cover: the centered Body line
-  still fits, with less than a full grid gap on each side.
-  Both scenarios check the displayed font at standard text size and a live change to 130% and back.
+  one sung line and no chip over the title. Both check the native preview's inset and 100 pt cell,
+  the displayed fonts at standard text size and a live change to 130% and back, with and without a translation.
+  `lyric-line-switch` uses the same clip fixture and checks clip → cover → clip without changing the words.
+  `lyric-line-chip`, `lyric-line-long` and `lyric-line-vo` check chip clearance, the first
+  long lyric before the view has a frame, and opening lyrics by accessibility activation.
   `lyric-line-clip` is Animated artwork as in `motion` (it needs a portrait `HARNESS_CANVAS_FILE`) and checks
-  the line at the title's leading edge, one grid gap above it. Both are run by hand; the log ends with
+  the same preview frame over the clip. Both are run by hand; the log ends with
   `lyric-line passed`, or the failed check and a nonzero exit.
 
   `settings` checks that Size immediately follows Lyrics Line and shares the lyrics size choice.

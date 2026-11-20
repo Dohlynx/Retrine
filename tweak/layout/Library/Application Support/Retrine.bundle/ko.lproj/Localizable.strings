@@ -1490,7 +1490,7 @@
 "settings.lyricslook.format.pt" = "%.0f pt";
 "settings.lyricslook.glow.title" = "발광";
 "settings.lyricslook.place.default" = "기본";
-"settings.lyricslook.place.footer" = "기본값을 선택하면 가사 한 줄은 iPhone의 텍스트 크기를 따르고, 나머지 위치에는 ‘텍스트 크기’ 설정이 적용됩니다. 백분율을 고르면 해당 위치의 크기만 바뀝니다. 가사 한 줄의 크기는 플레이어 페이지에서도 바꿀 수 있습니다.";
+"settings.lyricslook.place.footer" = "기본값을 선택하면 가사 한 줄은 Spotify 가사 미리보기의 크기를 따르고, 나머지 위치에는 ‘텍스트 크기’ 설정이 적용됩니다. 백분율을 고르면 해당 위치의 크기만 바뀝니다. 가사 한 줄의 크기는 플레이어 페이지에서도 바꿀 수 있습니다.";
 "settings.lyricslook.place.full_screen" = "가로 및 전체 화면";
 "settings.lyricslook.place.header" = "위치별 크기";
 "settings.lyricslook.place.player" = "플레이어 안";

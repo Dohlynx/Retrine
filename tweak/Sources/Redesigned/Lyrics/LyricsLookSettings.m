@@ -101,7 +101,7 @@ static void presentStyleSheet(UIViewController *owner) {
         SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.player", @"In the player"), SGRLyricsPlacePlayer),
         SGRLyricsSizeRow(SGL(@"settings.lyricslook.place.full_screen", @"Landscape and full screen"), SGRLyricsPlaceFullScreen),
     ];
-    NSString *placesFooter = SGL(@"settings.lyricslook.place.footer", @"Default uses your iPhone's text size for Lyrics Line and Text size for the other places. "
+    NSString *placesFooter = SGL(@"settings.lyricslook.place.footer", @"Default uses Spotify's preview size for Lyrics Line and Text size for the other places. "
                                  @"A percentage changes only that place. You can also set the line's size on the Player page.");
     SGRLyricsStyleSheet *page = [[SGRLyricsStyleSheet alloc] initWithTitle:SGL(@"settings.lyricslook.title", @"Lyrics Style") intro:nil
                                                                  sections:@[SGNotedSection(nil, rows, footer),

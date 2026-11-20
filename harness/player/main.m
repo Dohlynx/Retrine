@@ -79,6 +79,7 @@
 #import "Redesigned/Kit/SGRFluid.h"
 #import "Settings/SGModPage.h"
 #import "Redesigned/Lyrics/LyricsLook.h"
+#import "Redesigned/Lyrics/LyricsText.h"
 #import "Shared/Player/PlayerSettings.h"
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Player/AudioQuality.h"
@@ -586,6 +587,8 @@ static void loadLyrics(void) {
     ];
     NSMutableArray<SGKaraokeLine *> *lines = [NSMutableArray array];
     if ([scenario() hasPrefix:@"lyric-line"]) texts = @[@"한순간이였지"];
+    BOOL longFirst = [scenario() isEqual:@"lyric-line-long"];
+    if (longFirst) texts = @[@"First we find the words and then we sing the words together before another phrase begins and carries on until the final note"];
     NSInteger at = 0;
     for (NSString *text in texts) {
         NSArray<NSString *> *words = [text componentsSeparatedByString:@" "];
@@ -598,11 +601,13 @@ static void loadLyrics(void) {
             cursor += 260 + word.length * 40;
             // Each line's last word is held, as sung lines often end, so the held-word glow shows.
             if (word == words.lastObject) cursor += 1600;
-            if ([scenario() hasPrefix:@"lyric-line"]) cursor = 60000;
+            if (longFirst) cursor = w.start + 1000;
+            else if ([scenario() hasPrefix:@"lyric-line"]) cursor = 60000;
             w.end = cursor;
             [built addObject:w];
         }
         SGKaraokeLine *line = [SGKaraokeLine new];
+        if ([scenario() hasPrefix:@"lyric-line"]) line.translation = @"One moment";
         line.words = built;
         line.start = at;
         line.end = cursor;
@@ -778,7 +783,14 @@ static void loadLyrics(void) {
     _cover = cover;
     cover.contentMode = UIViewContentModeScaleAspectFill;
     [coverElement addSubview:cover];
-    box(inner, _TtC22Lyrics_NPVContainerKit19LyricsContainerView.class, CGRectMake(0, inner.bounds.size.height, coverSide, 0), nil);
+    UIView *previewShell = box(inner, _TtC22Lyrics_NPVContainerKit19LyricsContainerView.class, CGRectMake(0, inner.bounds.size.height, coverSide, 0), nil);
+    if ([scenario() isEqualToString:@"lyric-line"]) {
+        // Spotify keeps a populated, invisible wrapper beside the ordinary cover on tracks without a preview.
+        previewShell.frame = CGRectMake(0, inner.bounds.size.height, coverSide, 100);
+        previewShell.alpha = 0;
+        UILabel *placeholder = (UILabel *)box(previewShell, UILabel.class, previewShell.bounds, @"Encore.Label-internal");
+        placeholder.font = [UIFont systemFontOfSize:17];
+    }
 
     // the header row; for the cover scenario alone in the stack of its own size Spotify 9.2.0 holds it in, which took
     // the touches the row let go over the lifted cover's top (issue #27)
@@ -817,7 +829,7 @@ static void loadLyrics(void) {
     chip.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
     chip.layer.cornerRadius = 16;
     UILabel *chipLabel = [[UILabel alloc] initWithFrame:chip.bounds];
-    if ([scenario() hasPrefix:@"lyric-line"]) chip.hidden = YES;
+    if ([scenario() hasPrefix:@"lyric-line"]) chip.hidden = ![scenario() isEqual:@"lyric-line-chip"];
     chipLabel.text = @"  \u25B6  Switch to video";
     chipLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
     chipLabel.textColor = UIColor.whiteColor;
@@ -1003,33 +1015,104 @@ static void loadLyrics(void) {
         UIView *title = SGRFindByIdentifier(host, @"now-playing-title-label", NULL);
         CGRect text = [host convertRect:words.bounds fromView:words];
         CGRect row = [host convertRect:title.bounds fromView:title];
-        BOOL clip = [scenario() isEqualToString:@"lyric-line-clip"];
+        BOOL handover = [scenario() isEqualToString:@"lyric-line-switch"];
+        BOOL clip = handover || [scenario() isEqualToString:@"lyric-line-clip"];
         NSLog(@"[harness] lyric-line font %.1f frame %@ title %@ room %@ clip %d", words.font.pointSize,
               NSStringFromCGRect(text), NSStringFromCGRect(row), [line valueForKey:@"room"], SGRPlayerMotionShowing());
         // Leave the settled frame on screen for simctl io screenshot.
         after(2, ^{
-            CGFloat body = [UIFont preferredFontForTextStyle:UIFontTextStyleBody].pointSize;
-            HARNESS_CHECK(words.font.pointSize == body);
+            CGFloat native = 19.1;
+            if ([scenario() isEqual:@"lyric-line-long"]) {
+                // The first clock tick enters with a known slot but no view frame yet.
+                UIView *opening = [[line.class alloc] initWithFrame:CGRectZero];
+                [opening setValue:[line valueForKey:@"slot"] forKey:@"slot"];
+                [opening setValue:[line valueForKey:@"room"] forKey:@"room"];
+                [host addSubview:opening];
+                UILabel *first = (UILabel *)opening.subviews.firstObject;
+                HARNESS_CHECK(opening.userInteractionEnabled && first.text.length && first.text.length < opening.accessibilityLabel.length);
+                [opening removeFromSuperview];
+                HARNESS_CHECK(line.userInteractionEnabled && words.text.length && words.text.length < line.accessibilityLabel.length);
+                HARNESS_CHECK(fabs(words.font.pointSize - native) < .05 &&
+                    [words textRectForBounds:words.bounds limitedToNumberOfLines:2].size.height > words.font.lineHeight * 1.5);
+                NSLog(@"[harness] lyric-line passed (first long lyric)");
+                exit(0);
+            }
+            if ([scenario() isEqual:@"lyric-line-vo"]) {
+                HARNESS_CHECK([line accessibilityActivate]);
+                after(.5, ^{
+                    HARNESS_CHECK(SGRPlayerLyricsOpen());
+                    NSLog(@"[harness] lyric-line passed (VoiceOver)");
+                    exit(0);
+                });
+                return;
+            }
+            HARNESS_CHECK(fabs(words.font.pointSize - native) < 0.05 &&
+                          (words.font.fontDescriptor.symbolicTraits & UIFontDescriptorTraitBold));
+            if (!clip && host.bounds.size.width == 375 && host.bounds.size.height == 667) {
+                // This fixture's ordinary cover extends into the SE's preview cell.
+                HARNESS_CHECK(CGRectGetMaxY(SGRPlayerCoverFrameIn(host)) >= CGRectGetMidY(text));
+                HARNESS_CHECK(!line.userInteractionEnabled && line.alpha == 0);
+                NSLog(@"[harness] lyric-line passed (no room on SE)");
+                exit(0);
+            }
             HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"한순간이였지"] && clip == SGRPlayerMotionShowing());
-            HARNESS_CHECK(clip ? (words.textAlignment == NSTextAlignmentLeft && fabs(text.origin.x - row.origin.x) < 1 &&
-                                  fabs(CGRectGetMinY(row) - CGRectGetMaxY(text) - SGRGrid) < 1)
-                               : words.textAlignment == NSTextAlignmentCenter);
+            CGRect stack = [host convertRect:bottom.bounds fromView:bottom];
+            CGRect preview = CGRectMake(24, CGRectGetMinY(stack) - 100, host.bounds.size.width - 48, 100);
+            if ([scenario() isEqual:@"lyric-line-chip"]) {
+                HARNESS_CHECK(CGRectEqualToRect(text, preview) && !chip.hidden && chip.bounds.size.height == 32);
+                SGRSetLyricsTextShown(SGRLyricsTextTranslation, YES);
+                [host layoutIfNeeded];
+                HARNESS_CHECK(line.userInteractionEnabled && !line.accessibilityValue &&
+                             CGRectEqualToRect([host convertRect:words.bounds fromView:words], preview));
+                NSLog(@"[harness] lyric-line passed (chip)");
+                exit(0);
+            }
+            HARNESS_CHECK(CGRectEqualToRect(text, preview) && words.textAlignment == NSTextAlignmentLeft);
+            HARNESS_CHECK(CGColorEqualToColor(words.textColor.CGColor, UIColor.whiteColor.CGColor));
+            if (handover) {
+                SGRSetPlayerBackground(SGRPlayerBackgroundFluid);
+                SGRPlayerBackgroundDidChange();
+                [host layoutIfNeeded];
+                HARNESS_CHECK(!SGRPlayerMotionShowing() && line.userInteractionEnabled);
+                HARNESS_CHECK(CGRectEqualToRect(text, [host convertRect:words.bounds fromView:words]));
+                SGRSetPlayerBackground(SGRPlayerBackgroundAnimated);
+                SGRPlayerBackgroundDidChange();
+                after(2, ^{
+                    HARNESS_CHECK(SGRPlayerMotionShowing() && line.userInteractionEnabled);
+                    HARNESS_CHECK(CGRectEqualToRect(text, [host convertRect:words.bounds fromView:words]));
+                    NSLog(@"[harness] lyric-line passed");
+                    exit(0);
+                });
+                return;
+            }
             void (^checkSize)(NSInteger, CGFloat) = ^(NSInteger choice, CGFloat points) {
                 SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, choice);
                 [host layoutIfNeeded];
-                HARNESS_CHECK(words.font.pointSize == points);
-                if (!clip) return;
+                HARNESS_CHECK(fabs(words.font.pointSize - points) < 0.05);
                 HARNESS_CHECK([words.text isEqual:@"한순간이였지"]);
                 CGRect label = [host convertRect:words.bounds fromView:words];
-                CGRect anchor = [host convertRect:title.bounds fromView:title];
-                CGSize needed = CGSizeMake(ceil(words.intrinsicContentSize.width), ceil(words.font.lineHeight));
-                NSLog(@"[harness] clip %.0f pt label %@ needs %@", points, NSStringFromCGRect(label), NSStringFromCGSize(needed));
-                HARNESS_CHECK(CGSizeEqualToSize(label.size, needed));
-                HARNESS_CHECK(fabs(CGRectGetMinX(label) - CGRectGetMinX(anchor)) < 1 &&
-                              fabs(CGRectGetMinY(anchor) - CGRectGetMaxY(label) - SGRGrid) < 1);
+                HARNESS_CHECK(CGRectEqualToRect(label, preview));
             };
-            checkSize(SGRLyricsSizeNames().count - 1, round(body * 1.30));
-            checkSize(0, body);
+            checkSize(SGRLyricsSizeNames().count - 1, round(native * 1.30));
+            checkSize(0, native);
+            SGRSetLyricsTextShown(SGRLyricsTextTranslation, YES);
+            UILabel *translation = (UILabel *)line.subviews[1];
+            for (NSNumber *choice in @[@0, @(SGRLyricsSizeNames().count - 1), @0]) {
+                SGRSetLyricsSizeChoice(SGRLyricsPlaceUnderCover, choice.integerValue);
+                [host layoutIfNeeded];
+                CGFloat expected = choice.integerValue ? 20 : 15;
+                NSLog(@"[harness] translation %.0f pt expected %.0f, frame %@", translation.font.pointSize,
+                      expected, NSStringFromCGRect(translation.frame));
+                HARNESS_CHECK(translation.font.pointSize == expected);
+                HARNESS_CHECK(line.userInteractionEnabled && line.accessibilityValue != nil);
+                HARNESS_CHECK([translation.text isEqual:@"One moment"] && translation.alpha == 1);
+                HARNESS_CHECK(CGColorGetAlpha(translation.textColor.CGColor) == CGColorGetAlpha(SGRSecondary().CGColor));
+                HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], preview));
+                HARNESS_CHECK(CGRectGetMinY(translation.frame) >= CGRectGetMidY(words.frame) + words.font.lineHeight / 2 - 0.5);
+                HARNESS_CHECK(translation.frame.size.height == ceil(translation.font.lineHeight));
+                if (clip) HARNESS_CHECK(translation.frame.size.width == ceil(translation.intrinsicContentSize.width));
+            }
+            SGRSetLyricsTextShown(SGRLyricsTextTranslation, NO);
             NSLog(@"[harness] lyric-line passed");
             exit(0);
         });
@@ -5328,7 +5411,8 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
                                 SGKeyHideVideoSwitch, SGRKeyPlayerHeaderGlass, SGRKeyPlayerStarAdd]) [store removeObjectForKey:key];
     }
     [NSUserDefaults.standardUserDefaults setBool:[scenario() hasPrefix:@"lyric-line"] forKey:@"spotifyglass.redesign.player.lyricLine"];
-    if ([scenario() isEqualToString:@"motion"] || [scenario() isEqualToString:@"settings"] || [scenario() isEqualToString:@"lyric-line-clip"]) {
+    if ([scenario() isEqualToString:@"motion"] || [scenario() isEqualToString:@"settings"] ||
+        [scenario() isEqualToString:@"lyric-line-clip"] || [scenario() isEqualToString:@"lyric-line-switch"]) {
         [NSUserDefaults.standardUserDefaults setInteger:3 forKey:@"spotifyglass.redesign.player.background"];
         setenv("HARNESS_CANVAS", "https://canvas.harness/clip.mp4", 1);
         [NSURLProtocol registerClass:SGRHarnessPictureServer.class];

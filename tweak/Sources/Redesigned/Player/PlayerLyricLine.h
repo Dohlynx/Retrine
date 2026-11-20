@@ -17,23 +17,16 @@ static inline NSString *SGRPlayerLineTranslation(SGKaraokeLine *line, BOOL trans
     return translation.length ? translation : nil;
 }
 
-// The line's place in a room `room` tall between the cover and the title. The line shows when the room holds its
-// `lineHeight` plus `clearance` shared evenly above and below (one grid gap total under the cover,
-// two over a clip). The translation (`translationHeight`, 0 without one) needs the same clearance. `height`
-// is the view's: a tap's (`tapHeight`) or the pair's if taller, never more than the room.
+// Distances from the native preview's text center to the cover and the title. Space above the
+// words cannot be borrowed for the translation: the native line stays put.
 typedef struct {
     BOOL line, translation;
-    CGFloat height;
 } SGRPlayerLineFit;
-static inline SGRPlayerLineFit SGRPlayerLineFitIn(CGFloat room, CGFloat lineHeight, CGFloat translationHeight,
-                                                  CGFloat clearance, CGFloat tapHeight) {
-    SGRPlayerLineFit fit = {NO, NO, 0};
-    if (room < lineHeight + clearance) return fit;
-    fit.line = YES;
-    CGFloat pair = lineHeight + translationHeight;
-    fit.translation = translationHeight > 0 && room >= pair + clearance;
-    fit.height = MIN(MAX(tapHeight, fit.translation ? pair : 0), room);
-    return fit;
+static inline SGRPlayerLineFit SGRPlayerLineFitIn(CGFloat above, CGFloat below, CGFloat lineHeight,
+                                                  CGFloat translationHeight, CGFloat clearance) {
+    CGFloat edge = lineHeight / 2 + clearance;
+    BOOL fits = MIN(above, below) >= edge;
+    return (SGRPlayerLineFit){fits, fits && translationHeight > 0 && below >= edge + translationHeight};
 }
 
 // Whether the line takes the place of Spotify's own lyric preview under the cover: while the line is on

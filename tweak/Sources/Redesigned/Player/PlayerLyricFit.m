@@ -187,45 +187,47 @@ static NSArray<SGRLyricUnit *> *unitsOf(SGKaraokeLine *line) {
     return units;
 }
 
-// The line's words in the portions that fit `width` at `scale`, one at least. Every portion is whole words, so no
+// The line's words in two-row portions at the selected font. Every portion is whole words, so no
 // portion is cut in the middle of one; a single word wider than the label keeps a portion to itself.
-static NSArray<SGRLyricPortion *> *splitPortions(SGKaraokeLine *line, CGFloat width, UIFont *font, CGFloat scale) {
-    UIFont *shown = SGRLyricFontAtScale(font, scale);
-    CGFloat space = widthOf(@" ", shown);
+static NSArray<SGRLyricPortion *> *splitPortions(SGKaraokeLine *line, CGFloat width, UIFont *font) {
     NSArray<SGRLyricUnit *> *units = unitsOf(line);
     NSMutableArray<NSArray<SGRLyricUnit *> *> *groups = [NSMutableArray array];
     NSMutableArray<SGRLyricUnit *> *group = [NSMutableArray array];
-    CGFloat used = 0;
+    NSMutableString *candidate = [NSMutableString string];
     for (SGRLyricUnit *unit in units) {
-        CGFloat unitWidth = widthOf(unit.text, shown);
-        CGFloat gap = group.count && unit.spaceBefore ? space : 0;
-        if (group.count && used + gap + unitWidth > width) {
+        BOOL oversized = widthOf(unit.text, font) > width;
+        if (group.count && unit.spaceBefore) [candidate appendString:@" "];
+        [candidate appendString:unit.text];
+        CGFloat height = [candidate boundingRectWithSize:CGSizeMake(width, CGFLOAT_MAX)
+            options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading
+            attributes:@{NSFontAttributeName:font} context:nil].size.height;
+        if (group.count && (oversized || height > 2 * ceil(font.lineHeight))) {
             [groups addObject:group];
             group = [NSMutableArray array];
-            gap = 0;
+            [candidate setString:unit.text];
         }
-        used = group.count ? used + gap + unitWidth : unitWidth;
         [group addObject:unit];
+        if (oversized) {
+            [groups addObject:group];
+            group = [NSMutableArray array];
+            [candidate setString:@""];
+        }
     }
     if (group.count) [groups addObject:group];
     if (!groups.count) return @[];
 
     NSMutableArray<SGRLyricPortion *> *portions = [NSMutableArray arrayWithCapacity:groups.count];
-    if (line.timing == SGKaraokeTimingWords) {
-        // Each portion is shown from its first word, which is when the singing of it begins.
-        for (NSUInteger i = 0; i < groups.count; i++) {
-            NSInteger start = groups[i].firstObject.start;
-            NSInteger end = i + 1 < groups.count ? groups[i + 1].firstObject.start : MAX(line.end, groups[i].lastObject.end);
-            [portions addObject:portion(groups[i], scale, start, end)];
-        }
-        return portions;
-    }
-    // No word timing to follow: the line's own time is shared out evenly across its portions.
     NSInteger count = (NSInteger)groups.count;
     NSInteger span = MAX(line.end - line.start, count);
     for (NSUInteger i = 0; i < groups.count; i++) {
         NSInteger start = line.start + (NSInteger)i * span / count;
         NSInteger end = i + 1 < groups.count ? line.start + (NSInteger)(i + 1) * span / count : line.start + span;
+        if (line.timing == SGKaraokeTimingWords) {
+            start = groups[i].firstObject.start;
+            end = i + 1 < groups.count ? groups[i + 1].firstObject.start : MAX(line.end, groups[i].lastObject.end);
+        }
+        NSString *word = groups[i].firstObject.text;
+        CGFloat scale = groups[i].count == 1 && widthOf(word, font) > width ? fittingScale(word, width, font) : 1;
         [portions addObject:portion(groups[i], scale, start, end)];
     }
     return portions;
@@ -263,11 +265,7 @@ NSArray<SGRLyricPortion *> *SGRLyricPortions(SGKaraokeLine *line, CGFloat width,
     if (widthOf(whole, font) <= width) {
         measured = @[wholePortion(line, 1)];
     } else {
-        // As much of a shrink as the line needs, and no more than SGRLyricMinScale takes.
-        CGFloat scale = fittingScale(whole, width, font);
-        measured = widthOf(whole, SGRLyricFontAtScale(font, scale)) <= width
-            ? @[wholePortion(line, scale)]
-            : splitPortions(line, width, font, SGRLyricMinScale);
+        measured = splitPortions(line, width, font);
     }
     if (sg_kept.count >= kPortionCacheLimit) [sg_kept removeObjectAtIndex:0];
     SGRLyricPortionEntry *entry = [SGRLyricPortionEntry new];
