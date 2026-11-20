@@ -256,8 +256,9 @@ UIViewController *SGPlayerSettingsPage(void) {
     }
     // Switch to video is the same chip of Spotify's player under either look: a row here, and in the redesign one of the
     // Buttons chips with its Shuffle and Repeat (the native look's are in its Hide on the player section, with their own keys).
-    [sections addObject:native ? SGSection(nil, @[SGHideRow(SGL(@"settings.player.hide_video_switch.title", @"Switch to video"), SGL(@"settings.player.hide_video_switch.subtitle", @"The chip over the title of a song with a music video"), SGKeyHideVideoSwitch)])
-                               : SGRPlayerButtonsSection()];
+    if (native) {
+        [sections addObject:SGSection(nil, @[SGNativeVideoSwitchRow()])];
+    } else [sections addObject:SGRPlayerButtonsSection()];
     // Spotify's full screen cover a tap on the player's cover opens, under either look (Shared/Player/PlayerSettings.h);
     // the next track's artwork and lyrics, fetched ahead under either look (Core/SGOptionalWork.h).
     [sections addObject:SGSection(nil, @[

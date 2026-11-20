@@ -433,7 +433,7 @@ void SGRPlayerMenuSetBackground(SGRPlayerBackgroundKind kind);
 UIViewController *SGRPlayerSettingsPage(NSArray *more);
 // The redesign's Buttons card for the Player page's shared sections (App/Pages.m): Shuffle, Repeat and Video as toggle
 // chips, each selected while its hide key (SGRKeyPlayerHideShuffle, SGRKeyPlayerHideRepeat, SGKeyHideVideoSwitch) is
-// off. Only SGRPlayerSettingsPage's page draws the chips.
+// effectively off. Shuffle and Repeat start selected, Video unselected. Only SGRPlayerSettingsPage draws the chips.
 @class SGModSection;
 SGModSection *SGRPlayerButtonsSection(void);
 

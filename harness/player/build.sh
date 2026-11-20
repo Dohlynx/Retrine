@@ -8,7 +8,7 @@ mkdir -p "$OUT/gen" "$OUT/PlayerHarness.app"
 
 for f in Redesigned/Player/PlayerLyrics.x Redesigned/Player/PlayerLyricLine.x Redesigned/Player/PlayerArtwork.x Redesigned/Player/PlayerFooter.x \
          Redesigned/Player/PlayerScroll.x Redesigned/Player/PlayerField.x Redesigned/Player/PlayerMotion.x Redesigned/Player/PlayerLandscape.x Redesigned/Player/PlayerControls.x Redesigned/Player/PlayerHeader.x Redesigned/Player/PlayerCoverAccent.x Redesigned/Player/DJPlayer.x Redesigned/Player/PlayerMix.x Redesigned/Kit/SGRBridges.x \
-         Shared/Player/AudioQuality.x; do
+         Shared/Player/AudioQuality.x Shared/Player/VideoSwitch.x; do
     name=$(basename "$f" .x)
     "${THEOS:-$HOME/theos}/bin/logos.pl" -c generator=internal "$SRC/$f" > "$OUT/gen/$name.m.new"
     if ! cmp -s "$OUT/gen/$name.m.new" "$OUT/gen/$name.m"; then

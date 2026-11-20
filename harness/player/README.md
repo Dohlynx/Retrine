@@ -184,6 +184,14 @@ come late, out of order, or not at all.
   one sung line and no chip over the title. Both check the compact slot above the title,
   the live change from the preview font to 17 pt and back, with and without a translation.
   `lyric-line-switch` uses the same clip fixture and checks clip → cover → clip without changing the words.
+  `lyric-line-owner` and `lyric-line-owner-clip` reproduce the 393×852 Spotify 9.2.0 field trace:
+  two seconds after opening, the bottom stack grows 40 pt around a 32 pt floating unit and the native
+  345 pt square becomes a top-aligned 319 pt square. The identified button has a clear child drawing
+  a layer-backed pill and a hidden sibling. The checks cover the 8 pt gap, the reserved artwork with and
+  without translation, the final hidden branch in the bounded diagnostic, unit alpha zero and chip removal.
+  The real VideoSwitch hook detaches the button while the fixture retains its strip; the reserved cover
+  must keep its no-line top both during playback and under a live header. `video-native`, `video-default`,
+  then `video-relaunch` check the two unset defaults, stock, and an explicit show across launches.
   `lyric-line-chip` and `lyric-line-chip-clip` compare chip clearance and the restored preview slot for
   one row, two rows and translations, including the video switch's inset label and a material-only
   switch whose hosted pixels are not exposed as layer contents. Hidden, masked, transparent,

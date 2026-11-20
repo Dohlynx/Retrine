@@ -726,9 +726,57 @@ static void loadLyrics(void) {
 }
 
 - (BOOL)buildPlayer {
+    if ([scenario() hasPrefix:@"settings-pending-"]) {
+        BOOL redesign = [scenario() hasSuffix:@"redesigned"];
+        HARNESS_CHECK(SGRedesignedUI() != redesign);
+        SGSetEnabled(SGKeyRedesign,redesign); // Later: the stored page changes, the running hooks do not.
+        HARNESS_CHECK(SGRedesignedUIStored() == redesign);
+        if (redesign) {
+            UIView *preview = [SGRPlayerSettingsPage(@[SGRPlayerButtonsSection()]) valueForKey:@"preview"];
+            UITableViewCell *cell = [[NSClassFromString(@"SGRPlayerButtonsCell") alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+            UIButton *video = [[cell valueForKey:@"chips"] lastObject];
+            [preview performSelector:@selector(reloadLook)];
+            HARNESS_CHECK(video && !video.selected && [[preview valueForKey:@"_chip"] isHidden]);
+            [video sendActionsForControlEvents:UIControlEventTouchUpInside];
+            [cell performSelector:@selector(readKeys)]; [preview performSelector:@selector(reloadLook)];
+            HARNESS_CHECK(video.selected && ![[preview valueForKey:@"_chip"] isHidden]);
+        } else {
+            SGModPage *page = [[SGModPage alloc] initWithTitle:@"Player" intro:nil sections:@[SGSection(nil,@[SGNativeVideoSwitchRow()])] footer:nil];
+            self.window.rootViewController = page;
+            [self.window makeKeyAndVisible];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [page.tableView layoutIfNeeded];
+                UITableViewCell *cell = [page.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+                UISwitch *toggle = (UISwitch *)cell.accessoryView;
+                HARNESS_CHECK(toggle);
+                HARNESS_CHECK(!toggle.isOn);
+                toggle.on = YES; [toggle sendActionsForControlEvents:UIControlEventValueChanged];
+                HARNESS_CHECK(SGNativeVideoSwitchRow().readSwitch());
+                NSLog(@"[harness] %@ passed",scenario()); exit(0);
+            });
+            return YES;
+        }
+        HARNESS_CHECK([[NSUserDefaults.standardUserDefaults objectForKey:SGKeyHideVideoSwitch] isEqual:@(!redesign)]);
+        NSLog(@"[harness] %@ passed",scenario()); exit(0);
+    }
+    if ([scenario() hasPrefix:@"video-"]) {
+        BOOL native = [scenario() isEqual:@"video-native"], reopened = [scenario() isEqual:@"video-relaunch"];
+        UIViewController *unit = [_TtC20NowPlaying_ModesImpl20FloatingElementsUnit new];
+        UIView *button = box(unit.view,UIButton.class,CGRectMake(0,0,128,32),SGVideoSwitchIdentifier);
+        [unit viewDidLayoutSubviews];
+        HARNESS_CHECK(!!button.superview == (native || reopened));
+        if (!native && !reopened) {
+            SGSetEnabled(SGKeyStock,YES); [unit.view addSubview:button]; [unit viewDidLayoutSubviews];
+            HARNESS_CHECK(button.superview);
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyStock]; SGPrefsChanged();
+            SGSetEnabled(SGKeyHideVideoSwitch,NO); [unit viewDidLayoutSubviews]; HARNESS_CHECK(button.superview);
+        }
+        NSLog(@"[harness] %@ passed",scenario()); exit(0);
+    }
     UIViewController *root = self.window.rootViewController;
     CGFloat W = root.view.bounds.size.width, H = root.view.bounds.size.height;
-    if ([scenario() isEqual:@"lyric-line-compact"]) { W = 393; H = 852; }
+    BOOL ownerChip = [scenario() isEqual:@"lyric-line-owner"] || [scenario() isEqual:@"lyric-line-owner-clip"];
+    if (ownerChip || [scenario() isEqual:@"lyric-line-compact"]) { W = 393; H = 852; }
     if ([scenario() isEqualToString:@"adaptive"]) {
         if (getenv("HARNESS_COMPACT")) {
             W = 500;
@@ -744,6 +792,7 @@ static void loadLyrics(void) {
     BOOL hasVolume = !(volumeEnv && volumeEnv[0] == '0');
     CGFloat bottomHeight = 236 + (hasVolume ? 44 : 0);   // the tree's rows plus a volume row, as the phone has it
     CGFloat bottomTop = H - bottomHeight - 61.33;
+    if (ownerChip) bottomTop = 482;
     CGFloat bandHeight = bottomTop - bandTop;
     CGFloat coverSide = MIN(354, W - 48);
 
@@ -843,8 +892,19 @@ static void loadLyrics(void) {
     if ([scenario() isEqualToString:@"look"])
         box(host, UIView.class, CGRectMake(0, CGRectGetMaxY(bottom.frame), W, H - CGRectGetMaxY(bottom.frame)), nil);
 
-    UIView *floatingView = box(bottom, UIView.class, CGRectMake(0, -32, W, 32), nil);
-    UIView *chip = box(floatingView, UIView.class, CGRectMake(24, 0, 148, 32), nil);
+    UIView *floatingView = box(bottom, UIView.class, CGRectMake(0, 0, W, 32), nil);
+    UIView *parent = floatingView;
+    if (ownerChip) {
+        UIView *scroll = box(parent, UIScrollView.class, parent.bounds, nil);
+        UIView *stack = box(scroll, UIStackView.class, CGRectMake(24,0,128.67,32), nil);
+        parent = box(stack, UIView.class, stack.bounds, nil);
+        UIView *hidden = box(stack, UIView.class, CGRectMake(0,0,52,32), nil);
+        hidden.hidden = YES;
+        UIView *other = box(hidden, MockEncoreButton.class, hidden.bounds, @"hidden-button");
+        other.hidden = YES; other.backgroundColor = UIColor.blackColor;
+        [stack sendSubviewToBack:parent];
+    }
+    UIView *chip = box(parent, ownerChip ? UIButton.class : UIView.class, ownerChip ? parent.bounds : CGRectMake(24,0,148,32), nil);
     chip.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
     chip.layer.cornerRadius = 16;
     UILabel *chipLabel = [[UILabel alloc] initWithFrame:chip.bounds];
@@ -860,7 +920,18 @@ static void loadLyrics(void) {
     chipLabel.text = @"  \u25B6  Switch to video";
     chipLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
     chipLabel.textColor = UIColor.whiteColor;
-    [chip addSubview:chipLabel];
+    if (ownerChip) {
+        chip.accessibilityIdentifier = SGVideoSwitchIdentifier;
+        chip.backgroundColor = UIColor.clearColor;
+        UIView *shell = box(chip,UIView.class,chip.bounds,nil);
+        CALayer *pill = [CALayer layer]; pill.frame = CGRectInset(shell.bounds,0,4);
+        pill.backgroundColor = UIColor.darkGrayColor.CGColor; pill.cornerRadius = 12; [shell.layer addSublayer:pill];
+        UIView *items = box(shell,UIStackView.class,CGRectInset(shell.bounds,13,8),nil);
+        UIView *itemsRow = box(items,UIStackView.class,items.bounds,nil);
+        UIView *label = box(itemsRow,UIView.class,CGRectMake(24,.67,78.67,15),@"label");
+        chipLabel.frame = label.bounds; [label addSubview:chipLabel];
+        box(itemsRow,SPTEncoreIconView.class,CGRectMake(0,0,16,16),@"icon");
+    } else [chip addSubview:chipLabel];
 
     UIView *infoView = box(bottom, UIView.class, CGRectMake(0, 0, W, 64), nil);
     UIView *infoRow = box(infoView, UIStackView.class, CGRectMake(12, 8, W - 24, 48), nil);
@@ -1005,7 +1076,23 @@ static void loadLyrics(void) {
     }
     if (djHeaderUnit) _units = [_units arrayByAddingObjectsFromArray:@[djHeaderUnit, djFooterUnit]];
     [self start];
+    CGRect noUnitStack = bottom.frame, nativeTilt = tilt.frame;
+    void (^unitSpace)(BOOL) = ^(BOOL visible) {
+        CGFloat delta = visible ? 40 : 0;
+        CGFloat shift = delta - (bottom.frame.size.height - noUnitStack.size.height);
+        bottom.frame = CGRectMake(noUnitStack.origin.x,noUnitStack.origin.y-delta,W,noUnitStack.size.height+delta);
+        floatingView.frame = CGRectMake(0,0,W,visible ? 32 : 0);
+        for (UIView *v in bottom.subviews) if (v != floatingView) v.center = CGPointMake(v.center.x,v.center.y+shift);
+    };
+    unitSpace(!ownerChip);
     [self layOut];
+    __block CGRect beforeSwitch = CGRectNull;
+    if (ownerChip) after(2, ^{
+        beforeSwitch = SGRPlayerCoverFrameIn(host);
+        unitSpace(YES);
+        tilt.frame = CGRectMake(13,CGRectGetMinY(nativeTilt),319,319);
+        chip.hidden = NO; [self layOut];
+    });
     // Spotify lays its units out again as a track's elements arrive, which is what the redesign's
     // transforms and narrowed labels have to survive. The options scenario leaves layout to UIKit, so a switch
     // on the Player page is seen to reach the open player by itself; the header scenarios too, so the grabber is
@@ -1086,6 +1173,70 @@ static void loadLyrics(void) {
                 return CGRectMake(row.origin.x, end - 8 - 2 * rowHeight - reserve, host.bounds.size.width - 2 * row.origin.x, 2 * rowHeight + reserve);
             };
             CGRect preview = slotFor(CGRectGetMinY(row), native, NO);
+            if (ownerChip) {
+                BOOL field = [scenario() hasSuffix:@"-clip"];
+                HARNESS_CHECK(field == SGRPlayerMotionShowing());
+                OSLogStore *store = [OSLogStore storeWithScope:OSLogStoreCurrentProcessIdentifier error:nil];
+                NSPredicate *p = [NSPredicate predicateWithFormat:@"composedMessage BEGINSWITH '[spotifyglass] lyrics unit:'"];
+                NSMutableString *snapshot = [NSMutableString string];
+                NSUInteger parts = 0;
+                for (OSLogEntry *e in [store entriesEnumeratorWithOptions:0 position:nil predicate:p error:nil]) {
+                    NSString *msg = e.composedMessage;
+                    if ([msg containsString:@"lyrics unit: 1 "]) { [snapshot setString:@""]; parts = 0; }
+                    [snapshot appendString:[msg substringFromIndex:@"[spotifyglass] lyrics unit: 1 ".length]];
+                    parts++;
+                }
+                HARNESS_CHECK(parts <= 4 && [snapshot containsString:@"top=442"] && [snapshot containsString:@"titleTop="] &&
+                    [snapshot containsString:@"stack={{0, 442}"] && [snapshot containsString:field ? @"normalSide=0" : @"normalSide=345"] &&
+                    [snapshot containsString:@"MockEncoreButton"] && ![snapshot containsString:@"[capped]"]);
+                __block BOOL anchored = YES, hiddenFits = YES;
+                CGFloat (^noLineTop)(void) = ^{
+                    NSArray *kept = SGKaraokeLinesForTrack(SGKaraokePlayingTrack());
+                    SGKaraokeKeepLines(@"harness",nil); [floating viewDidLayoutSubviews];
+                    CGRect unreserved = SGRPlayerCoverFrameIn(host);
+                    HARNESS_CHECK(unreserved.size.width == 319);
+                    SGKaraokeKeepLines(@"harness",kept); [floating viewDidLayoutSubviews];
+                    return CGRectGetMinY(unreserved);
+                };
+                CGFloat playbackTop = noLineTop();
+                for (NSNumber *pair in field ? @[@NO] : @[@YES,@NO]) {
+                    SGRSetLyricsTextShown(SGRLyricsTextTranslation,pair.boolValue);
+                    [floating viewDidLayoutSubviews];
+                    CGRect art = SGRPlayerCoverFrameIn(host);
+                    NSLog(@"[harness] owner %@ pair=%@ art=%@ line=%@", scenario(),pair,NSStringFromCGRect(art),NSStringFromCGRect(line.frame));
+                    HARNESS_CHECK(line.userInteractionEnabled && fabs(CGRectGetMaxY(line.frame)-434)<.01);
+                    if (!field) HARNESS_CHECK(art.size.width < 319 && art.size.width >= 230 &&
+                        fabs(CGRectGetMaxY(art)+8-CGRectGetMinY(line.frame))<.01);
+                    if (!field) anchored &= fabs(art.origin.y-playbackTop)<.01;
+                }
+                if (!field) {
+                    UIView *live = box(host,UIView.class,CGRectMake(0,playbackTop,W,12),nil);
+                    SGRPlayerCoverUnderRow(live,YES,host);
+                    [tilt layoutIfNeeded];
+                    CGFloat liveTop = noLineTop();
+                    anchored &= liveTop > playbackTop && fabs(SGRPlayerCoverFrameIn(host).origin.y-liveTop)<.01;
+                    SGRPlayerCoverUnderRow(live,NO,host); [live removeFromSuperview]; [tilt layoutIfNeeded];
+                }
+                floatingView.alpha = 0; [floating viewDidLayoutSubviews];
+                HARNESS_CHECK(CGRectEqualToRect(line.frame,preview));
+                // VideoSwitch.x removes only the identified button, not its wrapper, unit or native tilt.
+                SGSetEnabled(SGKeyHideVideoSwitch, YES); [floating viewDidLayoutSubviews];
+                HARNESS_CHECK(!chip.superview); floatingView.alpha = 1;
+                for (NSNumber *pair in @[@YES,@NO]) {
+                    SGRSetLyricsTextShown(SGRLyricsTextTranslation,pair.boolValue); [floating viewDidLayoutSubviews];
+                    CGRect art = SGRPlayerCoverFrameIn(host);
+                    NSLog(@"[harness] removed pair=%@ art=%@ line=%@",pair,NSStringFromCGRect(art),NSStringFromCGRect(line.frame));
+                    hiddenFits &= line.userInteractionEnabled && CGRectEqualToRect(line.frame,slotFor(row.origin.y,native,pair.boolValue));
+                    if (!field) hiddenFits &= fabs(art.origin.y-playbackTop)<.01 && fabs(CGRectGetMaxY(art)+8-line.frame.origin.y)<.01;
+                }
+                tilt.frame = nativeTilt; [tilt setNeedsLayout]; [tilt layoutIfNeeded]; unitSpace(NO); [self layOut];
+                NSLog(@"[harness] collapsed art=%@ line=%@",NSStringFromCGRect(SGRPlayerCoverFrameIn(host)),NSStringFromCGRect(line.frame));
+                HARNESS_CHECK(CGRectEqualToRect(line.frame,preview));
+                if (!field) HARNESS_CHECK(CGRectEqualToRect(SGRPlayerCoverFrameIn(host),beforeSwitch));
+                NSLog(@"[harness] anchored=%d retained-strip=%d",anchored,hiddenFits);
+                HARNESS_CHECK(anchored && hiddenFits);
+                NSLog(@"[harness] owner chip passed"); exit(0);
+            }
             if ([scenario() isEqual:@"lyric-line-ownership"]) {
                 __block NSInteger failures = 0;
                 void (^check)(BOOL, NSString *) = ^(BOOL ok, NSString *what) {
@@ -2798,12 +2949,13 @@ static void installSettingsWorkProbes(void) {
         NSArray<UIButton *> *found = chips();
         BOOL whole = found.count == 3;
         for (UIButton *chip in found) {
-            whole = whole && chip.selected && chip.frame.size.height >= 44 && (chip.accessibilityTraits & UIAccessibilityTraitButton)
-                    && (chip.accessibilityTraits & UIAccessibilityTraitSelected);
+            BOOL expected = chip != found.lastObject;
+            whole = whole && chip.selected == expected && chip.frame.size.height >= 44 && (chip.accessibilityTraits & UIAccessibilityTraitButton)
+                    && !!(chip.accessibilityTraits & UIAccessibilityTraitSelected) == expected;
         }
         NSArray *labels = [found valueForKey:@"accessibilityLabel"];
         [self expect:whole && [labels isEqualToArray:@[@"Shuffle", @"Repeat", @"Video"]] && !rowTitled(@"Switch to video") && !rowTitled(@"Shuffle")
-                step:@"three chips in the Buttons card, all selected, 44 pt, buttons" detail:[NSString stringWithFormat:@"%@ %@", labels, [found valueForKey:@"frame"]]];
+                && [[card() valueForKey:@"_chip"] isHidden] step:@"Shuffle and Repeat selected, Video off in the card and preview" detail:[NSString stringWithFormat:@"%@ %@", labels, [found valueForKey:@"frame"]]];
     });
     step(0, ^{
         NSArray<NSString *> *keys = @[SGRKeyPlayerHideShuffle, SGRKeyPlayerHideRepeat, SGKeyHideVideoSwitch];
@@ -2813,7 +2965,7 @@ static void installSettingsWorkProbes(void) {
             settingsBefore = storedSettings();
             [chips()[i] sendActionsForControlEvents:UIControlEventTouchUpInside];
             NSArray<NSString *> *changed = changedSettings(settingsBefore, storedSettings());
-            alone = alone && [changed isEqualToArray:@[keys[i]]] && stored(keys[i]);
+            alone = alone && [changed isEqualToArray:@[keys[i]]] && [NSUserDefaults.standardUserDefaults objectForKey:keys[i]] && stored(keys[i]) == (i != 2);
             [seen addObject:[changed componentsJoinedByString:@","]];
         }
         // Each chip's name whole once it is drawn unselected, its glyph changed.
@@ -2826,9 +2978,9 @@ static void installSettingsWorkProbes(void) {
         [preview layoutIfNeeded];
         CGFloat play = [[preview valueForKey:@"_play"] center].x, previous = [[preview valueForKey:@"_previous"] center].x;
         CGFloat slot = ([preview bounds].size.width - 2 * 16) / 5;
-        BOOL drawn = [[preview valueForKey:@"_shuffle"] alpha] == 0 && [[preview valueForKey:@"_repeat"] alpha] == 0 && [[preview valueForKey:@"_chip"] isHidden]
+        BOOL drawn = [[preview valueForKey:@"_shuffle"] alpha] == 0 && [[preview valueForKey:@"_repeat"] alpha] == 0 && ![[preview valueForKey:@"_chip"] isHidden]
                      && play - previous > slot + 1;
-        [self expect:alone && drawn step:@"each chip its key alone, the card without the three, previous and next spread"
+        [self expect:alone && drawn step:@"each chip its key alone, video shown, previous and next spread"
               detail:[NSString stringWithFormat:@"changed %@; previous %.0f pt from play, a slot %.0f", seen, play - previous, slot]];
     });
     step(0, ^{
@@ -2838,11 +2990,11 @@ static void installSettingsWorkProbes(void) {
     when(^BOOL { return settingsPresented && card().window != nil; }, ^{
         NSArray<UIButton *> *found = chips();
         BOOL kept = found.count == 3;
-        for (UIButton *chip in found) kept = kept && !chip.selected && !(chip.accessibilityTraits & UIAccessibilityTraitSelected);
+        for (UIButton *chip in found) kept = kept && chip.selected == (chip == found.lastObject) && !!(chip.accessibilityTraits & UIAccessibilityTraitSelected) == chip.selected;
         [self expect:kept && [[card() valueForKey:@"_shuffle"] alpha] == 0 step:@"opened again: the three chips as left" detail:[[found valueForKey:@"selected"] description]];
         for (UIButton *chip in found) [chip sendActionsForControlEvents:UIControlEventTouchUpInside];
-        [self expect:!stored(SGRKeyPlayerHideShuffle) && !stored(SGRKeyPlayerHideRepeat) && !stored(SGKeyHideVideoSwitch)
-                step:@"the three chips selected again, the keys off" detail:[[chips() valueForKey:@"selected"] description]];
+        [self expect:!stored(SGRKeyPlayerHideShuffle) && !stored(SGRKeyPlayerHideRepeat) && SGVideoSwitchHidden()
+                step:@"Shuffle and Repeat shown again, Video hidden" detail:[[chips() valueForKey:@"selected"] description]];
         [table() setContentOffset:CGPointMake(0, -table().adjustedContentInset.top) animated:NO];
         [table() layoutIfNeeded];
     });
@@ -5659,7 +5811,14 @@ static NSUInteger footerBandsIn(UIView *player) {
 
 // Before every %ctor, so the redesign's gate reads on, and every session gets the picture server.
 __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
-    [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"spotifyglass.redesign"];
+    [NSUserDefaults.standardUserDefaults setBool:!([scenario() isEqual:@"video-native"] || [scenario() isEqual:@"settings-pending-redesigned"]) forKey:@"spotifyglass.redesign"];
+    if ([scenario() hasPrefix:@"settings-pending-"]) {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyStock];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyHideVideoSwitch];
+    }
+    if ([scenario() hasPrefix:@"lyric-line"]) [NSUserDefaults.standardUserDefaults setBool:NO forKey:SGKeyHideVideoSwitch];
+    if ([scenario() hasPrefix:@"video-"] && ![scenario() isEqual:@"video-relaunch"])
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyHideVideoSwitch];
     if ([scenario() isEqualToString:@"background"])
         [NSUserDefaults.standardUserDefaults setInteger:SGRPlayerBackgroundAnimated forKey:@"spotifyglass.redesign.player.background"];
     // Animated artwork, its clip served by the picture server to the shared session too.
@@ -5748,7 +5907,7 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
         [NSUserDefaults.standardUserDefaults setInteger:4 forKey:@"spotifyglass.redesign.lyricsSize.underCover"]; // retired choice is ignored
     }
     if ([scenario() isEqualToString:@"motion"] || [scenario() isEqualToString:@"settings"] ||
-        [scenario() isEqualToString:@"lyric-line-clip"] || [scenario() isEqual:@"lyric-line-chip-clip"] || [scenario() isEqualToString:@"lyric-line-switch"]) {
+        [scenario() isEqualToString:@"lyric-line-clip"] || [scenario() isEqual:@"lyric-line-chip-clip"] || [scenario() isEqual:@"lyric-line-owner-clip"] || [scenario() isEqualToString:@"lyric-line-switch"]) {
         [NSUserDefaults.standardUserDefaults setInteger:3 forKey:@"spotifyglass.redesign.player.background"];
         setenv("HARNESS_CANVAS", "https://canvas.harness/clip.mp4", 1);
         [NSURLProtocol registerClass:SGRHarnessPictureServer.class];

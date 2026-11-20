@@ -592,6 +592,12 @@ static void fingerprintLayer(CALayer *l, CGRect frame) {
     if (l.mask) fingerprintLayer(l.mask, l.mask.frame);
 }
 enum { kChipPartBytes = 840, kChipParts = 4 };
+static NSString *chipClass(id object) {
+    NSString *name = NSStringFromClass([object class]);
+    // Keep the informative type suffix, not a private Swift context hash.
+    if ([name hasPrefix:@"_Tt"] && name.length > 48) return [@"…" stringByAppendingString:[name substringFromIndex:name.length-48]];
+    return name;
+}
 static void appendChipTree(NSMutableString *tree, UIView *v, UIView *host, NSUInteger depth) {
     if (tree.length >= kChipPartBytes * kChipParts) return;
     CALayer *l = v.layer;
@@ -599,15 +605,21 @@ static void appendChipTree(NSMutableString *tree, UIView *v, UIView *host, NSUIn
     for (CALayer *child in l.sublayers) {
         if ([child.delegate isKindOfClass:UIView.class] && ((UIView *)child.delegate).layer == child) continue;
         if (layers.length >= 180) { [layers appendString:@"…"]; break; }
-        [layers appendFormat:@"%@,", NSStringFromClass(child.class)];
+        [layers appendFormat:@"%@%@", layers.length ? @"," : @"", chipClass(child)];
     }
-    [tree appendFormat:@"\nd%lu %@%@ id=%@ hidden=%d/%d alpha=%.3g frame=%@ clips=%d layer=%@ opacity=%.3g mask=%@ box=%@ bg=%d contents=%d radius=%.3g sub=%@",
-        (unsigned long)depth, NSStringFromClass(v.class), v == sg_chip ? @"*" : @"",
-        [v.accessibilityIdentifier isEqual:SGVideoSwitchIdentifier] ? @"switch" : (v.accessibilityIdentifier.length ? @"other" : @"none"),
-        v.hidden, l.hidden, v.alpha, v.window == host.window ? NSStringFromCGRect([host convertRect:v.bounds fromView:v]) : @"unattached",
-        v.clipsToBounds, NSStringFromClass(l.class), l.opacity, NSStringFromClass(l.mask.class) ?: @"-",
-        l.mask && v.window == host.window ? NSStringFromCGRect(maskBox(v,host)) : @"-",
-        l.backgroundColor && CGColorGetAlpha(l.backgroundColor) > 0, l.contents != nil, l.cornerRadius, layers];
+    [tree appendFormat:@"\nd%lu %@%@ %@", (unsigned long)depth, chipClass(v), v == sg_chip ? @"*" : @"",
+        v.window == host.window ? NSStringFromCGRect([host convertRect:v.bounds fromView:v]) : @"unattached"];
+    if (v.accessibilityIdentifier.length) [tree appendFormat:@" id=%@", [v.accessibilityIdentifier isEqual:SGVideoSwitchIdentifier] ? @"switch" : @"other"];
+    if (v.hidden || l.hidden) [tree appendFormat:@" hidden=%d/%d",v.hidden,l.hidden];
+    if (v.alpha != 1) [tree appendFormat:@" alpha=%.3g",v.alpha];
+    if (v.clipsToBounds) [tree appendString:@" clips=1"];
+    if (l.class != CALayer.class) [tree appendFormat:@" layer=%@",chipClass(l)];
+    if (l.opacity != 1) [tree appendFormat:@" opacity=%.3g",l.opacity];
+    if (l.mask) [tree appendFormat:@" mask=%@ box=%@",chipClass(l.mask),v.window == host.window ? NSStringFromCGRect(maskBox(v,host)) : @"unattached"];
+    if (l.backgroundColor && CGColorGetAlpha(l.backgroundColor)>0) [tree appendString:@" bg=1"];
+    if (l.contents) [tree appendString:@" contents=1"];
+    if (l.cornerRadius) [tree appendFormat:@" radius=%.3g",l.cornerRadius];
+    if (layers.length) [tree appendFormat:@" sub=%@",layers];
     for (UIView *child in v.subviews) {
         if (tree.length >= kChipPartBytes * kChipParts) break;
         appendChipTree(tree, child, host, depth + 1);
@@ -646,22 +658,28 @@ static void flushChip(BOOL leaving) {
         offset = end;
     }
 }
-static void reportChip(UIView *host, CGRect area, CGFloat top) {
+static void reportChip(UIView *host, CGRect area, CGFloat top, CGFloat titleTop, CGRect stack, CGFloat normalSide) {
     if (!host.window) return;
     UIView *unit = sg_floating.viewIfLoaded;
     BOOL attached = unit.window && unit.window == host.window;
     CGRect frame = attached ? [host convertRect:unit.bounds fromView:unit] : CGRectNull;
     chipMix(attached); chipMix((uintptr_t)(__bridge void *)sg_chip);
     if (sg_chip) chipNumbers((CGFloat[]){top - CGRectGetMinY(frame)}, 1);
-    BOOL pose = !CGRectEqualToRect(frame, sg_unitFrame) || !CGRectEqualToRect(area, sg_area) || top != sg_top;
+    chipNumbers(&normalSide,1);
+    static CGRect priorStack;
+    static CGFloat priorTitle;
+    BOOL pose = !CGRectEqualToRect(frame, sg_unitFrame) || !CGRectEqualToRect(area, sg_area) || top != sg_top ||
+        !CGRectEqualToRect(stack,priorStack) || titleTop != priorTitle;
+    priorStack = stack; priorTitle = titleTop;
     if (!pose && sg_tree == sg_observedTree) return;
     if (pose) sg_poseAt = CACurrentMediaTime();
     sg_unitFrame = frame; sg_area = area; sg_top = top;
     sg_observedTree = sg_tree;
     // The player can disappear before the coalescing deadline. Keep bytes, not its live views.
-    NSMutableString *record = [NSMutableString stringWithFormat:@"loaded=%d attached=%d area=%@ top=%@ winner=%@",
+    NSMutableString *record = [NSMutableString stringWithFormat:@"loaded=%d attached=%d area=%@ top=%@ winner=%@ titleTop=%@ stack=%@ normalSide=%.3f",
         unit != nil, attached, NSStringFromCGRect(area), top == CGFLOAT_MAX ? @"none" : @(top).stringValue,
-        sg_chip ? NSStringFromClass(sg_chip.class) : @"none"];
+        sg_chip ? chipClass(sg_chip) : @"none", titleTop == CGFLOAT_MAX ? @"none" : @(titleTop).stringValue,
+        NSStringFromCGRect(stack),normalSide];
     if (unit) appendChipTree(record, unit, host, 0);
     sg_pending = [record dataUsingEncoding:NSUTF8StringEncoding];
     flushChip(NO);
@@ -687,7 +705,7 @@ static CGFloat chipTopInBranch(UIView *view, UIView *host, CGRect clip, UIView *
     }
     for (UIView *child in view.subviews) {
         UIView *candidate = nil;
-        CGFloat other = chipTopInBranch(child, host, owns ? CGRectNull : clip, &candidate);
+        CGFloat other = chipTopInBranch(child, host, clip, &candidate);
         if (other < top) { top = other; *winner = candidate; }
     }
     if (owns) { *winner = view; return CGRectGetMinY(visible); }
@@ -821,9 +839,9 @@ static void placeLine(void) {
     line.normalSide = 0;
     line.ownedTilt = nil;
     BOOL wants = title && SGRPlayerLineTakesPreview(YES, host.bounds.size.height > host.bounds.size.width, playingTrackSynced());
+    CGRect stackFrame = stack ? [host convertRect:stack.bounds fromView:stack] : CGRectNull;
+    CGRect anchor = title ? [host convertRect:title.bounds fromView:title] : stackFrame;
     if (clear && stack && host.bounds.size.height > host.bounds.size.width) {
-        CGRect stackFrame = [host convertRect:stack.bounds fromView:stack];
-        CGRect anchor = title ? [host convertRect:title.bounds fromView:title] : stackFrame;
         CGFloat inset = title ? (rtl ? CGRectGetMaxX(host.bounds) - CGRectGetMaxX(anchor)
                                      : CGRectGetMinX(anchor) - CGRectGetMinX(host.bounds)) : kPreviewInset;
         CGRect slot = CGRectInset(host.bounds, inset, 0);
@@ -835,21 +853,25 @@ static void placeLine(void) {
         // Artwork and chip detection use the player's content margins, not the title's live inset.
         CGRect content = CGRectInset(host.bounds, 3 * SGRGrid, 0);
         CGRect normal = SGRPlayerNormalCover(host, tilt, content.size.width);
-        // A smaller native square is identifiable as the preview layout only
-        // with its populated sibling. Otherwise its natural size is unknown.
+        // The floating unit can be the first row *inside* the stack. Search independently
+        // of the reserved cover's bottom, including on the pass that first finds the switch.
+        CGFloat searchTop = !clip && wants && !CGRectIsNull(normal) ? normal.origin.y : top;
+        line.chipArea = CGRectMake(content.origin.x, searchTop, content.size.width, MAX(0, bottom-searchTop));
+        chipTop = visibleChipTop(host, line.chipArea);
+        // Removing the button need not collapse Spotify's allocated strip. Only visible
+        // paint sets clearance, but the strip itself explains the narrower native square.
+        UIView *unit = sg_floating.viewIfLoaded;
+        CGRect strip = host.window && unit.window == host.window ? [host convertRect:unit.bounds fromView:unit] : CGRectNull;
+        BOOL allocated = !CGRectIsEmpty(strip) && CGRectContainsRect(stackFrame,strip) && CGRectGetMaxY(strip) <= bottom;
         if (wants && !CGRectIsNull(normal) &&
-            (fabs(tilt.bounds.size.width - normal.size.width) <= 1 || previewShowing(tilt, host))) {
+            (fabs(tilt.bounds.size.width - normal.size.width) <= 1 || allocated || previewShowing(tilt, host))) {
             line.ownedTilt = tilt;
             line.normalSide = normal.size.width;
         }
         if (line.normalSide && !clip) top = normal.origin.y;
-        // Measure from the unmoved normal top, never the bottom produced by this reservation.
-        line.chipArea = CGRectMake(content.origin.x, top, content.size.width, MAX(0, CGRectGetMinY(stackFrame) - top));
         if (bottom > top)
             room = CGRectMake(slot.origin.x, top, slot.size.width, bottom - top);
-    }
-    chipTop = visibleChipTop(host, line.chipArea);
-    reportChip(host, line.chipArea, chipTop);
+    } else chipTop = visibleChipTop(host, line.chipArea);
     BOOL changed = line.overClip != clip;
     line.overClip = clip;
     if (!line.normalSide) SGRPlayerReserveCover(nil, 0);
@@ -857,6 +879,7 @@ static void placeLine(void) {
     BOOL fits = [line placeWithChipTop:chipTop];
     settlePreview(host, tilt, wants && fits);
     if (!fits) SGRPlayerReserveCover(nil, 0);
+    reportChip(host,line.chipArea,chipTop,title ? CGRectGetMinY(anchor) : CGFLOAT_MAX,stackFrame,fits && !clip ? line.normalSide : 0);
     if (!wants && previewShowing(tilt, host)) fits = NO;
     // Both slots can fit and have the same width. Their ownership still changes
     // which source the clock must show (or clear) on this layout pass.

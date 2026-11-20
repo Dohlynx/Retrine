@@ -431,7 +431,7 @@ static CGRect mixRect(CGRect a, CGRect b, CGFloat t) {
     _context.accessibilityElementsHidden = SGEnabled(SGRKeyPlayerHideContext);
     _hideShuffle = SGHidden(SGRKeyPlayerHideShuffle);
     _hideRepeat = SGHidden(SGRKeyPlayerHideRepeat);
-    _hideVideo = SGHidden(SGKeyHideVideoSwitch);
+    _hideVideo = SGVideoSwitchHiddenForLook(YES);
     _shuffle.alpha = _hideShuffle ? 0 : 1;
     _repeat.alpha = _hideRepeat ? 0 : 1;
     _chip.hidden = _hideVideo;
@@ -753,7 +753,10 @@ static NSArray<NSString *> *buttonNames(void) {
 
 - (void)readKeys {
     NSArray<NSString *> *keys = buttonKeys();
-    for (UIButton *chip in _chips) [self paint:chip selected:!SGHidden(keys[(NSUInteger)chip.tag])];
+    for (UIButton *chip in _chips) {
+        NSString *key = keys[(NSUInteger)chip.tag];
+        [self paint:chip selected:!([key isEqual:SGKeyHideVideoSwitch] ? SGVideoSwitchHiddenForLook(YES) : SGHidden(key))];
+    }
     [self setNeedsLayout];
 }
 

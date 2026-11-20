@@ -889,9 +889,10 @@ Shared:
                   artwork at once, through functions the redesign's PlayerMotion.x defines. The redesign shows that
                   sheet as the system menu (Redesigned/ContextMenu), whose own items stand in for the block, so the
                   block stays out of it unless the sheet itself is shown (SGPlayerMenuReplaced). Switch to video,
-                  the chip over the title of a song with a music video, is hidden under either look on request
-                  (VideoSwitch.x, spotifyglass.hide.videoSwitch), removed from its superview by its identifier
-                  on each FloatingElementsUnit layout pass where Spotify adds it; off leaves Spotify untouched.
+                  the chip over the title of a song with a music video, is hidden by default in Redesigned;
+                  select Video in the Player page’s Buttons card to show it. Native leaves it alone by default.
+                  VideoSwitch.x removes the identified button on layout when hidden. An explicit
+                  spotifyglass.hide.videoSwitch value overrides either default (YES = hidden); stock leaves it alone if unset.
                   The switch is read on every pass, so it applies from the player's next layout without a relaunch.
                   Full screen cover on tap (spotifyglass.hide.fullScreenCover, shown unless switched off) is the
                   player's single tap on the cover, which opens Spotify's full screen cover, as a switch of its own:
@@ -1670,10 +1671,16 @@ Redesigned:
                   crowd the cover, it tries the sung line alone before hiding it. The same lift over a clip
                   or full-screen still carries the dim with it. The line rechecks visible chips on its lyric
                   clock as well as on layout: a late switch or a fade needs no player layout pass. The video
-                  switch is measured from the outer pill, not its inset text.
+                  switch is measured from the outer pill, not its inset text. The search reaches the title:
+                  on Spotify 9.2.0 the floating unit is inside the bottom stack. If Spotify retains a nonempty
+                  strip above the title after the button is removed, it still explains a smaller centered
+                  native square. The natural side is the column width; the top stays at the native lifted,
+                  header-safe edge. Only visible chip content requires clearance. An empty strip leaves
+                  the line directly above the title, with the same row budget and cover floor.
                   The identified switch need not expose painted pixels; anonymous views still do. A changed
                   floating-unit snapshot logs `lyrics unit:` even when nothing wins. The numbered parts
-                  show the search area, chosen top and view (`*`), and a bounded view/layer tree, never
+                  show the title top, stack frame, reserved natural side (zero if none), search area,
+                  chosen top and view (`*`), and a bounded view/layer tree with default attributes omitted, never
                   identifiers other than the switch classification, label text or image data. The lyric clock
                   checks the structure even between layouts. A shape mask reports its path bounds in player
                   coordinates; a path outside the pill cannot lift the rows. Translation alone is recorded
