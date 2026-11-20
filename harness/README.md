@@ -1,8 +1,9 @@
 # Harnesses in CI
 
 `.github/workflows/harness.yml` runs the offline macOS / Mac Catalyst checks on
-`macos-latest`, on relevant pushes to `main` and `ci/harness`, pull requests,
-manual dispatch, and a weekly schedule (Monday 03:00 UTC). Each harness builds
+`macos-latest` for pull requests. Pushes to `main` and the weekly full run are
+checked on the maintainer's own Mac runner from the private Retrine-CI repository,
+so a push here runs no Mac job. Each harness builds
 **and runs** its checks; failure does not cancel the other jobs.
 
 CI has two jobs. `plan` (ubuntu) reads the changed files and asks
@@ -11,11 +12,8 @@ harness when it touches `harness/<dir>/` or any file that harness's build
 scripts and sources reach — every repo path named in a build/check script
 (`-I ../autoeq/shim`, `VENDOR=../../vendor/audio`, `$SRC/...`), every file
 under such a directory, plus transitive quoted imports. A new directory a
-build script starts using is picked up without editing the script. A `workflow_dispatch` run given
-`paths` (space-separated repo paths) plans from those paths as if they had changed, so one or two harnesses can be
-rerun alone. Every harness runs when the event is `workflow_dispatch` without `paths` or
-`schedule`, when the changed list cannot be determined (new branch, force push,
-shallow history), when a change touches `.github/`,
+build script starts using is picked up without editing the script. Every harness runs
+when the pull request's changed list cannot be determined, when a change touches `.github/`,
 `scripts/harness-plan.py` or `tweak/Makefile`, or when a changed path is no longer
 in the checkout (a deletion, or a rename's old name: the diff is taken with
 `--no-renames`), since a harness may still use it. A harness with no tweak
@@ -35,8 +33,8 @@ is 27m23s, leaving 17m37s within the unchanged 45-minute timeout for variability
 and newer checks (SponsorBlock was not present in that measured run).
 These are projections, not a measured three-shard run.
 
-`.github/workflows/runner-starvation-retry.yml` inspects completed Mac harnesses,
-Release and WireGuard checks runs. It retries failed jobs once, only on attempt 1
+`.github/workflows/runner-starvation-retry.yml` inspects completed Mac harnesses
+and WireGuard checks runs of pull requests. It retries failed jobs once, only on attempt 1
 of a failed/cancelled run when **every** non-successful job has no steps and a
 check-run annotation containing `was not acquired by Runner`. Real failures,
 mixed failures, missing annotations and later attempts are logged without retry.
