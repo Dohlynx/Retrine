@@ -37,6 +37,8 @@
 #import <objc/message.h>
 #import <mach/mach_time.h>
 #import "Redesigned/Lyrics/SGRKaraokeView.h"
+#import "Redesigned/Lyrics/LyricsTools.h"
+#import "Settings/SGModPage.h"
 #import "Redesigned/Lyrics/SGRSingButton.h"
 #import "Shared/Sing/Sing.h"
 // HEAD's sources (build.sh old) may be from before the lyrics had anything but their words.
@@ -652,7 +654,9 @@ static void checkFailureUI(SGRKaraokeView *view) {
     // -light 1: the system in light mode, as a phone set to it would put the player's panes.
     self.window.overrideUserInterfaceStyle = [args boolForKey:@"light"] ? UIUserInterfaceStyleLight : UIUserInterfaceStyleDark;
     if ([args boolForKey:@"translationCheck"]) {
-        dispatch_async(dispatch_get_main_queue(), ^{ SGHarnessRunTranslationCheck(self.window); });
+        [NSTimer scheduledTimerWithTimeInterval:0 repeats:NO block:^(NSTimer *timer) {
+            SGHarnessRunTranslationCheck(self.window);
+        }];
         return YES;
     }
     UIViewController *root = [UIViewController new];
@@ -720,8 +724,18 @@ static void checkFailureUI(SGRKaraokeView *view) {
                             after(.3, ^{
                                 HARNESS_CHECK(!link.paused && link.preferredFrameRateRange.maximum == 120 &&
                                               ![[karaoke valueForKey:@"plain"] boolValue]);
-                                NSLog(@"[harness] PASS plain idle, pause and zero-speed holds, timed replacement");
-                                exit(0);
+                                extern NSUInteger SGHarnessAwakeWrites;
+                                NSUInteger writes = SGHarnessAwakeWrites;
+                                after(.2, ^{
+                                    HARNESS_CHECK(SGHarnessAwake && writes == SGHarnessAwakeWrites);
+                                    SGModRow *row = SGRLyricsKeepAwakeRow();
+                                    row.changed(NO);
+                                    HARNESS_CHECK(!UIApplication.sharedApplication.idleTimerDisabled);
+                                    row.changed(YES);
+                                    HARNESS_CHECK(UIApplication.sharedApplication.idleTimerDisabled);
+                                    NSLog(@"[harness] PASS plain idle, pause and zero-speed holds, timed replacement without redundant holds");
+                                    exit(0);
+                                });
                             });
                         });
                     });

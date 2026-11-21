@@ -318,8 +318,29 @@ void SGRShowLyricsSync(NSString *trackID) { NSLog(@"harness: Sync for %@", track
 void SGRShowLyricsSearch(NSString *trackID) { NSLog(@"harness: Search LRCLIB for %@", trackID); }
 NSString *SGRLyricsSyncSummary(NSString *trackID) { return nil; }
 BOOL SGHarnessAwake;
+NSUInteger SGHarnessAwakeWrites;
+#if __has_include("awake-row-under-check.inc")
+#import "Core/SGLog.h"
+#import "Redesigned/Lyrics/LyricsTools.h"
+#import "Settings/SGModPage.h"
+@implementation SGModRow
+@end
+#define SGSwitchRow(title, subtitle, key) [SGModRow new]
+#define SGEnabled(key) [NSUserDefaults.standardUserDefaults boolForKey:@"plainIdle"]
+#define SGRLyricsHoldAwake registryHold
+#include "awake-row-under-check.inc"
+#undef SGRLyricsHoldAwake
+#undef SGEnabled
+#undef SGSwitchRow
+void SGRLyricsHoldAwake(id holder, BOOL hold) {
+    SGHarnessAwakeWrites++;
+    registryHold(holder, hold);
+    SGHarnessAwake = UIApplication.sharedApplication.idleTimerDisabled;
+}
+#else
 BOOL SGRLyricsKeepAwakeOn(void) { return [NSUserDefaults.standardUserDefaults boolForKey:@"plainIdle"]; }
-void SGRLyricsHoldAwake(id holder, BOOL hold) { SGHarnessAwake = hold; }
+void SGRLyricsHoldAwake(id holder, BOOL hold) { SGHarnessAwakeWrites++; SGHarnessAwake = hold; }
+#endif
 
 // The AI services, Claude and a reload are off in the harness; the song's language is the real one (LyricsLanguage.m).
 BOOL SGClaudeKeySet(void) { return NO; }

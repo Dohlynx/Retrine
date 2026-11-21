@@ -1816,7 +1816,7 @@ typedef struct {
     CADisplayLink *_link;
     NSTimer *_poll;              // looking a few times a second while the link is paused, nothing on the page moving
     NSTimer *_plainRelease;      // the one screen-awake deadline of a paused plain sheet
-    BOOL _plainAwakeEnabled;
+    BOOL _holdingAwake;
     CFTimeInterval _stirredAt;   // when something last set the page moving
     NSString *_track;
     NSArray<SGKaraokeLine *> *_lines;
@@ -1884,6 +1884,10 @@ typedef struct {
     NSDictionary<NSNumber *, NSArray<SGLyricsMeaning *> *> *_meanings;   // Genius's, by line
     NSUInteger _meaningsAsked;
     UIEditMenuInteraction *_editMenu;   // a held line's Copy, Share and Meaning
+    NSUInteger _translationPage;
+    UIAlertController *_translationAlert;
+    __weak UIView *_alertCover;
+    NSString *_coverKey;
     SGRKaraokeLineView *_heldLine;   // the line the menu that is up was opened on
     id<NSCopying> _heldKey;   // that menu's configuration's identifier: its dismissal is the one that lets the line go
 }
@@ -1899,7 +1903,7 @@ typedef struct {
     _sightArrangement = NSUIntegerMax;
     SGAddPlayerStateObserver(self);
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(plainSheetChanged:) name:SGKaraokeLinesKeptNotification object:nil];
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(awakeSettingChanged) name:NSUserDefaultsDidChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(awakeSettingChanged) name:SGRKeyLyricsKeepAwake object:nil];
     _fade = [CAGradientLayer layer];
     _fade.colors = @[(id)UIColor.clearColor.CGColor, (id)UIColor.whiteColor.CGColor,
                      (id)UIColor.whiteColor.CGColor, (id)UIColor.clearColor.CGColor, (id)UIColor.clearColor.CGColor];
@@ -2035,7 +2039,7 @@ typedef struct {
 
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
-    SGRLyricsHoldAwake(self, NO);
+    if (_holdingAwake) SGRLyricsHoldAwake(self, NO);
     free(_spans);
     free(_breaks);
 }
@@ -2084,30 +2088,33 @@ typedef struct {
     return _sample ?: SGKaraokeLinesForTrack(track);
 }
 
+static BOOL cornerControlShown(UIView *view) {
+    return view.superview && !view.hidden && view.userInteractionEnabled;
+}
+
 - (void)tapped:(UITapGestureRecognizer *)tap {
     [self stir];
-    if (_extrasBox && !_extrasBox.hidden && CGRectContainsPoint(_extrasBox.frame, [tap locationInView:self])) return;
+    if (cornerControlShown(_extrasBox) && CGRectContainsPoint(_extrasBox.frame, [tap locationInView:self])) return;
     if (_status.showsNote && _statusBox.userInteractionEnabled && CGRectContainsPoint(_statusBox.frame, [tap locationInView:self])) return;
-    if (_sing.userInteractionEnabled && [_sing pointInside:[tap locationInView:_sing] withEvent:nil]) return;
+    if (cornerControlShown(_sing) && [_sing pointInside:[tap locationInView:_sing] withEvent:nil]) return;
     if (_creditLinks.count && !_credit.hidden
         && CGRectContainsPoint(CGRectInset(_credit.frame, -kCreditSlop, -MAX(kCreditSlop, (44 - _credit.frame.size.height) / 2)),
                                [tap locationInView:_scroll])) {
         SGLyricsOpenCreditLinks(_creditLinks, _credit);
         return;
     }
-    CGPoint point = [tap locationInView:_scroll];
+    CGPoint point = [self displayedScrollPoint:tap];
     for (SGRKaraokeLineView *view in _shown.allValues) {
         CGRect target = view.bubbleTarget;
-        if (CGRectIsNull(target) || !CGRectContainsPoint(target, [_scroll convertPoint:point toView:view])) continue;
+        if (CGRectIsNull(target)) continue;
+        CALayer *layer = view.layer.presentationLayer ?: view.layer;
+        if (!CGRectContainsPoint(target, [layer convertPoint:point fromLayer:layer.superlayer])) continue;
         [self explainLine:view];
         return;
     }
     if (_plain) return;   // a line with no time has nowhere to seek to
-    for (SGRKaraokeLineView *view in _shown.allValues) {
-        if (!CGRectContainsPoint(CGRectInset(view.frame, -_margin, -_lineGap / 2), point)) continue;
-        [self seekToLine:view.line];
-        return;
-    }
+    SGRKaraokeLineView *view = [self lineUnder:point];
+    if (view) [self seekToLine:view.line];
 }
 
 // A tap on a line, or VoiceOver activating it.
@@ -2128,10 +2135,10 @@ typedef struct {
     // The page's own controls take their own touches; a press behind them gets no menu of a line's.
     CGPoint point = [hold locationInView:self];
     SGRKaraokeLineView *view = nil;
-    if (!(_extrasBox && !_extrasBox.hidden && CGRectContainsPoint(_extrasBox.frame, point))
+    if (!(cornerControlShown(_extrasBox) && CGRectContainsPoint(_extrasBox.frame, point))
         && !(_status.showsNote && _statusBox.userInteractionEnabled && CGRectContainsPoint(_statusBox.frame, point))
-        && !(_sing.userInteractionEnabled && [_sing pointInside:[hold locationInView:_sing] withEvent:nil]))
-        view = [self lineUnder:[hold locationInView:_scroll]];
+        && !(cornerControlShown(_sing) && [_sing pointInside:[hold locationInView:_sing] withEvent:nil]))
+        view = [self lineUnder:[self displayedScrollPoint:hold]];
     if (!view || !heldLineText(view.line).length) {
         // A press that offers nothing of its own takes the last menu away rather than leaving it on that line.
         [self letGoOfHeldLine];
@@ -2149,14 +2156,24 @@ typedef struct {
     [_editMenu presentEditMenuWithConfiguration:configuration];
 }
 
+- (CGPoint)displayedScrollPoint:(UIGestureRecognizer *)gesture {
+    CGPoint point = [gesture locationInView:_scroll];
+    // UIKit converts to the model bounds even while the scroll is springing home.
+    CALayer *shown = _scroll.layer.presentationLayer;
+    if (shown) point.y += shown.bounds.origin.y - _scroll.bounds.origin.y;
+    return point;
+}
+
 // The line whose room a touch in the scroll is in: of the lines whose room holds it, the one it is nearest, so a
 // line with nothing to say (an empty one) is the one held and not the line beside it.
 - (SGRKaraokeLineView *)lineUnder:(CGPoint)point {
     SGRKaraokeLineView *nearest = nil;
     CGFloat distance = CGFLOAT_MAX;
     for (SGRKaraokeLineView *view in _shown.allValues) {
-        if (!CGRectContainsPoint(CGRectInset(view.frame, -_margin, -_lineGap / 2), point)) continue;
-        CGFloat away = fabs(CGRectGetMidY(view.frame) - point.y);
+        CALayer *layer = view.layer.presentationLayer ?: view.layer;
+        CGRect frame = layer.frame;
+        if (!CGRectContainsPoint(CGRectInset(frame, -_margin, -_lineGap / 2), point)) continue;
+        CGFloat away = fabs(CGRectGetMidY(frame) - point.y);
         if (away >= distance) continue;
         nearest = view;
         distance = away;
@@ -2349,6 +2366,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
     _statusBox.alpha = hidden ? 0 : 1;
     _statusBox.userInteractionEnabled = !hidden;
     _sing.tucked = hidden && !_keepsSing;
+    [self clearBottomRow];
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
@@ -2403,6 +2421,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
         // scrolled and closed before followSong drew every line off the anchor, none of them lit.
         [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(followSong) object:nil];
         _browsing = NO;
+        [self leaveTranslationPage];
         _scroll.contentOffset = CGPointZero;
     }
     [self scheduleLink];
@@ -2428,7 +2447,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
     _poll = nil;
     [_link invalidate];
     _link = nil;
-    SGRLyricsHoldAwake(self, NO);   // held again by the next frame, while the song plays
+    [self holdAwake:NO];   // held again by the next frame, while the song plays
     if (!self.window) return;
     NSTimeInterval wait = SGPlayerTransitionEnds() - CACurrentMediaTime();
     if (wait <= 0) [self startLink];
@@ -2444,6 +2463,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 - (void)becomeActive {
     _inactive = NO;
     [self scheduleLink];
+    [self presentPendingTranslationAlert];
 }
 
 - (void)startLink {
@@ -2490,10 +2510,12 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 }
 
 - (void)awakeSettingChanged {
-    // Defaults can post off-main and before the row has applied its cached value.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (self->_plain && self->_link && self->_plainAwakeEnabled != SGRLyricsKeepAwakeOn()) [self plainAwake];
-    });
+    // The row has applied its setting. Each view releases or reacquires its own
+    // hold synchronously, including a plain page whose display link is paused.
+    if (!_link || _sample) return;
+    if (_plain) [self plainAwake];
+    else if (!SGRLyricsKeepAwakeOn()) [self holdAwake:NO];
+    else [self tick];
 }
 
 // A rate-only report can stop the clock without pausing Spotify (SpeedProbe.x).
@@ -2572,9 +2594,8 @@ static NSInteger plainRestPosition(SPTPlayerState *state) {
     CGFloat height = self.bounds.size.height;
     if (height <= 0) return;
     CGFloat floor = height;
-    for (UIView *view in @[_sing ?: NSNull.null, _extrasBox ?: NSNull.null]) {
-        if ([view isKindOfClass:UIView.class] && !view.hidden && view.superview) floor = MIN(floor, CGRectGetMinY(view.frame) - 8);
-    }
+    if (cornerControlShown(_sing)) floor = MIN(floor, CGRectGetMinY(_sing.frame) - 8);
+    if (cornerControlShown(_extrasBox)) floor = MIN(floor, CGRectGetMinY(_extrasBox.frame) - 8);
     CGFloat clear = MAX(0, MIN(1, (height - floor) / height));
     NSArray *locations = @[@0, @(kEdgeFade), @(MAX(kEdgeFade, 1 - clear - kEdgeFade)), @(1 - clear), @1];
     if ([_fade.locations isEqualToArray:locations]) return;
@@ -2788,6 +2809,19 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
 }
 
 - (void)showStyle:(SGRKaraokeStyle *)style tops:(NSArray<NSNumber *> *)tops {
+    NSNumber *anchor = nil;
+    CGFloat viewportY = CGFLOAT_MAX;
+    if (_browsing) {
+        CGRect viewport = _scroll.bounds;
+        for (NSNumber *key in _shown) {
+            CGRect frame = _shown[key].frame;
+            CGFloat y = CGRectGetMinY(frame) - CGRectGetMinY(viewport);
+            if (y >= 0 && y < viewportY && CGRectGetMaxY(frame) <= CGRectGetMaxY(viewport)) {
+                anchor = key;
+                viewportY = y;
+            }
+        }
+    }
     CATransition *fade = [CATransition animation];
     fade.type = kCATransitionFade;
     fade.duration = kRestyleFade;
@@ -2798,6 +2832,10 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
     [self takeTops:tops];
     _sightArrangement = NSUIntegerMax;
     [self placeLinesAnimated:NO];
+    if (anchor) {
+        UIView *line = [self viewForLine:anchor.integerValue];
+        _scroll.contentOffset = CGPointMake(_scroll.contentOffset.x, CGRectGetMinY(line.frame) - viewportY);
+    }
     [self showLinesInSight];   // placing stands still while the page is scrolled by hand; the views do not
     // A restyle's blur starts in place rather than easing in from sharp.
     for (SGRKaraokeLineView *view in _shown.allValues) [view.layer removeAnimationForKey:@"blur"];
@@ -2864,7 +2902,8 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
             image:[UIImage systemImageNamed:close ? @"pip.exit" : @"pip.enter"] identifier:nil
             handler:^(UIAction *action) { SGLyricsPiPToggle(weakSelf); }]];
     }
-    if (_hasSpoken) {
+    // With readings enabled the style already shows the provider's pronunciation in that slot.
+    if (_hasSpoken && !SGFlag(SGKeyLyricsRomanised, NO)) {
         BOOL on = SGFlag(SGRKeyLyricsPronunciation, NO);
         [items addObject:[UIAction actionWithTitle:on ? SGL(@"settings.lyricstools.menu.pronunciation.hide", @"Hide Pronunciation")
                                                       : SGL(@"settings.lyricstools.menu.pronunciation.show", @"Show Pronunciation")
@@ -3110,11 +3149,59 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
     [self offerExtras];
     [self queueAutomaticTranslation];
 }
+- (UIView *)translationCover {
+    for (UIView *view = self; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return view;
+    return nil;
+}
+
+- (BOOL)visibleForTranslationOf:(NSString *)track {
+    if (!self.window || ![_track isEqual:track] || ![track isEqual:SGKaraokePlayingTrack()] ||
+        UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return NO;
+    return ![self translationCover];
+}
+
+static char kTranslationCoverContext;
+
+- (void)stopWatchingTranslationCover {
+    if (_alertCover) [_alertCover removeObserver:self forKeyPath:_coverKey context:&kTranslationCoverContext];
+    _alertCover = nil;
+    _coverKey = nil;
+}
+
+- (void)leaveTranslationPage {
+    ++_translationPage;
+    _translationAlert = nil;
+    [self stopWatchingTranslationCover];
+}
+
+- (void)presentPendingTranslationAlert {
+    if (!_translationAlert) return;
+    [self stopWatchingTranslationCover];
+    if (!self.window || ![_track isEqual:SGKaraokePlayingTrack()]) {
+        _translationAlert = nil;
+        return;
+    }
+    if (_inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
+    UIView *cover = [self translationCover];
+    if (cover) {
+        // Only an outstanding error watches visibility; no display tick or retry timer.
+        _alertCover = cover;
+        _coverKey = cover.hidden ? @"hidden" : @"alpha";
+        [cover addObserver:self forKeyPath:_coverKey options:0 context:&kTranslationCoverContext];
+        return;
+    }
+    UIAlertController *alert = _translationAlert;
+    _translationAlert = nil;
+    [SGTopController() presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context == &kTranslationCoverContext) [self presentPendingTranslationAlert];
+    else [super observeValueForKeyPath:path ofObject:object change:change context:context];
+}
 - (BOOL)automaticTranslationVisible {
-    if (!_languageReady || _sample || !self.window || !_lines.count || ![_track isEqual:SGKaraokePlayingTrack()] ||
-        UIApplication.sharedApplication.applicationState != UIApplicationStateActive || !SGFlag(SGRKeyLyricsTranslation, NO)) return NO;
-    for (UIView *view = self; view; view = view.superview) if (view.hidden || view.alpha < 0.01) return NO;
-    return SGRLyricsTranslationAllowed(_track, _detectedLanguage);
+    return _languageReady && !_sample && _lines.count && SGFlag(SGRKeyLyricsTranslation, NO) &&
+        [self visibleForTranslationOf:_track] && SGRLyricsTranslationAllowed(_track, _detectedLanguage);
 }
 - (void)automaticTranslationIfNeeded {
     if (![self automaticTranslationVisible]) return;
@@ -3157,13 +3244,16 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
     NSString *track = _track, *language = SGLyricsGeminiLanguage();
     if (![track isEqualToString:asked] || ![language isEqualToString:askedIn]) return;   // a menu from before the song or the language changed
     BOOL had = SGLyricsHasTranslations(lines);
+    __weak SGRKaraokeView *origin = self;
+    NSUInteger page = _translationPage;
     SGRTranslateLyrics(lines, track, language, automaticRevision,
     ^(NSArray *sent, NSString *song, NSString *to, SGRTranslated progress, SGRTranslated done) {
         translator(again ? withoutMade(sent) : sent, song, to, progress, done);
     }, ^{
         if (!automaticRevision && !SGFlag(SGRKeyLyricsTranslation, NO)) SGRSetLyricsTextShown(SGRLyricsTextTranslation, YES);
     }, ^(NSArray<NSString *> *translations, NSString *error) {
-        if (error && !automaticRevision) {
+        SGRKaraokeView *view = origin;
+        if (error && !automaticRevision && view && view->_translationPage == page && [view->_track isEqual:track]) {
             BOOL needsDownload = [error isEqualToString:@"retrine.translation.languagesMissing"];
             NSString *detail = needsDownload ? SGL(@"settings.translation.download.message", @"Download the song's language and your translation language in Settings > Apps > Translate > Languages, then try again.") : error;
             NSString *message = had ? [NSString stringWithFormat:@"%@\n\n%@", detail, SGL(@"settings.lyricstools.translation.kept", @"Lines that could not be translated keep their previous translation.")] : detail;
@@ -3182,7 +3272,8 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
             } else {
                 [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.ok", @"OK") style:UIAlertActionStyleCancel handler:nil]];
             }
-            [SGTopController() presentViewController:alert animated:YES completion:nil];
+            view->_translationAlert = alert;
+            [view presentPendingTranslationAlert];
         }
     });
 }
@@ -3726,6 +3817,12 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     return _clock;
 }
 
+- (void)holdAwake:(BOOL)wanted {
+    if (_holdingAwake == wanted) return;
+    _holdingAwake = wanted;
+    SGRLyricsHoldAwake(self, wanted);
+}
+
 - (void)plainAwake {
     if (_sample || !_link) return;
     SPTPlayerState *state = SGPlayerState();
@@ -3741,9 +3838,8 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
         _reported = rest;
     } else _stillSince = 0;
     double left = _stillSince ? _stillSince + kAwakeAfterPause - now : kAwakeAfterPause;
-    _plainAwakeEnabled = SGRLyricsKeepAwakeOn();
-    BOOL hold = _plainAwakeEnabled && _showing && left > 0;
-    SGRLyricsHoldAwake(self, hold);
+    BOOL hold = SGRLyricsKeepAwakeOn() && _showing && left > 0;
+    [self holdAwake:hold];
     if (hold && _stillSince == previousPause && _plainRelease.valid) return;
     // A seek, resume, or a change of visibility replaces the pending release, not the pause epoch.
     [_plainRelease invalidate];
@@ -3766,6 +3862,7 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     if (!(track == _track || [track isEqualToString:_track])) {
         SGLog(@"karaoke: page shows track %@, lyrics %@", track, [self linesFor:track] ? @"captured" : @"not captured yet");
         _track = track;
+        [self leaveTranslationPage];
         _seekAt = 0;
         _seekTo = 0;
         _stillSince = 0;   // the last song's pause says nothing of this one's
@@ -3814,8 +3911,8 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     [self setShowing:_tops != nil || failed];
     // Keep screen on: held while lines are shown and the song moves, let go a few seconds into a pause.
     if (_plain && _lines.count) [self plainAwake];
-    else if (!_sample && SGRLyricsKeepAwakeOn())
-        SGRLyricsHoldAwake(self, !failed && _showing && !(_stillSince && [self frameTime] - _stillSince > kAwakeAfterPause));
+    else if (!_sample)
+        [self holdAwake:SGRLyricsKeepAwakeOn() && !failed && _showing && !(_stillSince && [self frameTime] - _stillSince > kAwakeAfterPause)];
     // The source is settled a moment after the lines are, so it is asked for until it answers.
     if (!_sample && _lines && !_creditSource) [self creditTo:SGLyricsCreditFor(track)];
     if (_plain && _lines.count) {

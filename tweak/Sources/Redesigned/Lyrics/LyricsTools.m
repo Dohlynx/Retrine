@@ -604,7 +604,7 @@ SGModRow *SGRLyricsKeepAwakeRow(void) {
     row.changed = ^(BOOL on) {
         SGRLyricsKeepAwakeOn();
         sgr_keepAwake = on;
-        if (!on) for (id holder in sgr_holders.allObjects) SGRLyricsHoldAwake(holder, NO);
+        [NSNotificationCenter.defaultCenter postNotificationName:SGRKeyLyricsKeepAwake object:nil];
     };
     return row;
 }
