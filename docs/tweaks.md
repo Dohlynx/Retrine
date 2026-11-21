@@ -1701,8 +1701,10 @@ Redesigned:
                   its looper fails after it has drawn a frame (3 rebuilds at most, only while it may play, then it is given
                   up like one that never drew and the cover or the Fluid field comes back; a clip standing in for the last
                   track is never rebuilt, and no timer polls its clock), and on a skip
-                  stays a moment for the next track's to cross over it. Under Reduce Motion and in Low Power Mode no
-                  clip plays: the cover stays over Fluid. A black gradient dims the clip by its brightness (the 75th
+                  stays a moment for the next track's to cross over it. With Reduce Motion, Low Power Mode or a Serious
+                  or Critical thermal state, the player clears the clip and shows the cover over the still field.
+                  Once those holds clear, the moving field continues from where it stopped; the player looks up the clip
+                  again and plays it from the beginning. A black gradient dims the clip by its brightness (the 75th
                   percentile of the linear luminance of three frames), so white text keeps 4.5:1 (7:1 with Increase
                   Contrast), from 0.10 to 0.80, only where text is: a band under the header and from above the title
                   down; behind the lyrics it covers the whole clip, 0.15 darker (issue #101). A track that changes
@@ -2017,7 +2019,7 @@ Redesigned:
                   for at most eight distinct song/credit pairs; a page, hero or track list reused for another
                   release is header-only. The pairs come from
                   this page's own settled track list, never the playing song or cells in a list update. The cover fades in once its first frame
-                  is decoded and moving only in front of the app with Reduce Motion and Low Power Mode off and Auto-Play
+                  is decoded and moving only in front of the app, below Serious heat, with Reduce Motion and Low Power Mode off and Auto-Play
                   Video Previews on), the title, the artist and the kind and date centered under it, and the same row of glass
                   controls, shuffle, Play and add -- play and shuffle float over the album page outside its header, so they are concealed
                   there and the row carries the Kit's stand-ins, which draw their glyph and fire them; download is
@@ -2092,7 +2094,7 @@ Redesigned:
                   by id, so one search and one request per artist cover it. The photo is the studio logo read at the
                   header's width and the motion is motionArtistSquare1x1's video, else motionSquareVideo1x1's, cut to
                   the header's shape and looped in an AVQueuePlayer that plays only while the header is on screen, the
-                  app is in front, Reduce Motion and Low Power are off and Auto-Play Video Previews is on
+                  app is in front, thermal state is Nominal or Fair, Reduce Motion and Low Power are off and Auto-Play Video Previews is on
                   (SGMotionHeaderMayPlay, shared with the album's cover), fading in once its first frame is ready. In
                   both headers the clip also pauses while the settled player's field covers every visible part of the
                   header or the header is clipped out of sight, and resumes when the player starts to leave or any part
@@ -2426,7 +2428,7 @@ full-screen cover kept when both are found on; harness/player/ `autoviz`. The fu
 `spotifyglass.redesign.player.animatedStill`, off: a track with no clip
 shows the cover Spotify already drew, 300 px wide or more, where the clip would be, cropped to 4:3 at most, dimmed and
 blurred behind the lyrics as a clip is, under a black scrim of 45 % at the top fading out 76 pt below the safe area;
-a later clip replaces it, Black and Your Photo win, and Low Power Mode and Reduce Motion keep the ordinary cover;
+a later clip replaces it, Black and Your Photo win, and Low Power Mode, Reduce Motion or serious heat keeps the ordinary cover;
 PlayerMotion.x, harness/player/ `still`),
 while Fluid is chosen a Style menu, Light or Smooth (spotifyglass.redesign.fluid.renderer, offered where Metal exists),
 its six sliders and a red Reset (Redesigned/Kit/SGRFluid.h, spotifyglass.redesign.fluid.*). Light is the four turning

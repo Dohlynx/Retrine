@@ -4,6 +4,7 @@
 #import "Shared/AnimatedArtwork/SGMotionCatalog.h"
 #import "Shared/AnimatedArtwork/SGMotionClip.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Redesigned/Kit/SGRMotionBudget.h"
 #import "Redesigned/Player/Player.h"
 #import "ArtistArtwork.h"
 
@@ -128,7 +129,8 @@ static char kScrollContext;
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updatePlayback)
         name:SGRPlayerVisibilityDidChangeNotification object:nil];
     for (NSNotificationName name in @[UIApplicationDidBecomeActiveNotification, UIApplicationWillResignActiveNotification,
-        NSProcessInfoPowerStateDidChangeNotification, UIAccessibilityReduceMotionStatusDidChangeNotification,
+        NSProcessInfoPowerStateDidChangeNotification, NSProcessInfoThermalStateDidChangeNotification,
+        UIAccessibilityReduceMotionStatusDidChangeNotification,
         UIAccessibilityVideoAutoplayStatusDidChangeNotification])
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updateSoon) name:name object:nil];
     return self;
@@ -203,7 +205,7 @@ static char kScrollContext;
     if (!_player) return;
     BOOL may = SGMotionHeaderMayPlay(SGRViewInViewport(self, SGRSettledPlayerRect(self.window)),
         UIApplication.sharedApplication.applicationState == UIApplicationStateActive,
-        SGRReduceMotion(), NSProcessInfo.processInfo.lowPowerModeEnabled, UIAccessibilityIsVideoAutoplayEnabled());
+        SGRReduceMotion(), SGRMotionHeldForPowerOrHeat(), UIAccessibilityIsVideoAutoplayEnabled());
     if (may != (_player.rate != 0)) {
         if (may) [_player play]; else [_player pause];
     }

@@ -13,8 +13,8 @@
 // Only the visible, active player requests clips; its current and ahead tickets are released when it leaves.
 //
 // The clip holds still when the moving field does (SGRField.m): out of a window, with the app not in front,
-// while the player opens or closes, and while the song is paused. Under Reduce Motion and in Low Power Mode
-// no clip plays at all: the cover stays over Fluid, as for a track without one, until both are off again.
+// while the player opens or closes, and while the song is paused. Under Reduce Motion, Low Power Mode or
+// serious heat the clip goes away: the cover stays over Fluid until the clip can be looked up again.
 // While a clip is showing, the Fluid field under it is held still too, and once the clip has faded in it is
 // hidden (the field's covered): the field's color is what shows above the clip on the pull that dismisses.
 //
@@ -55,7 +55,7 @@
 // sides, with a scrim of its own under the status bar and the header's controls (kStillScrimTop). The cover is the Kit's for the playing track (SGRNowPlayingArtwork), nothing fetched for it, and only one at
 // least kStillLeastPixels wide: a smaller one (the now playing bar's) leaves the ordinary cover until a larger one is
 // published, which then comes in. It is held off where a clip would be (not Animated, Spotify's video, Reduce Motion,
-// Low Power Mode), a clip found later replaces it, and a skip lets it go as it does a clip.
+// Low Power Mode or serious heat), a clip found later replaces it, and a skip lets it go as it does a clip.
 //
 // With the Visualizer without a clip on (SGRKeyPlayerAnimatedVisualiser, off until switched on, and off while the
 // full-screen cover is on), the same walk's finding no clip puts the Visualizer on the field in the cover's place
@@ -64,6 +64,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Redesigned/Kit/SGRMotionBudget.h"
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
 #import "Shared/Player/PlayerState.h"
 #import "Shared/Player/SGLastTrack.h"
@@ -343,7 +344,8 @@ static UIBlurEffect *blurEffect(void) {
 
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     for (NSNotificationName name in @[UIApplicationDidBecomeActiveNotification, UIApplicationWillResignActiveNotification,
-                                      NSProcessInfoPowerStateDidChangeNotification, UIAccessibilityReduceMotionStatusDidChangeNotification]) {
+                                      NSProcessInfoPowerStateDidChangeNotification, NSProcessInfoThermalStateDidChangeNotification,
+                                      UIAccessibilityReduceMotionStatusDidChangeNotification]) {
         [center addObserver:self selector:@selector(updateMotionSoon) name:name object:nil];
     }
     [center addObserver:self selector:@selector(updateDim) name:UIAccessibilityDarkerSystemColorsStatusDidChangeNotification object:nil];
@@ -698,7 +700,7 @@ static UIBlurEffect *blurEffect(void) {
 // the recovery it would have had.
 - (BOOL)mayPlay {
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    return self.window && front && !SGRPlayerIsTransitioning() && !SGRReduceMotion() && !NSProcessInfo.processInfo.lowPowerModeEnabled
+    return self.window && front && !SGRPlayerIsTransitioning() && !SGRReduceMotion() && !SGRMotionHeldForPowerOrHeat()
         && !SGPlayerState().isPaused;
 }
 
@@ -993,9 +995,9 @@ static BOOL videoShowing(void) {
     return sg_videos.allObjects.count > 0;
 }
 
-// Reduce Motion asks for no looping clip, and Low Power Mode for no video decoding behind the player.
+// Reduce Motion asks for no looping clip; low power or serious heat spares the video decoding.
 static BOOL motionAllowed(void) {
-    return !SGRReduceMotion() && !NSProcessInfo.processInfo.lowPowerModeEnabled;
+    return !SGRReduceMotion() && !SGRMotionHeldForPowerOrHeat();
 }
 
 // What a clip, or the cover's still, is shown under: Animated chosen, Spotify's video not showing, motion allowed.
@@ -1173,7 +1175,7 @@ static void videoSurface(id unit, BOOL attached) {
 
 // A skip on screen leaves the last clip a moment for the next one's to cross over, and the same track
 // walked again (its Canvas came late) keeps its clip until the new one does. Otherwise the clip goes: at
-// once where it cannot be seen, with a fade for Spotify's video, under Reduce Motion or Low Power Mode, and
+// once where it cannot be seen, with a fade for Spotify's video, under Reduce Motion, Low Power Mode or serious heat, and
 // when the background is not Animated.
 static BOOL beginTrack(NSString *track) {
     sg_track = track;
@@ -1272,15 +1274,16 @@ void SGPlayerMenuSetAnimatedArtwork(BOOL on) {
     if (background < SGRPlayerBackgroundFluid) return;
     sg_videos = [NSHashTable weakObjectsHashTable];
     // Here rather than on the clip's view, which is gone while they hold it off: the track is walked again
-    // as either changes. The power state is reported off the main thread, which must not wait for main
+    // as these conditions change. Power and thermal state can be reported off the main thread, which must not wait for main
     // (AGENTS.md), so the observer takes it where it is posted and hops.
     __block BOOL allowed = motionAllowed();
-    for (NSNotificationName name in @[NSProcessInfoPowerStateDidChangeNotification, UIAccessibilityReduceMotionStatusDidChangeNotification]) {
+    for (NSNotificationName name in @[NSProcessInfoPowerStateDidChangeNotification, NSProcessInfoThermalStateDidChangeNotification,
+                                      UIAccessibilityReduceMotionStatusDidChangeNotification]) {
         [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (motionAllowed() == allowed) return;
                 allowed = !allowed;
-                SGLog(@"redesign player: animated artwork %@", allowed ? @"allowed again, the clip looked up" : @"held off by Reduce Motion or Low Power Mode, Fluid shows");
+                SGLog(@"redesign player: animated artwork %@", allowed ? @"allowed again, the clip looked up" : @"held off by Reduce Motion, Low Power Mode or serious heat, Fluid shows");
                 [sg_follower restart];
             });
         }];

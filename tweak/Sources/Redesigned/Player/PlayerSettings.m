@@ -16,14 +16,14 @@
 // clip looked up for the card while it is on screen, Fluid until it comes in and for a track with none, as in the
 // player; the clip crosses over the field as it arrives, its poster first while its video decodes. And for Visualizer
 // the hills over Fluid held still (SGRPlayerVisualiserPreview), moving with the song. It moves under the field's own
-// conditions (in a window, Spotify in front, Reduce Motion and Low Power Mode off). Another track shown reads the
+// conditions (in a window, Spotify in front, Reduce Motion and Low Power Mode off, below serious heat). Another track shown reads the
 // background again, and an answer that comes for the one before is dropped. The card works only while the page is on
 // screen: away, its clip and hills are taken off and nothing it asked for is shown when it comes.
 //
 // Under Animated a tap on the card, or on its Without a clip button, shows the song as it would be without a clip,
 // what Song without a clip picks (the cover art over Fluid, the full-screen cover, or the Visualizer), and a tap again
 // shows it as it is; picking a choice there shows it too. It is the card's alone: nothing is asked of the player, and
-// another background ends it. Under Low Power Mode or Reduce Motion it is the cover art, as the player shows then.
+// another background ends it. Under Low Power Mode, serious heat or Reduce Motion it is the cover art, as the player shows then.
 //
 // Under the card a segmented control picks the background, all five of them: the names are one word each, each segment
 // as wide as its name, so they fit side by side at an iPhone's width, and every choice stays one tap away with the
@@ -42,6 +42,7 @@
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Redesigned/Kit/SGRMotionBudget.h"
 #import "Redesigned/Kit/SGRFluid.h"
 #import "Redesigned/Kit/SGRFluidGPU.h"
 #import "Redesigned/Kit/SGRRefinements.h"
@@ -142,9 +143,9 @@ static void pickNoClip(SGRNoClip choice) {
     SGRPlayerReconcileFallbackSwitches();
 }
 
-// Reduce Motion and Low Power Mode keep the cover art, whatever the choice (PlayerMotion.x, motionAllowed).
+// Reduce Motion, Low Power Mode or serious heat keeps the cover art, whatever the choice (PlayerMotion.x, motionAllowed).
 static BOOL noClipMotionAllowed(void) {
-    return !SGRReduceMotion() && !NSProcessInfo.processInfo.lowPowerModeEnabled;
+    return !SGRReduceMotion() && !SGRMotionHeldForPowerOrHeat();
 }
 
 #pragma mark - the card
@@ -350,13 +351,14 @@ static CGRect mixRect(CGRect a, CGRect b, CGFloat t) {
     }
     __weak SGRPlayerPreview *weakSelf = self;
     void (^background)(NSNotification *) = ^(NSNotification *note) {
-        // The power state is posted off the main thread, which must not wait for main (AGENTS.md).
+        // Power and thermal changes can be posted off the main thread, which must not wait for main (AGENTS.md).
         dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf reloadBackgroundAnimated:YES]; });
     };
     _observers = @[
         [center addObserverForName:SGRNowPlayingArtworkDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) { [weakSelf artworkChanged]; }],
         [center addObserverForName:SGRVisualiserStyleDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) { [weakSelf updateAccessibilityValue]; }],
         [center addObserverForName:NSProcessInfoPowerStateDidChangeNotification object:nil queue:nil usingBlock:background],
+        [center addObserverForName:NSProcessInfoThermalStateDidChangeNotification object:nil queue:nil usingBlock:background],
         [center addObserverForName:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil queue:nil usingBlock:background],
     ];
     [self reloadLook];

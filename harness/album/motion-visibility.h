@@ -1,4 +1,7 @@
 #import <AVFoundation/AVFoundation.h>
+#import <objc/runtime.h>
+#import "Redesigned/Kit/SGRField.h"
+#import "Redesigned/Kit/SGRFluid.h"
 #import "../harness-fail.h"
 
 extern __weak UIView *harnessSettledPlayerField;
@@ -8,7 +11,36 @@ extern NSNotificationName const SGRPlayerVisibilityDidChangeNotification;
 - (void)showMotion:(NSURL *)file;
 @end
 
-// A local mp4 (motion-fixture.mp4 in the harness bundle); only the covering player is a double.
+static NSProcessInfoThermalState reportedHeat;
+static BOOL reportedLowPower;
+
+static void checkMotionChanges(AVPlayer *player, SGRFluidLayer *layer, NSUInteger step, dispatch_block_t done) {
+    static const struct {
+        NSProcessInfoThermalState heat;
+        BOOL lowPower, moving;
+    } states[] = {
+        {NSProcessInfoThermalStateFair, NO, YES}, {NSProcessInfoThermalStateSerious, NO, NO},
+        {NSProcessInfoThermalStateNominal, NO, YES}, {NSProcessInfoThermalStateCritical, NO, NO},
+        {NSProcessInfoThermalStateFair, NO, YES}, {NSProcessInfoThermalStateFair, YES, NO},
+        {NSProcessInfoThermalStateFair, NO, YES},
+    };
+    if (step == sizeof(states) / sizeof(states[0])) { done(); return; }
+    NSNotificationName name = reportedLowPower != states[step].lowPower
+        ? NSProcessInfoPowerStateDidChangeNotification : NSProcessInfoThermalStateDidChangeNotification;
+    reportedHeat = states[step].heat;
+    reportedLowPower = states[step].lowPower;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        [NSNotificationCenter.defaultCenter postNotificationName:name object:NSProcessInfo.processInfo];
+        // Enqueued after the observers' hops; no sleep or AVPlayer clock polling.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            HARNESS_CHECK((player.rate > 0) == states[step].moving);
+            HARNESS_CHECK(layer.moving == states[step].moving);
+            checkMotionChanges(player, layer, step + 1, done);
+        });
+    });
+}
+
+// A local mp4 (motion-fixture.mp4 in the harness bundle).
 static void motionVisibilityCheck(UIView *root, BOOL artist) {
     if (![NSProcessInfo.processInfo.arguments containsObject:@"motion-visibility"]) return;
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil
@@ -44,9 +76,21 @@ static void motionVisibilityCheck(UIView *root, BOOL artist) {
         HARNESS_CHECK(player.rate == 0);
         list.hidden = NO;
         HARNESS_CHECK(player.rate > 0);
-        [header removeFromSuperview];
-        HARNESS_CHECK(player.rate == 0);
-        NSLog(@"PASS %@ header playback: covered, uncovering, clipped, partial, hidden, detached", header.class);
-        exit(0);
+        Class info = object_getClass(NSProcessInfo.processInfo);
+        method_setImplementation(class_getInstanceMethod(info, @selector(thermalState)),
+            imp_implementationWithBlock(^NSProcessInfoThermalState(id unused) { return reportedHeat; }));
+        method_setImplementation(class_getInstanceMethod(info, @selector(isLowPowerModeEnabled)),
+            imp_implementationWithBlock(^BOOL(id unused) { return reportedLowPower; }));
+        SGRArtworkField *art = [[SGRArtworkField alloc] initWithFrame:field.frame];
+        [root addSubview:art];
+        art.fluid = YES;
+        SGRFluidLayer *fluid = [art valueForKey:@"fluidLayer"];
+        HARNESS_CHECK(fluid.moving);
+        checkMotionChanges(player, fluid, 0, ^{
+            [header removeFromSuperview];
+            HARNESS_CHECK(player.rate == 0);
+            NSLog(@"PASS %@ header playback: viewport, heat, cooling, Low Power Mode and field motion", header.class);
+            exit(0);
+        });
     }];
 }

@@ -26,6 +26,7 @@
 // section. The Kit's SGRHeaderInfo reads the name and the listeners off Spotify's concealed labels and draws
 // and fires Spotify's shuffle, play and Follow, Follow as a glyph from the collection (ArtistFollow.x). More stays in Spotify's row, where the row needs it (ArtistField.x), and the Kit's pinned ⋯
 // (SGRPinnedMore) draws and fires it from the top trailing corner of the page, level with the back button.
+#import "Redesigned/Kit/SGRMotionBudget.h"
 #ifndef SG_ARTIST_HEADER_ARTWORK_TEST
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
@@ -270,9 +271,9 @@ extern UIColor *SGRArtistPaletteColor(UIView *view);
     static NSMutableSet<NSString *> *logged;
     NSString *gateKey = [NSString stringWithFormat:@"%@-%@", name, identity ?: @"missing-identity"];
     if (SGLogFirst(&logged, gateKey))
-        SGLog(@"artist artwork: %@: identity=%@ photoSetting=%d motionSetting=%d AppleMusicSource=%d LowPower=%d ReduceMotion=%d autoplay=%d LowDataDownloads=%@",
+        SGLog(@"artist artwork: %@: identity=%@ photoSetting=%d motionSetting=%d AppleMusicSource=%d LowPowerOrHeat=%d ReduceMotion=%d autoplay=%d LowDataDownloads=%@",
             name, identity ?: @"missing; refuse", SGHidden(SGRKeyArtistApplePhoto), SGEnabled(SGRKeyArtistMotion),
-            SGMotionAppleMusicOn(), NSProcessInfo.processInfo.lowPowerModeEnabled, SGRReduceMotion(),
+            SGMotionAppleMusicOn(), SGRMotionHeldForPowerOrHeat(), SGRReduceMotion(),
             UIAccessibilityIsVideoAutoplayEnabled(), SGFlag(SGKeyMotionLowData, NO) ? @"allowed" : @"blocked on constrained networks");
     __weak SGRArtistHero *weakSelf = self;
     void (^apply)(UIImage *, NSURL *) = ^(UIImage *photo, NSURL *file) {

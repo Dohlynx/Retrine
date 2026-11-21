@@ -90,6 +90,12 @@ The log says what the redesign answered with.
 2.5 s its first frame was ready and it had faded in and was playing, and that taken out of the window at 4.5 s it
 stopped and put back it played again.
 
+`bash harness/album/motion-visibility.sh <simulator UUID>` checks the album and artist clips with a generated
+local video. After the viewport checks it overrides the process's thermal and Low Power Mode readings and
+posts their notifications off main. Both the clip's playback rate and the Fluid layer's moving state must
+stop at Serious or Critical, return at Nominal or Fair, and stop in Low Power Mode alone. This checks the
+response to a reported state, not actual device temperature.
+
 `SGLog` goes to the unified log rather than stdout, so the redesign's own lines are read with
 
     xcrun simctl spawn booted log stream --predicate 'eventMessage CONTAINS "spotifyglass"' --style compact

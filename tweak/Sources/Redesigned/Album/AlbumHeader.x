@@ -28,6 +28,7 @@
 #import <CoreImage/CoreImage.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Redesigned/Kit/SGRMotionBudget.h"
 #import "Redesigned/Player/Player.h"
 #import "Redesigned/Kit/SGRCoverRead.h"
 #import "Redesigned/Kit/SGRCoverViewer.h"
@@ -499,7 +500,8 @@ static char kScrollContext;
     [center addObserver:self selector:@selector(sgr_updateMotion) name:SGRPlayerVisibilityDidChangeNotification object:nil];
     [center addObserver:self selector:@selector(sgr_fieldColorDidChange) name:SGRFieldColorDidChangeNotification object:nil];
     for (NSNotificationName name in @[UIApplicationDidBecomeActiveNotification, UIApplicationWillResignActiveNotification,
-                                      NSProcessInfoPowerStateDidChangeNotification, UIAccessibilityReduceMotionStatusDidChangeNotification,
+                                      NSProcessInfoPowerStateDidChangeNotification, NSProcessInfoThermalStateDidChangeNotification,
+                                      UIAccessibilityReduceMotionStatusDidChangeNotification,
                                       UIAccessibilityVideoAutoplayStatusDidChangeNotification]) {
         [center addObserver:self selector:@selector(sgr_updateMotionSoon) name:name object:nil];
     }
@@ -1002,7 +1004,7 @@ static char kScrollContext;
     if (!_player) return;
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
     BOOL may = SGMotionHeaderMayPlay(SGRViewInViewport(self, SGRSettledPlayerRect(self.window)), front, SGRReduceMotion(),
-                                   NSProcessInfo.processInfo.lowPowerModeEnabled, UIAccessibilityIsVideoAutoplayEnabled());
+                                   SGRMotionHeldForPowerOrHeat(), UIAccessibilityIsVideoAutoplayEnabled());
     if (may != (_player.rate != 0)) {
         if (may) [_player play]; else [_player pause];
     }

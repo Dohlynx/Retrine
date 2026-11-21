@@ -132,6 +132,7 @@ extern NSURL *SGRHarnessLastOpened;
 // Low Power Mode as the process reports it, once reportPower has made it report this.
 static BOOL sg_lowPower;
 static void reportPower(void);
+static void setThermal(NSProcessInfoThermalState state);
 
 static NSString *scenario(void) {
     const char *value = getenv("HARNESS_SCENARIO");
@@ -2297,8 +2298,19 @@ static BOOL motionFootHasMeanColor(NSURL *file, NSString **detail) {
                                         banded ? [NSString stringWithFormat:@"whole to %@ and from %@", dim.locations[1], dim.locations[4]] : @"not banded",
                                         expected ? [NSString stringWithFormat:@", %s expected", expected] : @""]];
         NSLog(@"[harness] motion: screenshot the clip now");
+        reportPower();
+        setThermal(NSProcessInfoThermalStateSerious);
     });
-    after(7, ^{ SGRPlayerToggleLyrics(); });
+    after(6, ^{
+        [self expect:!SGRPlayerMotionShowing() && !motionView() && !self->_covers.layer.mask
+              step:@"serious heat" detail:@"the clip should be cleared for the cover"];
+        setThermal(NSProcessInfoThermalStateNominal);
+    });
+    after(7, ^{
+        [self expect:SGRPlayerMotionShowing() && motionView() && self->_covers.layer.mask
+              step:@"cooled to nominal" detail:@"the clip should be looked up again"];
+        SGRPlayerToggleLyrics();
+    });
     after(8.5, ^{
         BOOL lyricsBlurred = ((UIView *)[motionView() valueForKey:@"_picture"]).layer.filters.count > 0;
         UIView *thumb = nil;
@@ -2421,26 +2433,21 @@ static BOOL motionFootHasMeanColor(NSURL *file, NSString **detail) {
     });
     // Low Power Mode (Reduce Motion takes the same path): the clip goes for Fluid and the cover, and comes back
     // once it is off. The simulator has no Low Power Mode, so the process says it is on.
-    __block BOOL lowPower = NO;
     after(22.5, ^{
-        Class info = object_getClass(NSProcessInfo.processInfo);
-        for (NSString *name in @[@"isLowPowerModeEnabled", @"lowPowerModeEnabled"]) {
-            Method method = class_getInstanceMethod(info, NSSelectorFromString(name));
-            if (method) method_setImplementation(method, imp_implementationWithBlock(^BOOL(id process) { return lowPower; }));
-        }
-        lowPower = YES;
-        [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];    });
+        sg_lowPower = YES;
+        [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
+    });
     after(23.5, ^{
         [self expect:!SGRPlayerMotionShowing() && !motionView() && !self->_covers.layer.mask step:@"Low Power Mode"
               detail:[NSString stringWithFormat:@"clip %@, cover %@", motionView() ? @"still there" : @"gone", self->_covers.layer.mask ? @"hidden" : @"back"]];
-        lowPower = NO;
+        sg_lowPower = NO;
         [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
     });
     // A track change with the app in the background: the last clip goes at once, with no fade to come back to.
     __block UIApplicationState state = UIApplicationStateActive;
     after(24.5, ^{
-        [self expect:SGRPlayerMotionShowing() && self->_covers.layer.mask step:@"Low Power Mode off"
-              detail:SGRPlayerMotionShowing() ? @"the clip back" : @"no clip"];
+        [self expect:SGRPlayerMotionShowing() && self->_covers.layer.mask
+              step:@"Low Power Mode off" detail:SGRPlayerMotionShowing() ? @"the clip back" : @"no clip"];
         Method method = class_getInstanceMethod(UIApplication.class, @selector(applicationState));
         method_setImplementation(method, imp_implementationWithBlock(^UIApplicationState(id app) { return state; }));
         state = UIApplicationStateBackground;
