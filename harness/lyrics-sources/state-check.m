@@ -126,6 +126,10 @@ static void setOpen(BOOL open, BOOL animated) { sg_open = open; if (!open) sg_cl
 static void setAlone(BOOL alone, BOOL animated) { sg_alone = alone; }
 static void restartRest(void) {}
 static void refreshSide(BOOL animated) {}
+// The preview tap waiting for lyrics (PlayerLyrics.x) belongs to the player's view, which this check has none of.
+static id sg_pendingPreview;
+static void forgetPreview(void) { sg_pendingPreview = nil; }
+static void answerPreview(void) {}
 BOOL SGRPlayerLyricsAvailable(void) { return SGKaraokeLinesForTrack(SGKaraokePlayingTrack()) != nil; }
 void SGRPlayerLyricsChanged(void) {}
 void SGRPlayerLandscapeLinesChanged(void) {}
