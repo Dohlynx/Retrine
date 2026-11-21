@@ -222,6 +222,15 @@ into the late turn; with the circle's glass taken away at once it failed `gone b
 in 3 to 5 frames of every expand, and with the travelling glyph drawn from the row's plain copy `expand from Search`
 failed `unlike the row's`. After the change all pass, also under Reduce Motion.
 
+`states` checks what an earlier state leaves on the bar (`bar-check.sh` runs both). Alone: the bar minimized in a compact
+width, then the window made regular (an iPad's narrow window widened) with no tab changed, and Spotify's bar laid out
+again: the bar is expanded with every tab on it. With `split`: Search, the only split tab, picked on its bar; Home chosen
+from elsewhere (Spotify repaints its labels and tells its container, as a link or the side drawer does, with no tap on the
+glass bar); the bar minimized and a finger on Search's circle: Spotify's Search is tapped. `hold` after either prints
+READY and keeps the screen four seconds for a screenshot. 2026-11-22, iPhone 17 Pro on iOS 26.5, before the fix: the
+widened bar stayed minimized (1 of 4 tabs on it), and the finger on Search's circle only expanded the bar, Spotify's
+Search not tapped, the split bar still holding Search as the item it last showed selected. After it both pass.
+
 `capture.sh` records one expand off the screen of a simulator of its own (`search capture`: the bar minimized at once,
 then expanded), for a review frame by frame of what no presentation layer shows, such as the glass UIKit draws:
 `capture/expand-NNN.png` under `OUT`, the bottom 520 px of each frame the screen drew, NNN its 1/60 s from the last

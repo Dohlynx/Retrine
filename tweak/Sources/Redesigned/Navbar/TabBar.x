@@ -711,13 +711,16 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
     return missing;
 }
 
-// The bar holding the tab Spotify paints as selected selects it, and the other one lets go. With no tab
-// painted (a tab of the mod's own, a repaint still to come) both keep what they have.
+// The bar holding the tab Spotify paints as selected selects it, and the other one lets go of its selection and of the
+// item it last showed selected: after a tab picked from elsewhere (a link, the side drawer) a tap on the other bar's tab
+// is a change of tab, not a tap again. With no tab painted (a tab of the mod's own, a repaint still to come) both keep
+// what they have.
 static void selectActive(SGRSystemTabBar *bar, UIView *active) {
-    NSUInteger index = active ? [bar.sources indexOfObject:active] : NSNotFound;
+    if (!active) return;
+    NSUInteger index = [bar.sources indexOfObject:active];
     UITabBarItem *item = index == NSNotFound ? nil : bar.items[index];
-    if (active && bar.selectedItem != item) bar.selectedItem = item;
-    if (active && item) bar.shown = item;
+    if (bar.selectedItem != item) bar.selectedItem = item;
+    bar.shown = item;
 }
 
 // The tab a bar shows selected, when Spotify paints none: a tab of the mod's own.
@@ -761,7 +764,10 @@ static void syncBar(UIView *stockBar) {
     stockBar.superview.layer.backgroundColor = NULL;
 
     NSArray<UIView *> *sources = tabItems(stockBar);
-    if (sg_minimized && sources.count < kMinimumMinimizedTabs) {
+    // A bar minimized in a compact width expands when the width turns regular (an iPad's window widened), where it
+    // could not have minimized (setMinimized).
+    BOOL regular = stockBar.window && stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact;
+    if (sg_minimized && (sources.count < kMinimumMinimizedTabs || regular)) {
         SGRSetTabBarMinimized(NO, NO);
         return;
     }

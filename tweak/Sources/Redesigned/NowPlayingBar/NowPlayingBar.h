@@ -17,6 +17,9 @@ BOOL SGRBarRowKeepsConnect(void);
 // shown again otherwise, only where this hid it (BarConnect.x). Run on every layout of Spotify's bar and by tuckExtras
 // as the card goes into the row or leaves it, so both read the same state in one pass.
 void SGRBarPlaceConnect(UIView *bar);
+// Whether `view` stands in one of Spotify's sheets (the DJ request one has the bar's class at its top), where the bar is
+// Spotify's own and the redesign leaves it as it is (NowPlayingBar.x).
+BOOL SGRBarInSheet(UIView *view);
 // Spotify's own flag for the card's add button. Without an override (the Mini player section's row stores one either
 // way, the All flags page may too) the redesign answers it off at launch (NowPlayingBarSettings.m), so the card ends
 // in play and Next as the Music app's does; a reset to stock shows it.

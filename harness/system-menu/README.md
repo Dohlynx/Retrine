@@ -109,6 +109,20 @@ selection or dismissal, then deliver or withhold Spotify's sheet.
   the single pending slot and releases the old session. The newer cancelled session survives until
   its late sheet is discarded, then is released; neither request fires an action.
 
+- `pinned`: a page's pinned ⋯ tapped (a stand-in button: the Kit's claim is stubbed here as `SGRPinnedMoreRecentButton`,
+  ended by `SGRPinnedMoreTaken`): Spotify's sheet for it is taken over and its menu opens from the ⋯; closed with no pick,
+  a track's ⋯ well within the claim's three seconds shows Spotify's sheet, not the page's menu again. With
+  `SIMCTL_CHILD_HARNESS_HOLD=1` it prints READY and holds the screen three seconds before that last check. 2026-11-22,
+  iPhone 17 Pro on iOS 26.5, before the fix: the track's sheet was taken over and opened as the page's menu.
+
+`pinned-check.sh` (pinned-check.m) is the Kit's half on the Mac, no simulator: the real `SGRPinnedMore` over a page with a
+stand-in for Spotify's ⋯. A press let go off the ⋯ (touch down, then touch up outside) claims nothing; a tap claims the
+button and its page before Spotify's ⋯ runs, so a sheet presented from that call finds them. Before the fix the press
+claimed both, on its touch down. Last, the ⋯ drawn in an `SGRHeaderInfo` (the cover beside the title) is tapped and Spotify
+presents its sheet, which the real `SGRPinnedMoreTaken` ends the button's claim for, as `ContextMenu.x`'s takeover does:
+the real `PlaylistMenu.x` (through Logos) puts the playlist's Sort and Mix rows on it. With the header info claimed as the
+page instead, the sheet had no rows.
+
 Only Spotify's context sheet or its known lazy wrapper can satisfy the pending request; a mod panel cannot.
 There is deliberately no presenter-ancestry restriction: Spotify 9.1.90 can present its lazy wrapper from
 NowPlayingOverlayContainer, outside the requesting controller's ancestor chain.

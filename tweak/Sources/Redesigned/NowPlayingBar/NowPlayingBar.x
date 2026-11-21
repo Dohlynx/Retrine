@@ -756,21 +756,36 @@ static void watchTabGlass(UIView *platter) {
     watched = platter;
 }
 
-// The glass tab bar's platter on the bar's row, in the bar's superview's coordinates: UIKit's floating tab bar draws its
-// glass in a view of its own, narrower than the bar (Redesigned/Navbar/TabBar.x reads it the same way), inside Spotify's
-// tab bar view. CGRectNull when there is none beside the bar.
+// The glass tab bar's platter on the bar's row nearest the bar, in the bar's superview's coordinates: UIKit's floating tab
+// bar draws its glass in a view of its own, narrower than the bar (Redesigned/Navbar/TabBar.x reads it the same way),
+// inside Spotify's tab bar view, and a split tab stands on a platter of its own between the main one and the bar. The
+// nearest is the one whose side toward the bar is furthest that way: the rightmost right side, right to left the
+// leftmost left side. Only a platter that is seen counts: TabBar.x hides the split bar that has lost its last tab and
+// leaves it, platter and all, where it stood. CGRectNull when there is none beside the bar.
+static BOOL platterSeen(UIView *platter) {
+    for (UIView *v = platter; v; v = v.superview) {
+        if (v.hidden || v.alpha < 0.01) return NO;
+    }
+    return YES;
+}
+
 static CGRect tabGlassBeside(UIView *bar) {
     UIView *tabs = bar.window ? SGRFindByIdentifier(bar.window, @"elements-tabs-view-identifier", &kTabsKey) : nil;
+    BOOL rtl = bar.superview.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
     __block UIView *platter = nil;
+    __block CGRect glass = CGRectNull;
     if (tabs) SGForEachView(tabs, ^(UIView *v) {
-        if (v.hidden || v.alpha < 0.01 || ![NSStringFromClass(v.class) hasSuffix:@"PlatterView"]) return;
-        if (!platter || v.bounds.size.width > platter.bounds.size.width) platter = v;
+        if (![NSStringFromClass(v.class) hasSuffix:@"PlatterView"] || !platterSeen(v)) return;
+        CGRect frame = [v convertRect:v.bounds toView:bar.superview];
+        if (CGRectGetMaxY(frame) <= CGRectGetMinY(bar.frame) || CGRectGetMinY(frame) >= CGRectGetMaxY(bar.frame)) return;
+        BOOL nearer = rtl ? CGRectGetMinX(frame) < CGRectGetMinX(glass) : CGRectGetMaxX(frame) > CGRectGetMaxX(glass);
+        if (platter && !nearer) return;
+        platter = v;
+        glass = frame;
     });
     if (!platter) return CGRectNull;
     watchTabGlass(platter);
-    CGRect glass = [platter convertRect:platter.bounds toView:bar.superview];
-    BOOL beside = CGRectGetMaxY(glass) > CGRectGetMinY(bar.frame) && CGRectGetMinY(glass) < CGRectGetMaxY(bar.frame);
-    return beside ? glass : CGRectNull;
+    return glass;
 }
 
 // What the row's views after the title take, at their own widths, with the row's spacing before each.
@@ -1114,10 +1129,10 @@ void SGRNowPlayingBarFollowTabBar(void) {
 
 // The same bar class also stands at the top of Spotify's sheets (the DJ request one: Up next, device, play).
 // It is not the tab bar's card there: the sheet has its own blue ground and corners, and a dark 24pt pane of
-// the bar's full width on it reads as a frame round the track. It is left as Spotify draws it, and it must not
-// become the bar this file tracks (sg_container, sg_cardGlass, sgr_nowPlayingRoot): the player takes its card
-// frame from those.
-static BOOL inSheet(UIView *view) {
+// the bar's full width on it reads as a frame round the track. It is left as Spotify draws it, its device button
+// too (BarConnect.x), and it must not become the bar this file tracks (sg_container, sg_cardGlass,
+// sgr_nowPlayingRoot): the player takes its card frame from those.
+BOOL SGRBarInSheet(UIView *view) {
     for (UIView *v = view.superview; v; v = v.superview) {
         if ([v.accessibilityIdentifier isEqualToString:@"sheet-view"] || [NSStringFromClass(v.class) containsString:@"SheetImpl"]) return YES;
     }
@@ -1125,7 +1140,7 @@ static BOOL inSheet(UIView *view) {
 }
 
 static void styleNowPlayingBar(UIViewController *container) {
-    if (container.isViewLoaded && inSheet(container.view)) {
+    if (container.isViewLoaded && SGRBarInSheet(container.view)) {
         UIVisualEffectView *pane = objc_getAssociatedObject(container.view, &kGlassKey);
         if (pane) [pane removeFromSuperview];
         return;

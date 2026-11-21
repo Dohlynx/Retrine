@@ -1340,7 +1340,8 @@ static SGRMenuAnchor *anchorIn(UIView *host) {
     return anchor;
 }
 
-// A page's ⋯ was touched this recently: a context menu sheet that is not taken over now is worth a line saying why.
+// A page's ⋯ was tapped this recently and no sheet taken for it yet: a context menu sheet that is not taken over now is
+// worth a line saying why.
 static BOOL claimRecent(void) {
     return SGRPinnedMoreRecentButton() != nil;
 }
@@ -1403,6 +1404,8 @@ static SGRMenuSession *takeOver(UIViewController *presented, NSString *via) {
     session.presented = presented;
     session.anchor = anchorIn(button);
     objc_setAssociatedObject(presented, &kSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // The tap's claim is this sheet's: a track row's ⋯ tapped while it still runs gets Spotify's sheet, not this menu.
+    SGRPinnedMoreTaken();
     SGLog(@"system menu: the ⋯ sheet taken over %@ (%@)", via, session.items ? @"the player's" : @"a page's");
     return session;
 }
@@ -1500,7 +1503,7 @@ static void openWhenUp(SGRMenuSession *session, UIViewController *sheet, int tri
     %orig;
     UIViewController *sheet = (UIViewController *)self;
     SGRMenuSession *session = sessionFor(sheet, NO);
-    // Only a sheet on its way up, not one that was up before the ⋯ was touched laying out again.
+    // Only a sheet on its way up, not one that was up before the ⋯ was tapped laying out again.
     UIViewController *outer = sheet;
     while (outer.parentViewController) outer = outer.parentViewController;
     if (!session && claimRecent() && (!sheet.viewIfLoaded.window || outer.isBeingPresented)) {

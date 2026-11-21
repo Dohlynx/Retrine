@@ -1021,6 +1021,96 @@ static NSString *const kWatched[4] = {@"platter", @"glyph", @"split platter", @"
 }
 @end
 
+#pragma mark - what an earlier state leaves
+
+static void after(double seconds, dispatch_block_t block);
+
+// `states`' verdict: PASS or FAIL and the line, then the end of the run; with `hold`, READY and four seconds first, for a
+// screenshot of what the screen shows either way.
+static void statesVerdict(BOOL passed, NSString *what) {
+    printf("%s %s\n", passed ? "PASS" : "FAIL", what.UTF8String);
+    if (passed) printf("PASS all states\n");
+    fflush(stdout);
+    if (![NSProcessInfo.processInfo.arguments containsObject:@"hold"]) exit(passed ? 0 : 1);
+    printf("READY\n");
+    fflush(stdout);
+    after(4.0, ^{ exit(passed ? 0 : 1); });
+}
+
+// The bar whose items' tab is `title` (labels hidden or not, an item reads its tab's name to VoiceOver).
+static UITabBar *barHolding(SGHarnessChrome *chrome, NSString *title) {
+    for (UITabBar *bar in systemBarsIn(chrome.tabs.bar)) {
+        if (bar.hidden) continue;
+        for (UITabBarItem *item in bar.items) if ([item.accessibilityLabel isEqualToString:title]) return bar;
+    }
+    return nil;
+}
+
+// Spotify's label of the tab `title` painted white: the tab Spotify is on.
+static BOOL stockLit(SGHarnessChrome *chrome, NSString *title) {
+    for (UIView *sub in stockItem(chrome, title).subviews) {
+        if (![sub isKindOfClass:UILabel.class]) continue;
+        CGFloat white = 0, alpha = 0;
+        return [((UILabel *)sub).textColor getWhite:&white alpha:&alpha] && white > 0.95;
+    }
+    return NO;
+}
+
+// `states` alone: the bar minimized in a compact width, then the window made regular (an iPad's narrow window widened)
+// with no tab changed: the whole row is back, not the two circles. With `split`: Search, the only split tab, picked on
+// its bar; Home chosen elsewhere (a link or the side drawer: Spotify repaints its labels and tells its container, with no
+// tap on the glass bar); the bar minimized; a finger on Search's circle: Spotify's Search is tapped, not only the bar
+// expanded.
+static void runStates(SGHarnessChrome *chrome) {
+    if (![NSProcessInfo.processInfo.arguments containsObject:@"split"]) {
+        SGRSetTabBarMinimized(YES, NO);
+        [chrome.view layoutIfNeeded];
+        if (!SGRTabBarMinimized()) HARNESS_FAIL(@"the bar did not minimize in a compact width");
+        chrome.traitOverrides.horizontalSizeClass = UIUserInterfaceSizeClassRegular;
+        [chrome updateTraitsIfNeeded];
+        // Spotify lays its bar out again for the new width.
+        [chrome.tabs.bar setNeedsLayout];
+        [chrome.view layoutIfNeeded];
+        UITabBar *bar = systemBarIn(chrome.tabs.bar);
+        NSUInteger tabs = SGRowIn(chrome.tabs.bar).arrangedSubviews.count;
+        BOOL whole = !SGRTabBarMinimized() && bar.items.count == tabs;
+        statesVerdict(whole, [NSString stringWithFormat:@"widened to a regular width: the bar %@, %lu of %lu tabs on it",
+                              SGRTabBarMinimized() ? @"still minimized" : @"expanded", (unsigned long)bar.items.count, (unsigned long)tabs]);
+        return;
+    }
+    UITabBar *apart = barHolding(chrome, @"Search");
+    UITabBarItem *search = apart.items.firstObject;
+    if (!search || apart.items.count != 1) HARNESS_FAIL(@"Search is not alone on a bar of its own: %@", apart.items);
+    apart.selectedItem = search;
+    [apart.delegate tabBar:apart didSelectItem:search];
+    after(0.5, ^{
+        if (!stockLit(chrome, @"Search")) HARNESS_FAIL(@"picking Search on its bar did not tap Spotify's Search");
+        UIView *home = stockItem(chrome, @"Home");
+        for (UIGestureRecognizer *r in home.gestureRecognizers) {
+            if ([r isKindOfClass:UITapGestureRecognizer.class]) [_TtC23NavigationUI_TabBarImpl19TabBarContainerImpl tapped:(UITapGestureRecognizer *)r];
+        }
+        [chrome.tabs setSelectedViewController:nil];
+    });
+    after(1.0, ^{
+        UITabBar *main = barHolding(chrome, @"Home");
+        if (![main.selectedItem.accessibilityLabel isEqualToString:@"Home"] || apart.selectedItem) {
+            HARNESS_FAIL(@"Home chosen elsewhere: the main bar selects %@, Search's bar %@", main.selectedItem.accessibilityLabel, apart.selectedItem.accessibilityLabel);
+        }
+        SGRSetTabBarMinimized(YES, NO);
+        [chrome.view layoutIfNeeded];
+        UIView *platter = platterIn(apart);
+        UIWindow *window = chrome.view.window;
+        CGRect circle = [platter convertRect:platter.bounds toView:window];
+        if (!SGRTabBarMinimized() || apart.hidden || !platter) HARNESS_FAIL(@"the bar did not minimize to Search's circle");
+        SGHarnessTap(window, CGPointMake(CGRectGetMidX(circle), CGRectGetMidY(circle)));
+    });
+    after(1.8, ^{
+        BOOL tapped = stockLit(chrome, @"Search");
+        statesVerdict(tapped, [NSString stringWithFormat:@"a finger on Search's circle after Home was chosen elsewhere: Spotify's Search %@, the bar %@",
+                               tapped ? @"tapped" : @"not tapped", SGRTabBarMinimized() ? @"minimized" : @"expanded"]);
+    });
+}
+
 #pragma mark - the app
 
 // Before every %ctor, so the redesign's gate reads on; the fade under the bars on unless the launch line says `off`;
@@ -1069,6 +1159,31 @@ static void after(double seconds, dispatch_block_t block) {
     // `away` one there from the start sliding away at 1.5 s, `cycle` in at 1.5 s and out at 4.5 s.
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
     NSString *mode = args.count > 1 ? args[1] : @"none";
+    if ([mode isEqualToString:@"reparent-drag"]) {
+        UIView *wrapper = [[UIView alloc] initWithFrame:CGRectMake(0, 100, 380, 560)];
+        UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:wrapper.bounds];
+        scroll.contentSize = CGSizeMake(380, 3000);
+        [wrapper addSubview:scroll];
+        [chrome.view addSubview:wrapper];
+        after(.7, ^{
+            scroll.contentOffset = CGPointMake(0, 1);
+            [chrome.tabs.view addSubview:wrapper];
+            fling(chrome, 250);
+        });
+        after(1.7, ^{
+            HARNESS_CHECK(scroll.contentOffset.y > 24 && SGRTabBarMinimized());
+            [scroll setContentOffset:CGPointZero animated:NO];
+            SGRSetTabBarMinimized(NO, NO);
+            [chrome.view addSubview:wrapper];
+            fling(chrome, 250);
+        });
+        after(2.8, ^{
+            HARNESS_CHECK(scroll.contentOffset.y > 24 && !SGRTabBarMinimized());
+            NSLog(@"[harness] PASS wrapper moved onto tab and off tab before drags");
+            exit(0);
+        });
+        return;
+    }
     if ([mode isEqualToString:@"audit"]) {
         after(1, ^{
             UIStackView *row = SGRowIn(chrome.tabs.bar);
@@ -1147,6 +1262,11 @@ static void after(double seconds, dispatch_block_t block) {
     // `search`: Search on the minimized bar's trailing circle (search.m).
     if ([mode isEqualToString:@"search"]) {
         after(1.0, ^{ SGHarnessRunSearch(chrome.tabs.bar); });
+        return;
+    }
+    // `states`: what an earlier state leaves on the bar (runStates).
+    if ([mode isEqualToString:@"states"]) {
+        after(1.0, ^{ runStates(chrome); });
         return;
     }
     // `jam`: in a Jam from the start, and out of it at 3.5 s.

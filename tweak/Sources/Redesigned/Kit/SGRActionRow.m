@@ -311,7 +311,12 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 // The reach runs to the left instead: on a page laid out right to left, where ⋯ is pinned in the left corner and
 // download on its right (SGRPinnedDownload). Set by whoever places the pair, from the page's own direction.
 @property (nonatomic) BOOL sgr_glassReachesLeft;
+// The page whose pinned ⋯ this is (SGRPinnedMore), nil on every other button: its tap claims that page for the sheet
+// coming up, wherever the button is drawn (SGRHeaderInfo takes it beside the cover). Weak, as the page holds the button.
+@property (nonatomic, weak) UIView *sgr_pinnedPage;
 @end
+
+static void claimPinnedMore(SGRMirrorButton *button);
 
 @implementation SGRMirrorButton {
     UIImageView *_glyph;
@@ -618,6 +623,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     [self feedFrom:self.source];
     if (!SGRSourceEnabled(self.source)) return;
     if ([self.source.accessibilityIdentifier hasPrefix:SGAlbumQueueButtonPrefix]) SGAlbumQueueMarkSource(self.source);
+    if (self.sgr_pinnedPage) claimPinnedMore(self);
     SGRActivate(self.source);
     // The word is watched where Spotify writes it, but a button that rebuilds its content on the state it
     // just took writes the new word into a label the watch has never seen. So a tap, and only a tap, asks
@@ -646,13 +652,17 @@ static const CGFloat kCornerSide = 16;
 // page's menu it is. The same trick Shared/Player/SpeedPitchMenu.x plays on the player's more button, but
 // from this side of it, since this button is the redesign's own and knows its own page.
 //
-// Recorded on touch down rather than on touch up: the button's own -sgr_tap is registered first and fires
-// Spotify's ⋯ from the same event, so a sheet Spotify puts up in that same turn would ask which page it
-// belonged to before a target added after -sgr_tap had answered.
+// Claimed by the tap itself (-sgr_tap), just before it fires Spotify's ⋯, so a sheet Spotify puts up from that
+// call finds the claim; a press let go off the button, which fires nothing, claims nothing either.
 static __weak UIView *sg_morePage;
 static __weak SGRMirrorButton *sg_moreButton;
 static NSTimeInterval sg_moreTappedAt;
-static char kRecorderKey;
+
+static void claimPinnedMore(SGRMirrorButton *button) {
+    sg_morePage = button.sgr_pinnedPage;
+    sg_moreButton = button;
+    sg_moreTappedAt = CACurrentMediaTime();
+}
 
 UIView *SGRPinnedMoreRecentPage(void) {
     if (!sg_morePage || CACurrentMediaTime() - sg_moreTappedAt > SGRPinnedMoreWindow) return nil;
@@ -664,15 +674,9 @@ SGRMirrorButton *SGRPinnedMoreRecentButton(void) {
     return sg_moreButton;
 }
 
-@interface SGRPinnedMoreRecorder : NSObject
-@end
-@implementation SGRPinnedMoreRecorder
-- (void)sgr_moreTapped:(SGRMirrorButton *)button {
-    sg_morePage = button.superview;
-    sg_moreButton = button;
-    sg_moreTappedAt = CACurrentMediaTime();
+void SGRPinnedMoreTaken(void) {
+    sg_moreButton = nil;
 }
-@end
 
 // Over the page's list and its header both, and put back on top whenever Spotify adds to the page.
 static void keepOnTop(UIView *page, UIView *button) {
@@ -715,10 +719,7 @@ SGRMirrorButton *SGRPinnedMore(UIView *page, const void *key, UIView *source) {
         // ⋯ sits in an Encore Tertiary button in Spotify's own row, which draws it gray; in the corner of
         // the page it is the one control there and reads white, like the back button opposite it.
         button.glyphColor = SGRPrimary();
-        // Held by the button, which is held by the page, so the recorder lives exactly as long as both.
-        SGRPinnedMoreRecorder *recorder = [SGRPinnedMoreRecorder new];
-        objc_setAssociatedObject(button, &kRecorderKey, recorder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [button addTarget:recorder action:@selector(sgr_moreTapped:) forControlEvents:UIControlEventTouchDown];
+        button.sgr_pinnedPage = page;
         objc_setAssociatedObject(page, key, button, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     BOOL inlineHeader = [button.superview isKindOfClass:SGRHeaderInfo.class];
@@ -762,7 +763,7 @@ SGRMirrorButton *SGRPinnedDownload(UIView *page, const void *key, UIView *source
     // for both, ⋯ none, and each keeps its own touch, press and glyph. Without download, ⋯ is its circle again.
     SGRMirrorButton *more = nil;
     for (UIView *view in (inlineHeader ? button.superview : page).subviews.reverseObjectEnumerator) {
-        if ([view isKindOfClass:SGRMirrorButton.class] && objc_getAssociatedObject(view, &kRecorderKey)) {
+        if ([view isKindOfClass:SGRMirrorButton.class] && ((SGRMirrorButton *)view).sgr_pinnedPage) {
             more = (SGRMirrorButton *)view;
             break;
         }

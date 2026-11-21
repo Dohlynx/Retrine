@@ -66,22 +66,35 @@ id SGPlayer(void) { return sg_player; }
 #import "Core/SGCore.h"
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/LyricsTranslation/LyricsTranslation.h"
-static BOOL simplify;
-static BOOL barFlag(NSString *key, BOOL fallback) {
-    if ([key isEqual:SGKeyLyricsSimplifyTitles]) return simplify;
-    if ([key isEqual:SGKeyLyricsTranslateTitles]) return NO;
-    return SGFlag(key, fallback);
+
+// Spotify's two controllers of the bar under their class names, so the file's hooks on their layout run here as on the
+// phone: the bar's own pass places its text (`checkShownTitle`).
+@interface _TtC18NowPlaying_BarImpl36NowPlayingBarContainerViewController : UIViewController
+@end
+@implementation _TtC18NowPlaying_BarImpl36NowPlayingBarContainerViewController
+@end
+@interface _TtC18NowPlaying_BarImpl27NowPlayingBarViewController : UIViewController
+@end
+@implementation _TtC18NowPlaying_BarImpl27NowPlayingBarViewController
+@end
+
+// Before the file's %ctor reads them, neither title setting stored, whatever a run that failed half way left: every run
+// is the launch with both off that `checkShownTitle` starts from.
+__attribute__((constructor(101))) static void sgr_harnessTitleSettings(void) {
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyLyricsSimplifyTitles];
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyLyricsTranslateTitles];
 }
+
 #define SGRedesignedUI() YES
-#define SGFlag barFlag
 #include "NowPlayingBar.gen.m"
-#undef SGFlag
 #undef SGRedesignedUI
 #include "../shared/bar-title-notifications.inc"
 
-// The player owns the title policy; give its neighbour a distinct answer for the bar to draw.
+// The player owns the title policy; give its neighbour a distinct answer for the bar to draw, and the track of
+// `checkShownTitle` its title translated while Translate song titles is on, as the player's own answer does.
 NSString *SGRShownTitle(NSString *trackID, NSString *title, NSString *artist, NSString **shownArtist) {
     *shownArtist = artist;
+    if ([trackID isEqualToString:@"shown"]) return SGFlag(SGKeyLyricsTranslateTitles, NO) ? [title stringByAppendingString:@" (translated)"] : title;
     if (!trackID && [title isEqualToString:@"Finale (Part 2)"]) return @"Finale";
     if ([trackID isEqualToString:@"a"] || [trackID isEqualToString:@"b"]) {
         *shownArtist = [@"Artist " stringByAppendingString:trackID];
@@ -126,6 +139,19 @@ static UIView *makePage(NSString *line, NSString *hiddenArtists, BOOL device, NS
 }
 
 static NSUInteger sg_checks;
+
+// With NPB_SHOTS naming a folder, what `view` draws of `rect` (in its own coordinates) goes there as `name`.png, for a
+// look at a fixture a check reads only by its frames.
+static void shoot(UIView *view, CGRect rect, NSString *name) {
+    const char *folder = getenv("NPB_SHOTS");
+    if (!folder) return;
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:rect.size] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGContextTranslateCTM(context.CGContext, -rect.origin.x, -rect.origin.y);
+        [view.layer renderInContext:context.CGContext];
+    }];
+    NSString *path = [@(folder) stringByAppendingPathComponent:[name stringByAppendingPathExtension:@"png"]];
+    if (![UIImagePNGRepresentation(image) writeToFile:path atomically:YES]) HARNESS_FAIL(@"could not write %@", path);
+}
 
 #include "capsule-check.inc"
 
@@ -441,6 +467,31 @@ static void checkConnectButton(void) {
     if (!item.hidden) HARNESS_FAIL(@"device button: shown in the row with its Device button off");
     tuckExtras(bar, SGRBarTuckNone);
     sg_checks++;
+
+    // The same bar at the top of Spotify's DJ request sheet (Up next, device, play) is Spotify's own there, as the card's
+    // styling leaves it (NowPlayingBar.x): its device button stays, whatever the switch says.
+    UIView *sheet = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 360, 120)];
+    sheet.accessibilityIdentifier = @"sheet-view";
+    sheet.backgroundColor = [UIColor colorWithRed:0.1 green:0.2 blue:0.55 alpha:1];
+    UIView *sheetBar = [[UIView alloc] initWithFrame:CGRectMake(0, 32, 360, 56)];
+    UIStackView *sheetStack = [[UIStackView alloc] initWithFrame:CGRectMake(172, 8, 132, 40)];
+    UIView *sheetItem = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 44, 40)];
+    UIView *sheetConnect = [[SGHarnessConnectButtonView alloc] initWithFrame:sheetItem.bounds];
+    UIButton *speaker = [UIButton systemButtonWithImage:[UIImage systemImageNamed:@"hifispeaker"] target:nil action:nil];
+    speaker.frame = sheetItem.bounds;
+    speaker.tintColor = UIColor.whiteColor;
+    speaker.accessibilityIdentifier = @"Components.ConnectButtonOutputSwitcher";
+    [sheetConnect addSubview:speaker];
+    [sheetItem addSubview:sheetConnect];
+    [sheetStack addArrangedSubview:sheetItem];
+    [sheetBar addSubview:sheetStack];
+    [sheet addSubview:sheetBar];
+    unset(SGRHideBarConnect);
+    SGRBarPlaceConnect(sheetBar);
+    [sheet layoutIfNeeded];
+    shoot(sheet, sheet.bounds, @"connect-dj-sheet");
+    if (sheetItem.hidden) HARNESS_FAIL(@"device button: hidden on the bar at the top of the DJ request sheet");
+    sg_checks++;
 }
 
 // The cover's two views of Spotify's, the outer one plain and the image's own with Spotify's 4pt corners, as rounded
@@ -478,19 +529,81 @@ static void runDisabled(void);
 @implementation TitleRefreshProbe
 - (void)setNeedsLayout { [super setNeedsLayout]; self.requested = YES; }
 @end
+// A title setting switched on its settings row, as the app does it: stored, then the row's notification posted, at once
+// for Simplify song titles (LyricsSettings.m) and a turn later for Translate song titles (TranslatedTitles.m's
+// SGLyricsTitleSettingsChanged). `next` runs once the bar's observer, a turn later again, has had its turn.
+static void switchTitles(NSString *key, BOOL on, dispatch_block_t next) {
+    SGSetEnabled(key, on);
+    BOOL translate = [key isEqualToString:SGKeyLyricsTranslateTitles];
+    void (^post)(void) = ^{
+        [NSNotificationCenter.defaultCenter postNotificationName:translate ? SGTitleTranslationSettingsDidChangeNotification : SGSimplifyTitlesDidChangeNotification object:nil];
+    };
+    if (translate) dispatch_async(dispatch_get_main_queue(), post);
+    else post();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), next);
+}
 static void toggleTitles(BOOL enabled, dispatch_block_t next) {
     TitleRefreshProbe *root = [TitleRefreshProbe new];
     sgr_nowPlayingRoot = root;
     root.requested = NO;
-    simplify = enabled;
-    [NSNotificationCenter.defaultCenter postNotificationName:SGSimplifyTitlesDidChangeNotification object:nil];
-    dispatch_async(dispatch_get_main_queue(), ^{
+    switchTitles(SGKeyLyricsSimplifyTitles, enabled, ^{
         if (!root.requested) HARNESS_FAIL(@"Title setting did not request a mini player layout");
         next();
     });
 }
+
+// The title the bar shows on `page`, as its last layout pass placed it.
+static void expectShown(NSString *name, UIView *page, NSString *title) {
+    NSString *shown = ((SGRBarText *)objc_getAssociatedObject(page, &kTextKey)).title.text;
+    if (![shown isEqualToString:title]) HARNESS_FAIL(@"shown title, %@: \"%@\", wanted \"%@\"", name, shown, title);
+    sg_checks++;
+}
+
+// From a launch with neither title setting on, the title the bar shows follows Translate song titles switched on and off
+// on its row: through the notification the row posts and the bar's own next layout pass (the window's pass here), with
+// nothing placing the bar's text but Spotify's controllers laying out.
+static void checkShownTitle(dispatch_block_t next) {
+    if (sg_showTitles || showTitlesEnabled()) HARNESS_FAIL(@"a title setting is on at launch, stored by an earlier run; this check starts with both off");
+    UIWindow *window = [(id)UIApplication.sharedApplication.delegate window];
+    UIViewController *root = window.rootViewController;
+    UIViewController *container = [_TtC18NowPlaying_BarImpl36NowPlayingBarContainerViewController new];
+    UIViewController *bar = [_TtC18NowPlaying_BarImpl27NowPlayingBarViewController new];
+    [root addChildViewController:container];
+    container.view.frame = CGRectMake(0, 700, window.bounds.size.width, 64);
+    [root.view addSubview:container.view];
+    [container didMoveToParentViewController:root];
+    [container addChildViewController:bar];
+    bar.view.frame = container.view.bounds;
+    [container.view addSubview:bar.view];
+    [bar didMoveToParentViewController:container];
+    UIView *page = makePage(@"Echo", nil, NO, @"유리");
+    [bar.view addSubview:page];
+    sg_state = [SPTPlayerState new];
+    sg_state.track = makeTrack(@"Echo", @"유리");
+    sg_state.track.URI = @"spotify:track:shown";
+    [window layoutIfNeeded];
+    expectShown(@"both settings off", page, @"Echo");
+    switchTitles(SGKeyLyricsTranslateTitles, YES, ^{
+        [window layoutIfNeeded];
+        expectShown(@"Translate song titles switched on", page, @"Echo (translated)");
+        switchTitles(SGKeyLyricsTranslateTitles, NO, ^{
+            [window layoutIfNeeded];
+            expectShown(@"Translate song titles switched off", page, @"Echo");
+            [container willMoveToParentViewController:nil];
+            [container.view removeFromSuperview];
+            [container removeFromParentViewController];
+            unset(SGKeyLyricsTranslateTitles);
+            next();
+        });
+    });
+}
+
+static void runSplits(void);
 static void run(void) {
     if (getenv("HARNESS_CAPSULE")) { checkCapsule(); return; }
+    checkShownTitle(^{ runSplits(); });
+}
+static void runSplits(void) {
     SPTPlayerTrack *plain = makeTrack(@"Stay High", @"Juice WRLD"), *dotted = makeTrack(@"Rock • Roll", @"The Band");
     SPTPlayerTrack *shorter = makeTrack(@"Rock", @"Roll Crew");
     sg_state = [SPTPlayerState new];
@@ -556,6 +669,7 @@ static void runEnabled(UIView *page) {
     UIView *combined = makePage(@"Echo • 유리상자, Guest", @"", YES, nil);
     toggleTitles(NO, ^{
         expect(@"neighbour after disabling", combined, @"Echo", @"유리상자, Guest");
+        unset(SGKeyLyricsSimplifyTitles);
         runDisabled();
     });
 }
@@ -596,6 +710,7 @@ static void runDisabled(void) {
     checkConnectButton();
     checkArtworkShape();
     checkStaleCapsuleRow();
+    checkCapsuleBesideSplitTab();
 
     checkPlatterInvalidation(^{
         printf("[harness] now-playing-bar: %lu checks passed\n", (unsigned long)sg_checks);
@@ -611,17 +726,14 @@ static void runDisabled(void) {
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     self.window = [[UIWindow alloc] initWithFrame:getenv("HARNESS_CAPSULE") ? UIScreen.mainScreen.bounds : CGRectMake(0, 0, 390, 844)];
     self.window.rootViewController = [UIViewController new];
-    if (getenv("HARNESS_CAPSULE")) {
-        // The capsule follows the window's size class, which the window has only once SGRHarnessScene has put it in its
-        // scene and made it key; a loaded simulator connects the scene later than any fixed delay after launch.
-        __block id key = [NSNotificationCenter.defaultCenter addObserverForName:UIWindowDidBecomeKeyNotification
-            object:self.window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-            [NSNotificationCenter.defaultCenter removeObserver:key];
-            run();
-        }];
-        return YES;
-    }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ run(); });
+    // The capsule follows the window's size class, and the bar's controllers lay out (checkShownTitle), only once
+    // SGRHarnessScene has put the window in its scene and made it key; a loaded machine connects the scene later than
+    // any fixed delay after launch.
+    __block id key = [NSNotificationCenter.defaultCenter addObserverForName:UIWindowDidBecomeKeyNotification
+        object:self.window queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        [NSNotificationCenter.defaultCenter removeObserver:key];
+        run();
+    }];
     return YES;
 }
 @end

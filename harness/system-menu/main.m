@@ -130,7 +130,11 @@ NSString *SGURIString(id uri) { return nil; }
 // Song blocking (ArtistBlock.m): with no track URI the menu never offers it here.
 BOOL SGSongBlocked(NSString *uri) { return NO; }
 void SGSetSongBlocked(NSString *uri, NSString *title, NSString *artist, BOOL blocked) {}
-UIView *SGRPinnedMoreRecentButton(void) { return nil; }
+// A page's pinned ⋯ (Kit/SGRActionRow.m; its own claim is pinned-check.m's): tapped in `pinned`, its claim is what the
+// sheet coming next reads, until the system menu has taken a sheet over for it. None in every other scenario.
+static __weak UIView *sg_pinnedMore;
+UIView *SGRPinnedMoreRecentButton(void) { return sg_pinnedMore; }
+void SGRPinnedMoreTaken(void) { sg_pinnedMore = nil; }
 void SGRAnimate(NSInteger motion, void (^animations)(void), void (^completion)(BOOL finished)) {
     [UIView animateWithDuration:0.2 animations:animations completion:completion];
 }
@@ -781,6 +785,43 @@ static NSArray<NSString *> *quickTitles(void) {
         NSLog(@"[harness] done");
         exit(0);
     };
+    // A page's pinned ⋯ tapped: Spotify's sheet for it is taken over and its menu opens from the ⋯. Closed, a track's ⋯
+    // tapped well within the claim's window (SGRPinnedMoreWindow): its sheet is Spotify's, not the page's menu again.
+    if ([run isEqualToString:@"pinned"]) {
+        UIButton *pinned = [UIButton systemButtonWithImage:[UIImage systemImageNamed:@"ellipsis"] target:nil action:nil];
+        pinned.frame = CGRectMake(self.view.bounds.size.width - 60, 62, 44, 44);
+        [self.view addSubview:pinned];
+        sg_pinnedMore = pinned;
+        CFTimeInterval tapped = CACurrentMediaTime();
+        [self presentMenuSheet];
+        waitFor(^BOOL { return openMenu() != nil; }, 3, ^{
+            check(openMenu() && !self.sheetShown, @"the pinned ⋯'s sheet is taken over: its menu is up, the sheet unseen");
+            UIButton *anchor = nil;
+            for (UIView *view in pinned.subviews) if ([NSStringFromClass(view.class) isEqualToString:@"SGRMenuAnchor"]) anchor = (UIButton *)view;
+            [anchor.contextMenuInteraction dismissMenu];
+            waitFor(^BOOL { return self.sheetGone && !openMenu(); }, 4, ^{
+                check(self.sheetGone && !openMenu(), @"closed with no pick, the menu and its sheet went");
+                NSLog(@"[harness] the track's ⋯ comes %.1f s after the pinned ⋯'s tap", CACurrentMediaTime() - tapped);
+                [self presentMenuSheet];
+                waitFor(^BOOL { return self.sheetShown || openMenu(); }, 2, ^{
+                    dispatch_block_t verdict = ^{
+                        check(self.sheetShown && !openMenu(), [NSString stringWithFormat:@"a track's ⋯ then shows Spotify's sheet, not the page's menu (sheet shown %d, menu up %d)",
+                                                               self.sheetShown, openMenu() != nil]);
+                        finish();
+                    };
+                    // HARNESS_HOLD in the environment: READY, and the screen held three seconds for a screenshot first.
+                    if (!getenv("HARNESS_HOLD")) {
+                        verdict();
+                        return;
+                    }
+                    printf("READY\n");
+                    fflush(stdout);
+                    after(3, verdict);
+                });
+            });
+        });
+        return;
+    }
     sg_rowsHeld = is(@"loading") || is(@"quick") || is(@"quicklate") || is(@"podcast") || is(@"stored") || is(@"playlist") || is(@"stalecache")
                || is(@"slowsheet");
     sg_rowsNever = is(@"quicklate");

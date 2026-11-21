@@ -25,6 +25,7 @@ void SGRBarPlaceConnect(UIView *bar) {
         for (UIView *item in items) item.hidden = NO;
         return;
     }
+    if (SGRBarInSheet(bar)) return;
     SGForEachView(bar, ^(UIView *v) {
         NSString *name = NSStringFromClass(v.class);
         if (![name containsString:@"ConnectButtonView"] && ![name containsString:@"ConnectStateView"]) return;
