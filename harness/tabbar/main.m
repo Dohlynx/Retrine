@@ -60,7 +60,7 @@ NSString *SGHarnessOwnTabSymbol(void) {
     return [NSProcessInfo.processInfo.arguments containsObject:@"hold"] ? @"house" : @"heart";
 }
 
-static BOOL sgJam, sgColorful, sgGlyphs, sgSwiftIcons;
+static BOOL sgJam, sgColorful, sgGlyphs, sgSwiftIcons, sgSearch;
 static __weak UIView *sgJamStrip;
 
 // `glyphs`: the tabs' icons are Encore's glyph view, SPTEncoreIconView, made at launch (main) on SGHarnessGlyphView with
@@ -283,6 +283,11 @@ static __weak UIView *sgJamStrip;
         }
     }
     for (UIView *v = tap.view; v; v = v.superview) [v setNeedsLayout];
+    // `search`: Spotify tells its container of the tab picked, which brings the minimized bar back (TabBar.x's hook).
+    if (!sgSearch) return;
+    for (UIResponder *r = tap.view; r; r = r.nextResponder) {
+        if ([r isKindOfClass:self]) [(_TtC23NavigationUI_TabBarImpl19TabBarContainerImpl *)r setSelectedViewController:nil];
+    }
 }
 
 static UIView *tab(Class cls, NSString *title, UIView *icon, BOOL active) {
@@ -370,6 +375,18 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
     ]];
     if ([args containsObject:@"five"]) {
         [tabs addObject:item(_TtC23NavigationUI_TabBarImpl21TabBarItemElementView.class, longNames ? @"Discover Weekly" : @"Liked Songs", @"heart", NO)];
+    }
+    // `search` (search.m): Search the last of five tabs, as issue #34 keeps it, or with `middle` the third; with
+    // `nosearch` hidden, with `own` hidden and a tab of the mod's own of the same name after it.
+    if (sgSearch) {
+        UIView *search = tabs[1];
+        [tabs removeObjectAtIndex:1];
+        [tabs addObject:item(_TtC23NavigationUI_TabBarImpl21TabBarItemElementView.class, @"Liked Songs", @"heart", NO)];
+        [tabs insertObject:search atIndex:[args containsObject:@"middle"] ? 2 : tabs.count];
+        search.hidden = [args containsObject:@"nosearch"] || [args containsObject:@"own"];
+        if ([args containsObject:@"own"]) {
+            [tabs addObject:tab(SGRTabItemView.class, @"Search", SGTabIconView(@"magnifyingglass", YES, [UIColor colorWithWhite:0xB3 / 255.0 alpha:1]), NO)];
+        }
     }
     // `symbols`: a tab of the mod's own after Spotify's, under the class name Navbar.x gives one, with the SF Symbol
     // picked for it drawn as Navbar.x draws it (SGTabIconView).
@@ -1017,12 +1034,14 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     if ([args containsObject:@"off"]) [store setBool:NO forKey:SGRKeyNavbarFade];
     else [store removeObjectForKey:SGRKeyNavbarFade];
     [store setBool:NO forKey:SGRKeyNavbarSymbols];
-    BOOL names = args.count > 1 && [args[1] isEqualToString:@"symbols"] && ![args containsObject:@"hold"];
+    BOOL names = (args.count > 1 && [args[1] isEqualToString:@"symbols"] && ![args containsObject:@"hold"])
+              || (args.count > 1 && [args[1] isEqualToString:@"search"] && [args containsObject:@"labels"]);
     [store setBool:!names forKey:SGRKeyNavbarHideLabels];
 }
 
 void SGHarnessRunNavbarPage(SGHarnessChrome *chrome, void (^barChecked)(BOOL on));
 void SGHarnessRunSymbols(SGHarnessChrome *chrome);
+void SGHarnessRunSearch(UIView *stockBar);
 
 @interface SGHarnessApp : UIResponder <UIApplicationDelegate>
 @end
@@ -1123,6 +1142,11 @@ static void after(double seconds, dispatch_block_t block) {
     // `symbols`: Apple symbols from the Tab bar page over the bar, a tab of the mod's own on it (navsettings.m).
     if ([mode isEqualToString:@"symbols"]) {
         after(1.0, ^{ SGHarnessRunSymbols(chrome); });
+        return;
+    }
+    // `search`: Search on the minimized bar's trailing circle (search.m).
+    if ([mode isEqualToString:@"search"]) {
+        after(1.0, ^{ SGHarnessRunSearch(chrome.tabs.bar); });
         return;
     }
     // `jam`: in a Jam from the start, and out of it at 3.5 s.
@@ -1430,6 +1454,7 @@ int main(int argc, char *argv[]) {
     sgColorful = argc > 1 && (strcmp(argv[1], "fade") == 0 || strcmp(argv[1], "navsettings") == 0);
     sgGlyphs = argc > 1 && (strcmp(argv[1], "glyphs") == 0 || strcmp(argv[1], "symbols") == 0);
     sgSwiftIcons = sgGlyphs && argc > 2 && strcmp(argv[2], "swift") == 0;
+    sgSearch = argc > 1 && strcmp(argv[1], "search") == 0;
     Class glyphView = objc_allocateClassPair(SGHarnessGlyphView.class, "SPTEncoreIconView", 0);
     class_addIvar(glyphView, "icon", sizeof(void *), __builtin_ctz(sizeof(void *)), sgSwiftIcons ? "" : "@");
     objc_registerClassPair(glyphView);

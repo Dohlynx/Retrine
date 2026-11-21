@@ -1376,13 +1376,23 @@ Redesigned:
                   page comes from the list of tabs Spotify reads (Navbar.x keeps each label's URI, SGRNavbarStockURIs), so it
                   holds in any language; a tab whose page the list has not named keeps Spotify's glyph, and a tab of the
                   mod's own keeps the icon picked for it. A page scrolled down
-                  minimizes the bar to two circles, the first or current tab and the last, with the now playing card
-                  between them, and a scroll back up, its top, another tab or the player brings it back
-                  (TabBarMinimize.x, MinimizeStep.h; the Player page's Apple Music style). Spotify's container is no
-                  UITabBarController, so UIKit's tabBarMinimizeBehavior and bottomAccessory cannot do it. The bars,
-                  their circles and the card move as one, on one spring of their own (SGRMotionBar, 0.26 s, no
+                  minimizes the bar to glyphs on circles: at the trailing end the last split tab or, with none, Spotify's
+                  Search wherever the row holds it, as the Music app keeps Search there (known by the page it opens in
+                  Spotify's list, spotify:search or 9.1.78 to 9.1.90's spotify:find, never by its name or place; a tab
+                  of the mod's own is never it), drawn selected when it is the tab you are on; at the leading end the
+                  tab you are on, or when that is the trailing one the first other tab of the main bar. The now playing
+                  card stands between the circles, or with no trailing circle runs to the bar's trailing inset. A tap on
+                  the trailing circle opens its tab as a split tab's circle does, and a scroll back up, its top, another
+                  tab or the player brings the bar back (TabBarMinimize.x, MinimizeStep.h; the Player page's Apple
+                  Music style). Spotify's container is no UITabBarController, so UIKit's tabBarMinimizeBehavior and
+                  bottomAccessory cannot do it. The bars, their circles and the card move as one, on one spring of their own (SGRMotionBar, 0.26 s, no
                   overshoot; at once under Reduce Motion), from what is on screen, so a change turned back half way
-                  carries on from there. The selected tab shows Spotify's filled glyph and the others their outlines, also
+                  carries on from there. A tab keeps one glyph as it moves between the row and a circle: its new button
+                  starts where its old one's glyph was, on either bar; Search's circle comes out of Search's place in
+                  the row, and expanding goes back to it under the growing main bar, its glyph drawn until the row's
+                  Search button, travelling with it, is whole inside the main platter and takes over, and leaves as the
+                  spring ends. No glass fades. While the bar is minimized the card follows its slot when the trailing
+                  circle comes or goes with Spotify's list of tabs. The selected tab shows Spotify's filled glyph and the others their outlines, also
                   after the bar minimizes and expands and when a tab's view is handed another icon: an older
                   SPTEncoreIcon gives its filled variant through -active, and 9.1.90's Swift Encore.Icon is drawn once with
                   isActive set and then put back; the images are kept by the glyph drawn, not the label's color
@@ -1390,7 +1400,8 @@ Redesigned:
                   hidden or not, and the leading circle says it shows all tabs. Laid out on
                   the Mac against harness/tabbar/ (`mini`; a tap on the leading circle `tap`, real flings that turn
                   the bar half way `turns`, a minimize from inside Spotify's own animations `nested`, every frame of
-                  the move sampled `motion`), the scroll's steps checked by harness/tabbar/minimize-check.c
+                  the move sampled `motion`, Search on the trailing circle and drawn once through every move `search`),
+                  the scroll's steps checked by harness/tabbar/minimize-check.c
     NowPlayingBar/ the glass now playing bar (NowPlayingBar.x). A regular-width iPad automatically gets a capsule
                   with shuffle, repeat, lyrics and queue alongside artwork, title and play. Shuffle and repeat use
                   Spotify's player commands; lyrics opens the player on its embedded lyrics, and queue opens the

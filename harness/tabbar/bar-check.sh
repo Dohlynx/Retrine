@@ -1,7 +1,7 @@
 #!/bin/sh
 # The tabs' glyphs and the now playing card's edges (README, `glyphs` and `edges`) in an iOS simulator of the run's
-# own, made for the run and deleted after it, plus `symbols` (Apple symbols) and `audit` (single-tab minimizing and a
-# tab's icon view replaced).
+# own, made for the run and deleted after it, plus `symbols` (Apple symbols), `audit` (single-tab minimizing and a
+# tab's icon view replaced) and `search` (Search on the minimized bar's trailing circle, search.m).
 # Exits nonzero on the first failed check.
 #     THEOS=$HOME/theos OUT=/tmp/<dir> ./bar-check.sh
 set -eu
@@ -38,4 +38,12 @@ run "PASS all edges" split2 edges
 run "PASS all edges" jam edges
 run "PASS all edges" none edges regular
 run "PASS all edges" none edges rtl
-echo "PASS tab bar glyph and edge checks"
+run "PASS all search" search
+run "PASS all search" search find
+run "PASS all search" search labels
+run "PASS all search" search middle
+run "PASS all search" search splitcreate
+run "PASS all search" search nosearch
+run "PASS all search" search own
+run "PASS all search" search leaves
+echo "PASS tab bar glyph, edge and Search checks"

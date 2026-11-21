@@ -141,7 +141,7 @@ bar at once. It does so through the switch's own path in the product (`SGRRefres
 That scenario also checks Icons only, Custom tab bar and hiding Home through the page controls,
 without screenshot pauses.
 
-`bar-check.sh` runs the tabs' glyphs and the now playing card's edges in a simulator of its own, and `audit`.
+`bar-check.sh` runs the tabs' glyphs and the now playing card's edges in a simulator of its own, `audit` and `search`.
 `glyphs` makes the tabs' icons Encore's glyph view (a mock under its name that draws a ring for an outline icon
 and a solid shape for its `-active` variant, which the tab's view is handed when it is selected, its `isActive`
 changing only colors) and asserts the selected tab's filled glyph and every other tab's outline at launch, after
@@ -170,6 +170,33 @@ for a screenshot.
 them (with Search split the main platter is centered narrower than its bar, x 27 on an iPhone 17 Pro), minimized
 in the row 8 pt from the circles, back after a minimize turned back mid-spring, above the bar while a Jam's strip
 is up, and Spotify's 8 pt in a regular width and right to left.
+
+`search` (search.m, issue #34) makes the row Home, Your Library, Create, Liked Songs and Search, the last of five as
+the issue keeps it (`middle` puts Search third), and hands TabBar.x the pages of Spotify's tabs as Navbar.x reads them
+off Spotify's list: Search as `spotify:search` (9.2.0), with `find` as `spotify:find` (9.1.78 to 9.1.90). Spotify's
+tab change is played too: a tap on a mock tab tells the container (`setSelectedViewController:`), whose hook brings
+the bar back. It minimizes on Home and asserts Home on the leading circle, which says it shows all tabs, Search on a
+trailing circle on a 104 pt bar at the trailing edge (a split tab's), its item named Search with its glyph for the large
+content viewer, a finger on it landing on its bar, and the card in its slot, 8 pt from each circle; then expands, a
+minimize and an expand each turned back 0.12 s in, minimizes and expands on Search (Home leading, Search selected on
+the trailing circle), and taps the trailing circle for real: Search picked, the bar expanded. Every frame of each move,
+the tap's expansion too, is sampled: Search drawn exactly once (its buttons on either bar and the pictures of buttons
+that went, each glyph counted by the share of it the screen shows: the part left inside every view above it that clips,
+by its bounds or its mask, times its opacity, drawn above 2%) and that one shown at 90% or more, so a glyph clipped
+by its platter is not counted as drawn; its glyph moving no more than a spring does (50 pt a frame), the trailing
+circle drawn on Search's glyph the first frame it shows, and no platter partly faded. `labels` shows the tabs' names.
+`splitcreate` makes Create a split tab, `nosearch` hides Search, `own` hides it and adds a tab of the mod's own named
+Search: the minimized bar as before, Create's circle or none, the card to 21 pt in. `leaves` hides Spotify's Search
+in its row while the bar is minimized and shows it again, as Spotify's list of tabs changing does: the trailing circle
+goes and comes, and the card takes the slot each time (290 pt without the circle, 220 pt beside it).
+`keepgoing` prints each failed check and goes on, so each case's own failure shows;
+built from the tree before the change (`SRC=`), 2026-11-21 on an iPhone 17 Pro, iOS 26.5, every Search case failed
+there (no trailing circle, Search not drawn at all once the bar minimized, the card to the edge, nothing to tap), while
+`splitcreate`, `nosearch` and `own`, which keep the bar as it was, passed. A first version that hid the circle's
+Search at once on expanding failed the visible-share count (no Search drawn for 6 or 7 frames of each expand, the row's
+glyph still clipped by the growing platter), and one whose card followed only the expanded row's edges failed `leaves`
+(the card kept 220 pt with the circle gone). After the change all pass; Search moves some 32 pt a frame at most across
+the row with `middle`.
 
 What it does not cover: Spotify's own chrome, which is Swift with no symbols (the constraints above
 are read from its code, not run), the real now playing bar's content and its page's inset, the tab
