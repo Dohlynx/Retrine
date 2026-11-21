@@ -166,6 +166,14 @@ HARNESSES = [
      "run": "sh harness/player/volume-check.sh"},
     {"name": "Player volume layout", "dir": "player",
      "run": "sh harness/player/volume-layout-check.sh"},
+    {"name": "Player progress timers", "dir": "player", "theos": True,
+     "run": "sh harness/player/progress-check.sh"},
+    {"name": "Player podcast buffering", "dir": "player", "theos": True,
+     "run": "sh harness/player/buffering-check.sh"},
+    {"name": "Pinned menu claim", "dir": "system-menu", "theos": True,
+     "run": "bash harness/system-menu/pinned-check.sh"},
+    {"name": "Home hooks on other pages", "dir": "home-tiles", "theos": True,
+     "run": "bash harness/home-tiles/label-scroll-check.sh"},
     {"name": "Volume bar haptics", "dir": "haptics-page",
      "run": "sh harness/haptics-page/volume-check.sh"},
     {"name": "Player lyric line", "dir": "player-lyric-line",
@@ -212,7 +220,7 @@ SKIP_PARTS = {"build", ".build"}
 # use their process name even when CFFIXED_USER_HOME points somewhere else.
 SHARED_PREFERENCE_DOMAINS = {
     "check": {
-        "appearance-page", "driver", "fonts", "genius-lyrics", "gesture-hold", "local-files", "lyrics-sources",
+        "appearance-page", "driver", "fonts", "genius-lyrics", "gesture-hold", "home-tiles", "local-files", "lyrics-sources",
         "lyrics-translation", "native-declutter", "player",
         "prefs", "radio-modes", "spicy-lyrics", "ui-refinements", "update",
     },
