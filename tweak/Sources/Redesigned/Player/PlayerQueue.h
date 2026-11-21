@@ -6,6 +6,9 @@
 // Threading: main thread only.
 #import <UIKit/UIKit.h>
 
+// The queue sheet's view after placement, nil as it leaves (never the embedded list).
+extern NSNotificationName const SGRQueueSheetPlacedNotification;
+
 // Opens the sheet over what `from` (the ⋯, a glyph) is in, once a menu it was picked from has gone; nothing while it is
 // open already.
 void SGRPlayerShowQueue(UIView *from);

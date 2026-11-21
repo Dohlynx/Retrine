@@ -254,6 +254,22 @@ static void run(void) {
     NSUInteger totalAfter = 0;
     for (NSString *title in coverAsks) totalAfter += [coverAsks countForObject:title];
     check(coverAsks.count == asksShown && totalAfter == totalAsks, @"shown again with every cover in, no cover is asked for again");
+    QueueTrack *late = song(@"late", @"Late");
+    [late setValue:@"spotify:track:late" forKey:@"URI"];
+    offline = YES;
+    player.currentQueue.nextTracks = @[late];
+    report(@"107");
+    spin(0.3);
+    NSIndexPath *path = row(2, 0);
+    UITableViewCell *prepared = [table cellForRowAtIndexPath:path];
+    check(prepared && shown(path) != fetchedCover && [coverAsks countForObject:@"Late"] > 0,
+          @"the prepared row has a failed cover");
+    offline = NO;
+    // UIKit can redisplay this cell without asking the data source to configure it again.
+    if ([table.delegate respondsToSelector:@selector(tableView:willDisplayCell:forRowAtIndexPath:)])
+        [table.delegate tableView:table willDisplayCell:prepared forRowAtIndexPath:path];
+    spin(0.3);
+    check(shown(path) == fetchedCover, @"redisplay of the prepared row retries and shows its failed cover");
     printf("queue checks: %d of %d right -- PASS\n", checked, checked);
     fflush(stdout);
     exit(0);

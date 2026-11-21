@@ -462,6 +462,16 @@ static UIImage *coverPlaceholder(void) {
     return cell;
 }
 
+- (void)tableView:(UITableView *)table willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)path {
+    // A prepared cell can return without another cellForRow: (even after its download failed).
+    UIImage *image = [self coverOf:[self trackAt:path]];
+    UIListContentConfiguration *content = (id)cell.contentConfiguration;
+    if (image && image != content.image) {
+        content.image = image;
+        cell.contentConfiguration = content;
+    }
+}
+
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)path {
     [table deselectRowAtIndexPath:path animated:YES];
     if (path.section != 2 || path.row < 0 || path.row >= (NSInteger)_tracks.count) return;
@@ -474,6 +484,26 @@ static UIImage *coverPlaceholder(void) {
 @end
 
 #pragma mark - opening it
+
+NSNotificationName const SGRQueueSheetPlacedNotification = @"SGRQueueSheetPlaced";
+
+@interface SGRQueueSheet : UINavigationController
+@end
+@implementation SGRQueueSheet
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    if (!self.isBeingDismissed)
+        [NSNotificationCenter.defaultCenter postNotificationName:SGRQueueSheetPlacedNotification object:self.view];
+}
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [NSNotificationCenter.defaultCenter postNotificationName:SGRQueueSheetPlacedNotification object:self.view];
+}
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [NSNotificationCenter.defaultCenter postNotificationName:SGRQueueSheetPlacedNotification object:nil];
+}
+@end
 
 // The controller on top in `from`'s window, through whatever is presented over it; the key window's without one.
 static UIViewController *topIn(UIView *from) {
@@ -490,7 +520,7 @@ UIViewController *SGRPlayerQueueList(void) {
 }
 
 void SGRPlayerShowQueue(UIView *from) {
-    UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:[SGRPlayerQueueController new]];
+    UINavigationController *navigation = [[SGRQueueSheet alloc] initWithRootViewController:[SGRPlayerQueueController new]];
     navigation.modalPresentationStyle = UIModalPresentationPageSheet;
     SGPresentDark(navigation);
     UISheetPresentationController *sheet = navigation.sheetPresentationController;

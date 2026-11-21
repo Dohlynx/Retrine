@@ -8,6 +8,10 @@
     [host addSubview:slider];
     slider.frame = host.bounds;
     float initial = slider.value;
+    [slider layoutSubviews];
+    sliderIdentifierReads = 0;
+    for (NSUInteger i = 0; i < 24; i++) [slider layoutSubviews];
+    HARNESS_CHECK(!sliderIdentifierReads);
     [slider setValue:.25f animated:NO];
     [slider setValue:.250001f animated:NO];
     HARNESS_CHECK(slider.value == .25f);

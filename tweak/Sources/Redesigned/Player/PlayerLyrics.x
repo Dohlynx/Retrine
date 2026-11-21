@@ -75,6 +75,7 @@ static const NSTimeInterval kLyricsOnOpenWindow = 3;
 
 static char kOverlayKey, kPlateKey, kTitleKey, kStackKey, kQueueKey;
 static BOOL sg_open;
+static __weak UIView *sg_dismissingPage;
 static BOOL sg_moving;                      // the transition is in flight, so no layout pass may re-place it
 static NSUInteger sg_openGeneration;        // only the latest accepted transition may settle
 static __weak UIView *sg_host;              // SPTNowPlayingView
@@ -687,6 +688,23 @@ static void restartRest(void) {
 @interface SGRPlayerTouchWatcher : UIGestureRecognizer <UIGestureRecognizerDelegate>
 @end
 
+// Only while waiting. A subsequent touch may be outside the host (e.g. on a sheet);
+// observe its arrival without entering recognition or delaying another recognizer.
+@interface SGRPendingPreview : UIGestureRecognizer <UIGestureRecognizerDelegate>
+@property (copy) NSString *track;
+@end
+static SGRPendingPreview *sg_pendingPreview;
+static void forgetPreview(void) {
+    [sg_pendingPreview.view removeGestureRecognizer:sg_pendingPreview];
+    sg_pendingPreview = nil;
+}
+@implementation SGRPendingPreview
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
+    forgetPreview();
+    return NO;
+}
+@end
+
 // Sees every touch on the player and takes none. It never recognizes: it holds the clock while a finger is
 // down, so a hold on Sing's slider that runs past the rest fades nothing under it, and starts the clock once
 // the last finger lifts. Nothing can end its watch early, or a scroll or a hold that recognized would start
@@ -885,7 +903,10 @@ static void setOpen(BOOL open, BOOL animated) {
         sg_moving = NO;
         if (sg_open) return;   // opened again while it was going away
         replaceCoverList(NO);
-        [overlay removeFromSuperview];
+        // Detaching the karaoke view resets its browsing position. Keep it in the window, invisible,
+        // until UIKit commits the interactive dismissal.
+        if (overlay == sg_dismissingPage) overlay.hidden = YES;
+        else [overlay removeFromSuperview];
         // The window may have resized while the animation owned placement.
         [host setNeedsLayout];
     };
@@ -1072,12 +1093,33 @@ static void placeWide(UIView *host) {
 }
 
 void SGRPlayerToggleLyrics(void) {
+    forgetPreview();
     if (sg_wide) {
         pickSide(SGRSidePickLyrics);
         return;
     }
     if (!sg_open && !SGRPlayerLyricsAvailable()) return;
     setOpen(!sg_open, YES);
+}
+
+static void answerPreview(void) {
+    if (!sg_pendingPreview || ![sg_pendingPreview.track isEqual:SGKaraokePlayingTrack()]) return;
+    if (!sg_open && sg_host.window && SGRPlayerLyricsAvailable() && !coveredBySheet()) {
+        if (sg_wide) pickSide(SGRSidePickLyrics);
+        else setOpen(YES, YES);
+    }
+    if (sg_open) forgetPreview();
+}
+
+void SGRPlayerOpenPreviewLyrics(UIView *preview) {
+    NSString *track = SGKaraokePlayingTrack();
+    if (sg_open || !track || !preview.window || ![preview isDescendantOfView:sg_host]) return;
+    forgetPreview();
+    sg_pendingPreview = [[SGRPendingPreview alloc] initWithTarget:nil action:nil];
+    sg_pendingPreview.delegate = sg_pendingPreview;
+    sg_pendingPreview.track = track;
+    [preview.window addGestureRecognizer:sg_pendingPreview];
+    answerPreview();
 }
 
 void SGRPlayerToggleQueueSide(void) {
@@ -1147,6 +1189,7 @@ static void replace(void) {
     if (!host || host.bounds.size.height < kLivingHeight) return;
     sg_player = (UIViewController *)self;
     if (sg_host != host) {
+        forgetPreview();
         leaveWide(sg_host);
         sg_host = host;
         [host addGestureRecognizer:[SGRPlayerTouchWatcher new]];
@@ -1163,7 +1206,33 @@ static void replace(void) {
 // columns have no morph (a regular width has none, PlayerMorph.x) and close as they are; only the side column's pick
 // is forgotten, so the next player opens on its default.
 - (void)viewWillDisappear:(BOOL)animated {
-    if (sg_open && !sg_wide) setOpen(NO, NO);
+    forgetPreview();
+    if (sg_open && !sg_wide) {
+        UIViewController *player = (UIViewController *)self;
+        id<UIViewControllerTransitionCoordinator> coordinator = player.transitionCoordinator;
+        UIView *host = player.viewIfLoaded;
+        SGRPlayerLyricsOverlay *page = objc_getAssociatedObject(host, &kOverlayKey);
+        if (coordinator.initiallyInteractive && page.superview == sg_host &&
+            host.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPhone && host.bounds.size.height > host.bounds.size.width) {
+            BOOL alone = sg_alone;
+            NSString *track = SGURIString(SGPlayerState().track.URI);
+            sg_dismissingPage = page;
+            if (![coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+                if (sg_dismissingPage != page) return;
+                sg_dismissingPage = nil;
+                page.hidden = NO;
+                if (context.isCancelled && sg_host == host && !sg_wide && host.bounds.size.height > host.bounds.size.width &&
+                    [track isEqual:SGURIString(SGPlayerState().track.URI)] && SGKaraokeLinesForTrack(SGKaraokePlayingTrack()).count) {
+                    [UIView performWithoutAnimation:^{
+                        setOpen(YES, NO);
+                        if (alone) setAlone(YES, NO);
+                    }];
+                }
+                if (page.superview != sg_host || !sg_open) [page removeFromSuperview];
+            }]) sg_dismissingPage = nil;
+        }
+        setOpen(NO, NO);
+    }
     sg_sidePick = SGRSidePickNone;
     // The landscape screen outlives the lines for a track without lyrics, but not the player.
     SGRPlayerShowLandscape(NO);
@@ -1310,6 +1379,7 @@ static void durationUnitLaidOut(UIViewController *unit) {
     if (![note.object isEqual:SGKaraokePlayingTrack()]) return;
     if (SGRPlayerLyricsAvailable()) {
         SGRPlayerLyricsChanged();
+        answerPreview();
         // The two columns' side shows the lines that came, unless the queue was picked.
         refreshSide(YES);
     } else {
@@ -1365,6 +1435,7 @@ static void durationUnitLaidOut(UIViewController *unit) {
         restartRest();
     }
     NSString *track = SGURIString(state.track.URI);
+    if (sg_pendingPreview && ![track isEqualToString:_track]) forgetPreview();
     if (!track || [track isEqualToString:_track]) return;
     _track = track;
     // The lines already up wait out a grace for the new track's before they go, a track after it its own.
@@ -1398,6 +1469,7 @@ BOOL SGRPlayerLyricsNone(void) {
     // In the background the controls stay up; back in front the clock starts again.
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         reportPlayerGeometry();
+        forgetPreview();
         setAlone(NO, NO);
         [sg_rest invalidate];
         sg_rest = nil;
@@ -1419,7 +1491,11 @@ BOOL SGRPlayerLyricsNone(void) {
         restartRest();
     }];
     [NSNotificationCenter.defaultCenter addObserverForName:SGRNowPlayingArtworkDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
-        if (!sg_open && !sg_wide) return;
+        answerPreview();
+        if (!sg_open && !sg_wide) {
+            if (sg_host.window && wideIn(sg_host)) [sg_host setNeedsLayout];
+            return;
+        }
         SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
         overlay.cover.image = SGRNowPlayingArtwork(NULL, NULL);
     }];

@@ -85,6 +85,8 @@ mock lyric preview inside a selectable cover cell. While the redesigned line mas
 preview, UIKit selects the cell and lyrics stay closed. When the line gives the preview
 back, a tap opens lyrics without another selection. The runner uses a disposable simulator
 and temporary build; `SRC=/path/to/tweak/Sources` selects alternative production sources.
+`preview-pending` holds the lyrics until after that tap and checks a second touch, a track
+change and a close/reopen each discard the request, while an uninterrupted tap still opens lyrics.
 
 `python3 harness/player/ui-check.py settings automix` builds once and runs both assertion
 scenarios on one owned simulator, then shuts down/deletes it and removes the build.
@@ -130,6 +132,8 @@ come late, out of order, or not at all.
 `HARNESS_SCENARIO` picks what the harness does:
 
 - `lyrics` (default) opens the lyrics at 2 s, closes them at 6 and opens them again at 10.
+- `cancel-dismissal` drives both outcomes of an interactive transition with the lyrics scrolled.
+  `late-wide` on a regular-width iPad with `HARNESS_NO_ARTWORK=1` delivers the first artwork after layout.
 - `look` plays one track, then a track from another album at 8 s, whose picture reaches the screens
   0.4 s later. It shows the field, the moving background and its crossfade, and the footer row, with Spotify
   9.2.0's plain view over the strip under the bottom stack. At 3 s it checks that touches at the middle and 8 pt
@@ -192,7 +196,7 @@ come late, out of order, or not at all.
   one sung line and no chip over the title. Both check the compact slot above the title,
   the live change from the preview font to 17 pt and back, with and without a translation.
   `lyric-line-switch` uses the same clip fixture and checks clip → cover → clip without changing the words.
-  `cover-empty-strip` uses the same retained strip with the line off. The shown switch keeps the native
+  `cover-empty-strip` uses the same retained strip with the line off, `lyric-line-empty-strip` with it on but no synced lines. The shown switch keeps the native
   319 pt tilt; hiding it fills the 345 pt column at the same top without moving the rows; other material
   fading in or reattached in the strip restores 319 without laying out the floating unit. `cover-strip-preview`
   keeps Spotify's native 273 pt square while its lyric preview shows below it, including when the preview returns.
@@ -208,7 +212,8 @@ come late, out of order, or not at all.
   one row, two rows and translations, including the video switch's inset label and a material-only
   switch whose hosted pixels are not exposed as layer contents. Hidden, masked, transparent,
   collapsed and out-of-area switches must not raise the line. `lyric-line-chip-live`
-  changes chip opacity, position and visibility without driving player layout. `lyric-line-chip-record`
+  changes chip opacity, position and visibility without driving player layout. With `HARNESS_QUEUE_SHEET=1`
+  it expands the real Queue sheet over the line and checks the stopped clock and the words on dismissal. `lyric-line-chip-record`
   reads the process log after a tick-only backing-layer change, 100 translations of the unit and an
   off-pill shape mask; it checks the final reported frames as well as the lyric slot.
   `lyric-line-long` and `lyric-line-vo` check the first

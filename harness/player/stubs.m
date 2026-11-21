@@ -34,6 +34,7 @@ void SGRNowPlayingBarFollowTabBar(void) {}
 #pragma mark - Shared/Player/PlayerEvents.x
 
 NSString *const SGPlayerTransitionNotification = @"spotifyglass.playerTransition";
+NSNotificationName const SGPlayerSpeedDidChangeNotification = @"spotifyglass.player.speedChanged";
 NSString *const SGPlayerTransitionEndedNotification = @"spotifyglass.playerTransitionEnded";
 // No open or close runs, unless the automix scenario says one does until a time (SGRHarnessSetTransitionEnds).
 static CFTimeInterval sg_transitionEnds;

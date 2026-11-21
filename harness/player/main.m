@@ -122,7 +122,8 @@ void SGRHarnessClearTrack(void);
 extern void SGHarnessHold(UIWindow *window, CGPoint point, NSTimeInterval seconds);
 extern void SGHarnessTap(UIWindow *window, CGPoint point);
 extern UICollectionViewCell *SGHarnessSelectableCover(UICollectionView *covers, Class cellClass);
-extern void SGHarnessCheckPreviewTap(UIView *preview, dispatch_block_t givePreviewBack);
+extern void SGHarnessCheckPreviewTap(UIView *preview, UIViewController *player, dispatch_block_t givePreviewBack);
+#import "Redesigned/Player/PlayerQueue.h"
 extern void SGHarnessDrag(UIWindow *window, CGPoint from, CGPoint to, NSTimeInterval seconds);
 // stubs.m: the commands sent to the player.
 NSUInteger SGRHarnessPlayerCommands(void);
@@ -349,8 +350,27 @@ static dispatch_semaphore_t openingFinished;
 }
 @end
 
-@interface _TtC19NowPlaying_ViewImpl24NowPlayingViewController : UIViewController @end
-@implementation _TtC19NowPlaying_ViewImpl24NowPlayingViewController @end
+// Drive either outcome of the same interactive transition at its completion boundary.
+@interface HarnessDismissal : NSObject
+@property (copy) void (^finish)(id<UIViewControllerTransitionCoordinatorContext>);
+@property (getter=isCancelled) BOOL cancelled;
+@end
+@implementation HarnessDismissal
+- (BOOL)isInteractive { return YES; }
+- (BOOL)initiallyInteractive { return YES; }
+- (BOOL)animateAlongsideTransition:(id)animation completion:(void (^)(id<UIViewControllerTransitionCoordinatorContext>))completion {
+    self.finish = completion;
+    return YES;
+}
+@end
+@interface _TtC19NowPlaying_ViewImpl24NowPlayingViewController : UIViewController
+@property HarnessDismissal *dismissal;
+@end
+@implementation _TtC19NowPlaying_ViewImpl24NowPlayingViewController
+- (id<UIViewControllerTransitionCoordinator>)transitionCoordinator {
+    return (id)self.dismissal ?: super.transitionCoordinator;
+}
+@end
 
 @interface _TtC20NowPlaying_ModesImpl23InformationElementsUnit : UIViewController @end
 @implementation _TtC20NowPlaying_ModesImpl23InformationElementsUnit @end
@@ -439,6 +459,8 @@ static BOOL testCoverDrag;
 // The progress bar's slider (01.txt:224), tracking without a touch so the harness can scrub it in code.
 @interface _TtCO17NowPlaying_ECMKit11ProgressBar6Slider : UISlider @end
 @implementation _TtCO17NowPlaying_ECMKit11ProgressBar6Slider
+static NSUInteger sliderIdentifierReads;
+- (NSString *)accessibilityIdentifier { sliderIdentifierReads++; return super.accessibilityIdentifier; }
 - (BOOL)beginTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event { return YES; }
 - (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {}
 - (void)cancelTrackingWithEvent:(UIEvent *)event {}
@@ -788,7 +810,8 @@ static void loadLyrics(void) {
     UIViewController *root = self.window.rootViewController;
     CGFloat W = root.view.bounds.size.width, H = root.view.bounds.size.height;
     BOOL stripPreview = [scenario() isEqual:@"cover-strip-preview"];
-    BOOL stripCheck = stripPreview || [scenario() isEqual:@"cover-empty-strip"];
+    BOOL emptyLine = [scenario() isEqual:@"lyric-line-empty-strip"];
+    BOOL stripCheck = stripPreview || emptyLine || [scenario() isEqual:@"cover-empty-strip"];
     BOOL ownerChip = stripCheck || [scenario() isEqual:@"lyric-line-owner"] || [scenario() isEqual:@"lyric-line-owner-clip"];
     if (ownerChip || [scenario() isEqual:@"lyric-line-compact"]) { W = 393; H = 852; }
     if ([scenario() isEqualToString:@"adaptive"]) {
@@ -843,7 +866,7 @@ static void loadLyrics(void) {
     // The replacement can discover a pager Spotify has already faded out; compact must repair it.
     if ([scenario() isEqualToString:@"adaptive"] && !getenv("HARNESS_OPENING") && SGRPlayerIPadRegular(host))
         covers.alpha = 0;
-    BOOL previewTap = [scenario() isEqual:@"preview-tap"];
+    BOOL previewTap = [scenario() isEqual:@"preview-tap"] || [scenario() isEqual:@"preview-pending"];
     Class cellClass = _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl.class;
     UIView *cell = previewTap ? SGHarnessSelectableCover(covers, cellClass)
                               : box(covers, cellClass, covers.bounds, @"nowplaying-contentlayer-cell-0");
@@ -1079,7 +1102,7 @@ static void loadLyrics(void) {
     playback.view = controls;
     UIViewController *headerUnit = [_TtC20NowPlaying_ModesImpl18HeaderElementsUnit new];
     headerUnit.view = header;
-    UIViewController *player = [_TtC19NowPlaying_ViewImpl24NowPlayingViewController new];
+    _TtC19NowPlaying_ViewImpl24NowPlayingViewController *player = [_TtC19NowPlaying_ViewImpl24NowPlayingViewController new];
     player.view = host;
     _units = @[headerUnit, info, duration, floating, playback, footer, scrollUnit, background, player];
     _covers = covers;
@@ -1106,10 +1129,67 @@ static void loadLyrics(void) {
         for (UIView *v in bottom.subviews) if (v != floatingView) v.center = CGPointMake(v.center.x,v.center.y+shift);
     };
     unitSpace(!ownerChip);
+    if (emptyLine) SGKaraokeKeepLines(SGKaraokePlayingTrack(), nil);
     [self layOut];
+    if ([scenario() isEqual:@"cancel-dismissal"]) {
+        after(1, ^{
+            SGRPlayerToggleLyrics();
+            after(1, ^{
+                UIView *lyrics = firstOfClass(host, @"SGRKaraokeView");
+                UIScrollView *scroll = (id)firstOfClass(lyrics, @"UIScrollView");
+                HARNESS_CHECK(lyrics.window && scroll && SGRPlayerLyricsOpen());
+                [scroll.delegate scrollViewWillBeginDragging:scroll];
+                scroll.contentOffset = CGPointMake(0, 67);
+                for (NSNumber *cancel in @[@YES, @NO]) {
+                    HarnessDismissal *transition = [HarnessDismissal new];
+                    transition.cancelled = cancel.boolValue;
+                    player.dismissal = transition;
+                    [player viewWillDisappear:YES];
+                    HARNESS_CHECK(covers.alpha == 1);
+                    if (transition.finish) transition.finish((id)transition);
+                    player.dismissal = nil;
+                    [player viewWillAppear:YES];
+                    [self layOut];
+                    if (cancel.boolValue)
+                        HARNESS_CHECK(SGRPlayerLyricsOpen() && lyrics.window && covers.alpha == 0 && scroll.contentOffset.y == 67);
+                    else HARNESS_CHECK(!SGRPlayerLyricsOpen() && covers.alpha == 1);
+                }
+                SGRPlayerToggleLyrics();
+                HarnessDismissal *held = [HarnessDismissal new];
+                held.cancelled = YES;
+                player.dismissal = held;
+                [player viewWillDisappear:YES];
+                SGKaraokeKeepLines(SGKaraokePlayingTrack(), nil);
+                SGRHarnessSetTrack(@"spotify:track:instrumental", nil, NO);
+                SGRSetNowPlayingArtwork(artwork(), @"spotify:track:instrumental", SGRArtworkQualityHigh);
+                runScript(@[@[^BOOL { return SGRPlayerLyricsNone(); }, ^{
+                    HARNESS_CHECK(held.finish && SGRNowPlayingArtwork(NULL,NULL));
+                    held.finish((id)held);
+                    player.dismissal = nil;
+                    [player viewWillAppear:YES];
+                    [self layOut];
+                    HARNESS_CHECK(!SGRPlayerLyricsOpen() && !lyrics.window && covers.alpha == 1);
+                    NSLog(@"[harness] cancel-dismissal passed"); exit(0);
+                }]], 0);
+            });
+        });
+        return YES;
+    }
+    if ([scenario() isEqual:@"late-wide"]) {
+        after(1, ^{
+            HARNESS_CHECK(!SGRNowPlayingArtwork(NULL,NULL) && SGRPlayerIPadRegular(host) && !SGRPlayerTwoColumns());
+            [host layoutIfNeeded];
+            SGRSetNowPlayingArtwork(artwork(), SGURIString(SGPlayerState().track.URI), SGRArtworkQualityHigh);
+            HARNESS_CHECK(SGRNowPlayingArtwork(NULL,NULL));
+            [host layoutIfNeeded]; // Consume only an invalidation caused by artwork arrival.
+            HARNESS_CHECK(SGRPlayerTwoColumns());
+            NSLog(@"[harness] late-wide passed"); exit(0);
+        });
+        return YES;
+    }
     if (previewTap) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            SGHarnessCheckPreviewTap(previewShell, ^{
+            SGHarnessCheckPreviewTap(previewShell, player, ^{
                 SGKaraokeKeepLines(@"harness", @[]);
                 [floating viewDidLayoutSubviews];
             });
@@ -1125,7 +1205,7 @@ static void loadLyrics(void) {
         if (!stripCheck) return;
         [tilt layoutIfNeeded];
         CGRect small = SGRPlayerCoverFrameIn(host);
-        HARNESS_CHECK(!SGRPlayerLyricLineOn() && chip.superview && beforeSwitch.size.width == 345 && small.size.width == 319);
+        HARNESS_CHECK(SGRPlayerLyricLineOn() == emptyLine && chip.superview && beforeSwitch.size.width == 345 && small.size.width == 319);
         NSArray *(^rows)(void) = ^{
             NSMutableArray *frames = [NSMutableArray array];
             for (UIView *v in @[bottom, floatingView, titleElement, track, controls, footerView])
@@ -1178,7 +1258,7 @@ static void loadLyrics(void) {
                     [parent addSubview:material];
                     dispatch_async(dispatch_get_main_queue(), ^{
                         [tilt layoutIfNeeded]; HARNESS_CHECK(CGRectEqualToRect(SGRPlayerCoverFrameIn(host),small));
-                        NSLog(@"[harness] cover-empty-strip passed"); exit(0);
+                        NSLog(@"[harness] %@ passed", scenario()); exit(0);
                     });
                 });
             });
@@ -1574,6 +1654,44 @@ static void loadLyrics(void) {
                             SGRHarnessPlayFrom(1000);
                             SGRHarnessSetTrack(@"spotify:track:harness", nil, NO);
                             HARNESS_CHECK([[line valueForKey:@"timer"] isValid]);
+                            if (getenv("HARNESS_QUEUE_SHEET")) {
+                                SGRPlayerShowQueue(host);
+                                runScript(@[
+                                    @[^BOOL { return root.presentedViewController && !root.presentedViewController.transitionCoordinator; }, ^{
+                                        root.presentedViewController.sheetPresentationController.selectedDetentIdentifier = UISheetPresentationControllerDetentIdentifierLarge;
+                                    }],
+                                    @[^BOOL {
+                                        UIView *sheet = root.presentedViewController.view;
+                                        return CGRectContainsRect([sheet convertRect:sheet.bounds toView:host], [line convertRect:line.bounds toView:host]);
+                                    }, ^{
+                                        HARNESS_CHECK(![[line valueForKey:@"timer"] isValid]);
+                                        SGRHarnessPlayFrom(61000);
+                                        [root dismissViewControllerAnimated:NO completion:^{
+                                            HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"Second verse"]);
+                                            SGRHarnessFrameCheck *first = [SGRHarnessFrameCheck new];
+                                            __block BOOL sought = NO;
+                                            first.check = ^BOOL{
+                                                BOOL dissolving = NO;
+                                                for (NSString *key in words.layer.animationKeys)
+                                                    if ([[words.layer animationForKey:key] isKindOfClass:CATransition.class]) dissolving = YES;
+                                                if (sought) {
+                                                    HARNESS_CHECK(dissolving && ![words.text isEqual:@"Second verse"]);
+                                                    NSLog(@"[harness] queue-sheet passed"); exit(0);
+                                                }
+                                                HARNESS_CHECK(words.layer.presentationLayer && [words.text isEqual:@"Second verse"]);
+                                                if (dissolving) HARNESS_FAIL(@"first uncovered lyric frame still dissolving from the previous words");
+                                                sought = YES;
+                                                SGRHarnessPlayFrom(1000);
+                                                [(id<SGPlayerStateObserver>)line playerStateDidChange:SGPlayerState()];
+                                                return NO;
+                                            };
+                                            CADisplayLink *frame = [CADisplayLink displayLinkWithTarget:first selector:@selector(frame:)];
+                                            [frame addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+                                        }];
+                                    }]
+                                ], 0);
+                                return;
+                            }
                             SGRPlayerToggleLyrics();
                             after(1, ^{
                                 HARNESS_CHECK(SGRPlayerLyricsOpen() && ![[line valueForKey:@"timer"] isValid]);
@@ -5973,7 +6091,7 @@ static NSUInteger footerBandsIn(UIView *player) {
 
 // Before every %ctor, so the redesign's gate reads on, and every session gets the picture server.
 __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
-    if ([scenario() isEqual:@"preview-tap"]) {
+    if ([scenario() isEqual:@"preview-tap"] || [scenario() isEqual:@"preview-pending"]) {
         [NSUserDefaults.standardUserDefaults setBool:YES forKey:SGKeyHideFullScreenCover];
     }
     [NSUserDefaults.standardUserDefaults setBool:!([scenario() isEqual:@"video-native"] || [scenario() isEqual:@"settings-pending-redesigned"]) forKey:@"spotifyglass.redesign"];
@@ -6066,7 +6184,7 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
         for (NSString *key in @[SGRKeyPlayerAnimatedStill, SGRKeyPlayerAnimatedVisualiser, SGRKeyPlayerHideShuffle, SGRKeyPlayerHideRepeat,
                                 SGKeyHideVideoSwitch, SGRKeyPlayerHeaderGlass, SGRKeyPlayerStarAdd]) [store removeObjectForKey:key];
     }
-    [NSUserDefaults.standardUserDefaults setBool:([scenario() hasPrefix:@"lyric-line"] || [scenario() isEqual:@"preview-tap"]) forKey:SGRKeyPlayerLyricLine];
+    [NSUserDefaults.standardUserDefaults setBool:([scenario() hasPrefix:@"lyric-line"] || [scenario() isEqual:@"preview-tap"] || [scenario() isEqual:@"preview-pending"]) forKey:SGRKeyPlayerLyricLine];
     if ([scenario() hasPrefix:@"lyric-line"]) {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.redesign.lyricsTranslation"];
         SGRSetPlayerLineSmall(NO);

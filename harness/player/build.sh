@@ -85,7 +85,7 @@ compile -target arm64-apple-ios17.0-simulator -fobjc-arc -g -O0 \
     "$(dirname "$0")/stubs-automix.m" "$(dirname "$0")/automix-scenario.m" "$(dirname "$0")/share-check.m" "$(dirname "$0")/background-check.m" \
     "$SRC"/Redesigned/Player/ShareCards.m "$SRC"/Redesigned/Lyrics/LyricCardPicker.m \
     "$SRC"/Redesigned/Player/PlayerQueue.m "$SRC"/Shared/AutoMix/AutoMixSettings.m "$SRC"/Shared/AutoMix/AutoMixPreview.m \
-    "$OUT"/gen/*.m "$SRC"/Redesigned/Player/PlayerLyricFit.m \
+    "$OUT"/gen/*.m "$SRC"/Redesigned/Player/PlayerLyricFit.m "$SRC"/Redesigned/Player/PlayerProgress.m \
     "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGLocalize.m \
     "$SRC"/Core/SGBackdrop.m "$SRC"/Core/SGFlagForce.m "$SRC"/Core/SGUIMode.m "$SRC"/Core/SGFileHash.m "$SRC"/Core/SGOptionalWork.m \
     "$SRC"/Shared/Gestures/GestureHold.m \

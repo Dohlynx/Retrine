@@ -204,6 +204,7 @@ BOOL SGRPlayerLyricsOpen(void);
 BOOL SGRPlayerLyricsFadeView(UIView *view, BOOL fits);
 // Shows them, or puts the cover back; does nothing when there are none to show.
 void SGRPlayerToggleLyrics(void);
+void SGRPlayerOpenPreviewLyrics(UIView *preview);
 // Called by PlayerLyrics.x whenever either of those two changed, so the footer's lyrics glyph follows
 // (PlayerFooter.x). It returns at once when nothing changed.
 void SGRPlayerLyricsChanged(void);

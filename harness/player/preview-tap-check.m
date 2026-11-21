@@ -1,8 +1,12 @@
 #import <UIKit/UIKit.h>
 #import "../harness-fail.h"
 #import "Redesigned/Player/Player.h"
+#import "Shared/Lyrics/Lyrics.h"
+#import "Redesigned/Kit/SGRBridges.h"
+#import "Shared/Player/PlayerState.h"
 
 extern void SGHarnessTap(UIWindow *, CGPoint);
+extern void SGRHarnessSetTrack(NSString *, NSString *, BOOL);
 
 // Unlike the static cover used for screenshots, this cell must be selectable by UIKit.
 @interface PreviewTapPager : NSObject <UICollectionViewDataSource, UICollectionViewDelegate>
@@ -44,13 +48,60 @@ static void tapPreview(UIView *preview, dispatch_block_t settled) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), settled);
 }
 
-void SGHarnessCheckPreviewTap(UIView *preview, dispatch_block_t givePreviewBack) {
+static void pendingCase(UIView *preview, UIViewController *player, NSUInteger step) {
+    SGKaraokeKeepLines(SGKaraokePlayingTrack(), nil);
+    HARNESS_CHECK(!SGRPlayerLyricsAvailable());
+    tapPreview(preview, ^{
+        HARNESS_CHECK(!SGRPlayerLyricsOpen() && pager.selections == 1);
+        dispatch_block_t deliver = ^{
+            SGKaraokeKeepLines(SGKaraokePlayingTrack(), @[]);
+            [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLinesKeptNotification object:SGKaraokePlayingTrack()];
+            if (step == 3 && getenv("HARNESS_NO_ARTWORK")) {
+                HARNESS_CHECK(!SGRNowPlayingArtwork(NULL, NULL) && !SGRPlayerLyricsOpen() && pager.selections == 1);
+                SGRSetNowPlayingArtwork([UIImage systemImageNamed:@"music.note"], SGURIString(SGPlayerState().track.URI), SGRArtworkQualityHigh);
+            }
+            HARNESS_CHECK(SGRPlayerLyricsOpen() == (step == 3) && pager.selections == 1);
+            if (step == 3) {
+                NSLog(@"[harness] preview-pending checks: 4 of 4 right -- PASS");
+                exit(0);
+            }
+            pendingCase(preview, player, step + 1);
+        };
+        if (step == 0) {
+            // A touch outside the covers, without consuming it or asking the player to do anything.
+            UIButton *button = [[UIButton alloc] initWithFrame:CGRectMake(20,100,50,50)];
+            [player.view.window addSubview:button];
+            [button addAction:[UIAction actionWithHandler:^(UIAction *action) {
+                [(UIView *)action.sender removeFromSuperview];
+                deliver();
+            }] forControlEvents:UIControlEventTouchUpInside];
+            SGHarnessTap(button.window, button.center);
+        } else {
+            if (step == 1) {
+                SGRHarnessSetTrack(@"spotify:track:other", nil, NO);
+                SGRHarnessSetTrack(@"spotify:track:harnessA", nil, NO);
+            } else if (step == 2) {
+                [player viewWillDisappear:NO];
+                [player viewDidDisappear:NO];
+                [player viewWillAppear:NO];
+                [player viewDidLayoutSubviews];
+            }
+            deliver();
+        }
+    });
+}
+
+void SGHarnessCheckPreviewTap(UIView *preview, UIViewController *player, dispatch_block_t givePreviewBack) {
     HARNESS_CHECK(preview.layer.mask && !SGRPlayerLyricsOpen());
     tapPreview(preview, ^{
         if (SGRPlayerLyricsOpen() || pager.selections != 1)
             HARNESS_FAIL(@"masked preview: lyrics open=%d, selections=%lu (wanted NO, 1)", SGRPlayerLyricsOpen(), (unsigned long)pager.selections);
         givePreviewBack();
         HARNESS_CHECK(!preview.layer.mask && SGRPlayerLyricsAvailable());
+        if ([NSProcessInfo.processInfo.environment[@"HARNESS_SCENARIO"] isEqual:@"preview-pending"]) {
+            pendingCase(preview, player, 0);
+            return;
+        }
         tapPreview(preview, ^{
             if (!SGRPlayerLyricsOpen() || pager.selections != 1)
                 HARNESS_FAIL(@"visible preview: lyrics open=%d, new selections=%lu (wanted YES, 0)", SGRPlayerLyricsOpen(), (unsigned long)(pager.selections - 1));
