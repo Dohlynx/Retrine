@@ -56,6 +56,7 @@ static void syncBar(UIView *stockBar);
 static void noteGlassRow(void);
 static BOOL isTabButton(UIView *view);
 static BOOL isLitCopy(UIView *view, UIView *host);
+static UIView *platterOf(UIView *bar);
 
 #pragma mark - reading Spotify's items
 
@@ -1078,19 +1079,21 @@ static BOOL isUnclipped(UIView *view, UIView *top) {
 }
 
 // Expanding, the tab on the trailing circle goes back into the row (setMinimized). Its row button travels with the
-// circle's glyph but inside the main bar's platter, which grows from the leading circle and clips it until its edge has
-// passed the glyph, so the circle's button stays drawn and the row's hidden until the row's glyph is whole on screen;
-// then, the two glyphs on the same spot, the row's takes over. Watched frame by frame, as nothing in the spring says
-// when the platter's edge passes a glyph.
+// circle's glyph inside the main bar's platter, which grows from the leading circle: the platter clips the row's glyph
+// until its edge has passed it, and its glass would blur the circle's glyph if the circle stood under it. So the circle
+// stands over the main bar with its button drawn, the row's hidden, until the growing platter holds the whole circle
+// and the row's glyph, on the same spot, is whole; then the row's button takes over and the circle goes under the main
+// bar, which covers it to the end of the spring. Watched frame by frame, as nothing in the spring says when the
+// platter's edge passes the circle.
 @interface SGRHandOver : NSObject
-@property (nonatomic, weak) UIView *host, *circleBar;
+@property (nonatomic, weak) UIView *host, *rowBar, *circleBar;
 @property (nonatomic, copy) NSArray<UIView *> *rowButtons;   // the row's button and, for the selected tab, its lit copy
 @property (nonatomic, strong) CADisplayLink *link;
 @end
 
 static SGRHandOver *sg_handOver;
 
-// The pending hand over made now: when the row's glyph is whole, the spring ends or another change starts.
+// The pending hand over made now: when the platter holds the circle, the spring ends or another change starts.
 static void handOver(void) {
     SGRHandOver *pending = sg_handOver;
     if (!pending) return;
@@ -1101,12 +1104,20 @@ static void handOver(void) {
     SGForEachView(pending.circleBar, ^(UIView *v) {
         if (isTabButton(v)) v.hidden = YES;
     });
+    if (pending.rowBar && pending.circleBar) [pending.host insertSubview:pending.circleBar belowSubview:pending.rowBar];
+    pending.circleBar.userInteractionEnabled = YES;
 }
 
 @implementation SGRHandOver
 - (void)tick {
     UIView *glyph = glyphView(self.rowButtons.firstObject);
-    if (!glyph.window || !self.host || isUnclipped(glyph, self.host)) handOver();
+    UIView *rowPlatter = platterOf(self.rowBar), *circlePlatter = platterOf(self.circleBar);
+    if (!glyph.window || !self.host || !rowPlatter || !circlePlatter) {
+        handOver();
+        return;
+    }
+    CGRect row = CGRectInset(shownIn(rowPlatter, self.host), -0.5, -0.5), circle = shownIn(circlePlatter, self.host);
+    if (CGRectContainsRect(row, circle) && isUnclipped(glyph, self.host)) handOver();
 }
 @end
 
@@ -1122,8 +1133,11 @@ static void beginHandOver(UIView *host, SGRSystemTabBar *bar, UIView *circleBar,
         });
     }
     for (UIView *button in rowButtons) button.hidden = YES;
+    // Drawn in front only: a finger there is on the row's tab under it, its own tab already going back into the row.
+    circleBar.userInteractionEnabled = NO;
     SGRHandOver *pending = [SGRHandOver new];
     pending.host = host;
+    pending.rowBar = bar;
     pending.circleBar = circleBar;
     pending.rowButtons = rowButtons;
     pending.link = [CADisplayLink displayLinkWithTarget:pending selector:@selector(tick)];
@@ -1181,10 +1195,10 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         return;
     }
     // A tab moving between the row and the trailing circle rides on the bar that is on top, so the other bar's glass
-    // never covers its glyph. Minimizing, the circle comes out of the place the tab had in the row. Expanding, the
-    // circle goes under the main bar to where its glyph lands on the row's, which travels from where the circle's glyph
-    // was (moveFrom) and takes over once the growing platter shows it whole (SGRHandOver); the circle leaves as the
-    // spring ends (settle).
+    // never covers its glyph. Minimizing, the circle comes out of the place the tab had in the row, over the main bar.
+    // Expanding, the circle goes, still over the main bar, to where its glyph lands on the row's, which travels from
+    // where the circle's glyph was (moveFrom) and takes over once the growing platter holds the circle (SGRHandOver),
+    // the circle then going under the main bar; it leaves as the spring ends (settle).
     apartBar = objc_getAssociatedObject(stockBar, &kApartBarKey);
     __block BOOL handsOver = NO;
     [UIView performWithoutAnimation:^{
@@ -1201,7 +1215,7 @@ static void setMinimized(BOOL minimized, BOOL animated) {
                 apartBar.frame = CGRectOffset(apartBar.frame, to.x - from.x, to.y - from.y);
                 handsOver = YES;
             }
-            [host bringSubviewToFront:bar];
+            [host bringSubviewToFront:handsOver ? apartBar : bar];
             return;
         }
         if (!minimized || !apartBar || apartBar.hidden) return;
@@ -1266,13 +1280,12 @@ CGRect SGRTabBarGlassRow(UIView *view) {
     return [host convertRect:row toView:view];
 }
 
-// The widest glass platter UIKit drew on `bar`, in its coordinates; CGRectNull before it has drawn one.
-static CGRect platterOf(UIView *bar) {
-    __block CGRect widest = CGRectNull;
+// The widest glass platter UIKit drew on `bar`; nil before it has drawn one.
+static UIView *platterOf(UIView *bar) {
+    __block UIView *widest = nil;
     SGForEachView(bar, ^(UIView *v) {
         if (v == bar || v.hidden || ![NSStringFromClass(v.class) hasSuffix:@"PlatterView"]) return;
-        CGRect frame = [v convertRect:v.bounds toView:bar];
-        if (CGRectIsNull(widest) || frame.size.width > widest.size.width) widest = frame;
+        if (!widest || [v convertRect:v.bounds toView:bar].size.width > [widest convertRect:widest.bounds toView:bar].size.width) widest = v;
     });
     return widest;
 }
@@ -1297,8 +1310,9 @@ static void noteGlassRow(void) {
                 // Read only at its expanded frame's width: the main bar still growing back under a split bar is not.
                 CGFloat width = (i ? apart : main).size.width;
                 if (![bar isKindOfClass:SGRSystemTabBar.class] || bar.hidden || !bar.window || fabs(bar.bounds.size.width - width) >= 0.5) continue;
-                CGRect platter = platterOf(bar);
-                if (CGRectIsNull(platter)) continue;
+                UIView *platterView = platterOf(bar);
+                if (!platterView) continue;
+                CGRect platter = [platterView convertRect:platterView.bounds toView:bar];
                 bar.glassLeftPt = CGRectGetMinX(platter);
                 bar.glassRightPt = bar.bounds.size.width - CGRectGetMaxX(platter);
                 bar.glassBarWidthPt = bar.bounds.size.width;

@@ -1389,9 +1389,10 @@ Redesigned:
                   overshoot; at once under Reduce Motion), from what is on screen, so a change turned back half way
                   carries on from there. A tab keeps one glyph as it moves between the row and a circle: its new button
                   starts where its old one's glyph was, on either bar; Search's circle comes out of Search's place in
-                  the row, and expanding goes back to it under the growing main bar, its glyph drawn until the row's
-                  Search button, travelling with it, is whole inside the main platter and takes over, and leaves as the
-                  spring ends. No glass fades. While the bar is minimized the card follows its slot when the trailing
+                  the row, over the shrinking main bar, and expanding goes back to it over the growing main bar, its
+                  glyph drawn until the main platter holds the whole circle; then the row's Search button, travelling
+                  with it, takes over, the circle goes under the main bar, and it leaves as the spring ends. Search's
+                  glyph is never under another bar's glass. No glass fades. While the bar is minimized the card follows its slot when the trailing
                   circle comes or goes with Spotify's list of tabs. The selected tab shows Spotify's filled glyph and the others their outlines, also
                   after the bar minimizes and expands and when a tab's view is handed another icon: an older
                   SPTEncoreIcon gives its filled variant through -active, and 9.1.90's Swift Encore.Icon is drawn once with

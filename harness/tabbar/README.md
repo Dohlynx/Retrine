@@ -181,11 +181,15 @@ content viewer, a finger on it landing on its bar, and the card in its slot, 8 p
 minimize and an expand each turned back 0.12 s in, minimizes and expands on Search (Home leading, Search selected on
 the trailing circle), and taps the trailing circle for real: Search picked, the bar expanded. Every frame of each move,
 the tap's expansion too, is sampled: Search drawn exactly once (its buttons on either bar and the pictures of buttons
-that went, each glyph counted by the share of it the screen shows: the part left inside every view above it that clips,
-by its bounds or its mask, times its opacity, drawn above 2%) and that one shown at 90% or more, so a glyph clipped
-by its platter is not counted as drawn; its glyph moving no more than a spring does (50 pt a frame), the trailing
+that went, each glyph counted by the share of it the screen shows clearly: the part left inside every view above it
+that clips, by its bounds or its mask, and outside the glass platter, a capsule, of every bar standing over its own in
+the bars' host, times its opacity, drawn above 2%) and that one shown at 90% or more, so a glyph clipped by its platter
+or blurred under another bar's glass is not counted as drawn; its glyph moving no more than a spring does (50 pt a frame), the trailing
 circle drawn on Search's glyph the first frame it shows, and no platter partly faded. `labels` shows the tabs' names.
-`splitcreate` makes Create a split tab, `nosearch` hides Search, `own` hides it and adds a tab of the mod's own named
+With `middle labels` it also
+taps the circle 0.15 s into an expand, 8 pt in from its drawn left side, and asserts the tab picked is the one the
+expanded row picks for a tap at that point (before the fix the circle, drawn over the row for the expand, took the
+touch and nothing was picked). `splitcreate` makes Create a split tab, `nosearch` hides Search, `own` hides it and adds a tab of the mod's own named
 Search: the minimized bar as before, Create's circle or none, the card to 21 pt in. `leaves` hides Spotify's Search
 in its row while the bar is minimized and shows it again, as Spotify's list of tabs changing does: the trailing circle
 goes and comes, and the card takes the slot each time (290 pt without the circle, 220 pt beside it).
@@ -195,7 +199,9 @@ there (no trailing circle, Search not drawn at all once the bar minimized, the c
 `splitcreate`, `nosearch` and `own`, which keep the bar as it was, passed. A first version that hid the circle's
 Search at once on expanding failed the visible-share count (no Search drawn for 6 or 7 frames of each expand, the row's
 glyph still clipped by the growing platter), and one whose card followed only the expanded row's edges failed `leaves`
-(the card kept 220 pt with the circle gone). After the change all pass; Search moves some 32 pt a frame at most across
+(the card kept 220 pt with the circle gone). With the glass counted, the tree whose circle went under the main bar at
+once on expanding failed every expand (the growing platter's glass over the circle's Search for 1 to 3 frames, a
+screen recording showing a faint ring there). After the change all pass; Search moves some 32 pt a frame at most across
 the row with `middle`.
 
 What it does not cover: Spotify's own chrome, which is Swift with no symbols (the constraints above

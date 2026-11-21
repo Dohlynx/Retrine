@@ -42,6 +42,7 @@ run "PASS all search" search
 run "PASS all search" search find
 run "PASS all search" search labels
 run "PASS all search" search middle
+run "PASS all search" search middle labels
 run "PASS all search" search splitcreate
 run "PASS all search" search nosearch
 run "PASS all search" search own

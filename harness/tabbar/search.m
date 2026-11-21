@@ -146,8 +146,41 @@ static CGRect shownFrame(UIView *view, UIView *top) {
     return [layer convertRect:layer.bounds toLayer:topLayer];
 }
 
-// How much of a view the screen shows: the part of its shown frame left inside every view above it that clips (its
-// bounds, or its layer's mask), times its opacity through the chain. NAN for a view the screen has not drawn yet.
+static UIView *barHost(void);
+
+// The glass of the bars drawn over `view`: the platters, in the window, of every bar standing after the one it is in (or
+// after the picture it is) among the bars' host's views. A glyph under another bar's glass shows only blurred through it.
+static NSArray<NSValue *> *glassOver(UIView *view) {
+    UIView *host = barHost(), *own = view;
+    while (own && own.superview != host) own = own.superview;
+    NSMutableArray<NSValue *> *glass = [NSMutableArray array];
+    if (!own) return glass;
+    NSArray<UIView *> *views = host.subviews;
+    for (NSUInteger i = [views indexOfObject:own] + 1; i < views.count; i++) {
+        if (![views[i] isKindOfClass:UITabBar.class]) continue;
+        SGForEachView(views[i], ^(UIView *v) {
+            if (![NSStringFromClass(v.class) hasSuffix:@"PlatterView"] || shownOpacity(v) <= kDrawnFraction) return;
+            CGRect frame = shownFrame(v, view.window);
+            if (!CGRectIsNull(frame)) [glass addObject:[NSValue valueWithCGRect:frame]];
+        });
+    }
+    return glass;
+}
+
+// UIKit's glass platters are capsules: a circle on a minimized bar, a row with round ends expanded.
+static BOOL inCapsule(CGPoint point, CGRect capsule) {
+    CGFloat radius = MIN(capsule.size.width, capsule.size.height) / 2;
+    CGFloat x = MIN(MAX(point.x, CGRectGetMinX(capsule) + radius), CGRectGetMaxX(capsule) - radius);
+    CGFloat y = MIN(MAX(point.y, CGRectGetMinY(capsule) + radius), CGRectGetMaxY(capsule) - radius);
+    return hypot(point.x - x, point.y - y) <= radius;
+}
+
+// How finely shownFraction samples a view's frame, points along each side.
+static const NSUInteger kShownSamples = 20;
+
+// How much of a view the screen shows clearly: the share of its shown frame left inside every view above it that clips
+// (its bounds, or its layer's mask) and under no other bar's glass (glassOver), times its opacity through the chain.
+// NAN for a view the screen has not drawn yet.
 static CGFloat shownFraction(UIView *view) {
     UIWindow *window = view.window;
     CGFloat opacity = shownOpacity(view);
@@ -168,7 +201,19 @@ static CGFloat shownFraction(UIView *view) {
         if (mask) seen = CGRectIntersection(seen, [layer convertRect:mask.frame toLayer:windowLayer]);
         if (CGRectIsNull(seen)) return 0;
     }
-    return seen.size.width * seen.size.height / (whole.size.width * whole.size.height) * opacity;
+    NSArray<NSValue *> *glass = glassOver(view);
+    NSUInteger clear = 0;
+    for (NSUInteger i = 0; i < kShownSamples; i++) {
+        for (NSUInteger j = 0; j < kShownSamples; j++) {
+            CGPoint point = CGPointMake(CGRectGetMinX(whole) + (i + 0.5) * whole.size.width / kShownSamples,
+                                        CGRectGetMinY(whole) + (j + 0.5) * whole.size.height / kShownSamples);
+            if (!CGRectContainsPoint(seen, point)) continue;
+            BOOL covered = NO;
+            for (NSValue *over in glass) covered |= inCapsule(point, over.CGRectValue);
+            clear += !covered;
+        }
+    }
+    return (CGFloat)clear / (kShownSamples * kShownSamples) * opacity;
 }
 
 static UIView *barHost(void) {
@@ -224,8 +269,8 @@ static UIView *barHost(void) {
 
     // Search's glyphs on screen: its buttons on either bar, and the pictures of its buttons that went. Where its glyph
     // is: unknown the frame a button is made, before the screen has drawn it.
-    // A glyph counts as drawn by the part of it the screen shows, clipped by its platter and the views above it; one
-    // not drawn yet counts in full.
+    // A glyph counts as drawn by the part of it the screen shows clearly (shownFraction); one not drawn yet counts in
+    // full.
     NSUInteger count = 0;
     CGFloat clearest = 0;
     CGPoint glyph = CGPointMake(NAN, NAN);
@@ -292,7 +337,7 @@ static UIView *barHost(void) {
           self.largestStep, (unsigned long)self.fadedGlass, self.comesOutAt);
     if (self.frames < 10) CASE_FAIL(@"%@: only %lu frames sampled", self.moment, (unsigned long)self.frames);
     if (self.fewest != 1 || self.most != 1) CASE_FAIL(@"%@: Search drawn %lu to %lu times in a frame, not once", self.moment, (unsigned long)self.fewest, (unsigned long)self.most);
-    if (self.faintFrames) CASE_FAIL(@"%@: Search's glyph mostly clipped or clear in %lu frames", self.moment, (unsigned long)self.faintFrames);
+    if (self.faintFrames) CASE_FAIL(@"%@: Search's glyph mostly clipped, under another bar's glass or clear in %lu frames", self.moment, (unsigned long)self.faintFrames);
     if (self.largestStep > kLargestStepPt) CASE_FAIL(@"%@: Search's glyph jumped %.1f pt in a frame", self.moment, self.largestStep);
     if (self.fadedGlass) CASE_FAIL(@"%@: glass partly faded in %lu frames", self.moment, (unsigned long)self.fadedGlass);
     if (comesOut && !(self.comesOutAt <= kComesOutWithinPt)) CASE_FAIL(@"%@: the trailing circle was first shown %.1f pt from Search's glyph", self.moment, self.comesOutAt);
@@ -408,6 +453,26 @@ static void expectMinimized(NSString *moment, NSString *leading, NSString *trail
 
 #pragma mark - the run
 
+// `middle labels`: a finger on the row this far into an expand, on the circle carrying Search back across the row, picks
+// the tab the expanded row picks for the same point: the circle is drawn there, the row's tab is what is under it.
+static const double kTapIntoExpandS = 0.15;
+static CGPoint sgTapMidExpand;
+static NSString *sgPickedMidExpand;
+
+static void tapOnCircleMidExpand(void) {
+    UIWindow *window = sgStock.window;
+    NSArray<UITabBar *> *bars = shownBars();
+    if (bars.count != 2) CASE_FAIL(@"mid-expand: %lu bars, no circle beside the row", (unsigned long)bars.count);
+    UITabBar *circle = bars[0].items.count == 1 ? bars[0] : bars[1];
+    CGRect platter = shownFrame(platterOf(circle), window);
+    if (CGRectIsNull(platter)) CASE_FAIL(@"mid-expand: the circle not drawn yet");
+    // Inside the circle as drawn, off Search's glyph at its middle.
+    sgTapMidExpand = CGPointMake(CGRectGetMinX(platter) + kCardGapPt, CGRectGetMidY(platter));
+    printf("tapping (%.0f, %.0f) on the circle drawn at x %.0f to %.0f\n", sgTapMidExpand.x, sgTapMidExpand.y, CGRectGetMinX(platter), CGRectGetMaxX(platter));
+    fflush(stdout);
+    SGHarnessTap(window, sgTapMidExpand);
+}
+
 static void runSteps(NSArray<NSArray *> *steps, NSUInteger index) {
     if (index >= steps.count) return;
     dispatch_block_t block = steps[index][1];
@@ -516,7 +581,32 @@ void SGHarnessRunSearch(UIView *stockBar) {
         return;
     }
 
-    runSteps(@[
+    NSArray<NSArray *> *tapMidExpand = !(said(@"middle") && said(@"labels")) ? @[] : @[
+        @[@(settle), ^{ pick(@"Home"); }],
+        @[@(settle), ^{ SGRSetTabBarMinimized(YES, YES); }],
+        @[@(settle), ^{
+            expectMinimized(@"minimized for a tap mid-expand", @"Home", @"Search", NO);
+            SGRSetTabBarMinimized(NO, YES);
+            after(kTapIntoExpandS, ^{ tapOnCircleMidExpand(); });
+        }],
+        // The same point tapped on the expanded row, from Home again.
+        @[@(settle), ^{
+            if (SGRTabBarMinimized()) CASE_FAIL(@"after a tap mid-expand: still minimized");
+            sgPickedMidExpand = selectedName();
+            pick(@"Home");
+            SGHarnessTap(sgStock.window, sgTapMidExpand);
+        }],
+        @[@(settle), ^{
+            NSString *atRest = selectedName();
+            if ([atRest isEqualToString:@"Home"]) CASE_FAIL(@"a tap at rest at %@ picked nothing", NSStringFromCGPoint(sgTapMidExpand));
+            if (![sgPickedMidExpand isEqualToString:atRest]) {
+                CASE_FAIL(@"a tap mid-expand at %@: %@ selected, the expanded row picks %@ there", NSStringFromCGPoint(sgTapMidExpand), sgPickedMidExpand, atRest);
+            }
+            printf("PASS a tap on the circle mid-expand: %s, as on the expanded row\n", atRest.UTF8String);
+            fflush(stdout);
+        }],
+    ];
+    runSteps([@[
         @[@0, ^{
             expectExpanded(@"at rest", @"Home");
             [sampler begin:@"minimize on Home"];
@@ -581,7 +671,6 @@ void SGHarnessRunSearch(UIView *stockBar) {
         @[@(1.2), ^{
             [sampler endExpectingCircleToComeOut:NO];
             expectExpanded(@"after a tap on the trailing circle", @"Search");
-            finish();
         }],
-    ], 0);
+    ] arrayByAddingObjectsFromArray:[tapMidExpand arrayByAddingObject:@[@0, ^{ finish(); }]]], 0);
 }
