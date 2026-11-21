@@ -919,7 +919,8 @@ Shared:
                   which selected the cell and opened the same viewer whatever the switch said (issue #36). In the
                   redesign a tap on a showing preview opens the lyrics instead (PlayerLyricLine.x's SGRPreviewTap,
                   which waits for the Gestures double tap and leaves a preview the lyric line hid alone);
-                  `harness/player/ui-check.py preview-tap` sends the tap.
+                  If lyrics are still coming, the tap waits for that track; another touch, a skip or leaving the player
+                  cancels it. `harness/player/ui-check.py preview-tap preview-pending` sends the taps.
                   The sleep timer (SleepTimer.m, set from the Live Activity) pauses Spotify at a time, at the end of
                   the track or at the end of the album or playlist, the last track of it found by the tracks to come
                   that are neither queued by hand nor autoplay's (SPTPlayerTrack's provider), or by the next one
@@ -1373,7 +1374,8 @@ Redesigned:
                   accessibility sees, so Spotify's text, its accessibility and its drawing stay Spotify's; the first
                   value, a label just moved into its window, a change within 0.15 s of the last (a seek or a scrub) and
                   a text with a right-to-left run are shown at once, Reduce Motion crossfades in place, and nothing runs
-                  between changes (SGRRollingDigits.m; SGRRestyle.m skips repeat writes from the same text setter
+                  between changes (SGRRollingDigits.m reuses digit images and equal-width time columns until their style changes;
+                  SGRRestyle.m skips repeat writes from the same text setter
                   if the label still holds the mapped output; it reports other writes and each
                   move to or out of a window), checked on the Mac by harness/player-refinements/. And a live preview
                   card that leads the redesign's Playlists, Home, Search, Albums, Artists and Library pages (SGRPagePreview.h):
@@ -1408,8 +1410,8 @@ Redesigned:
                   of the mod's own is never it), drawn selected when it is the tab you are on; at the leading end the
                   tab you are on, or when that is the trailing one the first other tab of the main bar. The now playing
                   card stands between the circles, or with no trailing circle runs to the bar's trailing inset. A tap on
-                  the trailing circle opens its tab as a split tab's circle does, and a scroll back up, its top, another
-                  tab or the player brings the bar back (TabBarMinimize.x, MinimizeStep.h; the Player page's Apple
+                  the trailing circle opens its tab as a split tab's circle does, also after the tab was left from elsewhere, and a scroll back up, its top, another
+                  tab, the player or a window widened to a regular width brings the bar back (TabBarMinimize.x, MinimizeStep.h; the Player page's Apple
                   Music style). Spotify's container is no UITabBarController, so UIKit's tabBarMinimizeBehavior and
                   bottomAccessory cannot do it. The bars, their circles and the card move as one, on one spring of their own (SGRMotionBar, 0.26 s, no
                   overshoot; at once under Reduce Motion), from what is on screen, so a change turned back half way
@@ -1433,20 +1435,20 @@ Redesigned:
                   hidden or not, and the leading circle says it shows all tabs. Laid out on
                   the Mac against harness/tabbar/ (`mini`; a tap on the leading circle `tap`, real flings that turn
                   the bar half way `turns`, a minimize from inside Spotify's own animations `nested`, every frame of
-                  the move sampled `motion`, Search on the trailing circle and drawn once through every move `search`,
+                  the move sampled `motion`, Search on the trailing circle and drawn once through every move `search`, what an earlier state leaves `states`,
                   one expand recorded off the screen frame by frame by harness/tabbar/capture.sh),
                   the scroll's steps checked by harness/tabbar/minimize-check.c
     NowPlayingBar/ the glass now playing bar (NowPlayingBar.x). A regular-width iPad automatically gets a capsule
                   with shuffle, repeat, lyrics and queue alongside artwork, title and play. Shuffle and repeat use
                   Spotify's player commands; lyrics opens the player on its embedded lyrics, and queue opens the
-                  existing Playing Next sheet. The capsule grows toward, but never over, the adjacent tab platter.
+                  existing Playing Next sheet. The capsule grows toward, but never within 16 pt of, the nearest tab platter seen on its row, a split tab's circle included.
                   Device and add step aside; optional Next remains. Compact-width iPad and iPhone keep the card.
                   Capsule commands mirror with the window's direction. Play and inactive commands are white;
                   shuffle and repeat use the accent only while Spotify reports them active.
                   Following the adjacent tab platter reacts to changed geometry, not repeated assignments of the
                   same frame, bounds or center: those KVO setter notifications must not start another bar layout.
                   Spotify's device button on it is hidden unless switched back on, as the Music app's mini player has none
-                  (BarConnect.x, its own key and its own row on the Player page, apart from the native look's). Unless
+                  (BarConnect.x, its own key and its own row on the Player page, apart from the native look's); the bar at the top of Spotify's sheets (the DJ request one) keeps it. Unless
                   switched off a Next button of the mod's stands after Spotify's button stack, last in the row that holds
                   the track's information and that stack, as large as play's item (its touch target at least 44x44 pt,
                   the part outside Spotify's 40 pt row handed to it by the page's hit test), and asks the player for the next
@@ -1498,7 +1500,7 @@ Redesigned:
                   Spotify's rows show the last
                   complete set stored for that kind of track (spotifyglass.redesign.player.menuRows.<kind>), or the
                   system's loading row the first time, and are put right in place as the live rows come. A page's ⋯
-                  works the other way round: its tap opens Spotify's sheet, presented unanimated in a container hidden
+                  works the other way round: its tap (claimed as it fires, so a press let go off the ⋯ claims nothing, and claimed by one sheet only) opens Spotify's sheet, presented unanimated in a container hidden
                   from the presented controller's viewWillAppear: on, and the menu comes from an invisible button
                   inside the ⋯ that takes touches only while it is up, opened with -performPrimaryAction (else
                   UIContextMenuInteraction's private _presentMenuAtLocation:). Spotify's rows, read off the sheet's
@@ -1545,6 +1547,17 @@ Redesigned:
                   fill ends square inside the round track. They are translucent: the fill a light white the background
                   shows through, the track dimmer. Both progress sliders skip playback updates within the same
                   device pixel, never rounding Spotify's value or filtering tap-to-seek, animated, tracking or off-window sets.
+                  PlayerProgress.m stops the work upstream when a NowPlaying_ElementsImpl duration tracker
+                  has written only invisible views. The mini bar rests under the settled player, detached
+                  time labels rest until mounted, and the player's own slider rests after the lyrics controls
+                  finish fading, not merely because lyrics opened. A reveal refreshes from Spotify's clock
+                  before the controls return. Spotify's own pause request is kept independently; the sticky
+                  header, unrecognized links and links with no known output stay under Spotify's control.
+                  Visibility and layout events drive this; there is no polling timer.
+                  A visible tracker with a slider asks for 10 Hz only if its track advances at most
+                  ten device pixels per second. A scrub, unknown geometry or duration, or a faster
+                  bar uses Spotify's requested range; a label-only tracker keeps its range. Settled
+                  callbacks forward without rediscovering the outputs or observing animated digit labels.
                   Both track colors are more opaque under Increase Contrast (SGRPlayerBarFill,
                   SGRPlayerBarTrack). A finger dragging either thickens its track 1.75 times, to 12 pt, about its middle
                   (SGRPlayerBarDragHeight) and lights the fill whole white: the progress bar's as a rail of the mod's own
@@ -1733,7 +1746,7 @@ Redesigned:
                   on Spotify 9.2.0 the floating unit is inside the bottom stack. If Spotify retains a nonempty
                   strip above the title after the button is removed, it still explains a smaller centered
                   native square. The natural side is the column width; the top stays at the native lifted,
-                  header-safe edge. With Lyrics Line off and the video switch hidden, an allocated but empty unit
+                  header-safe edge. When Lyrics Line reserves no artwork space and the video switch is hidden, an allocated but empty unit
                   costs the artwork no width: the picture fills the normal column without moving the stack,
                   unless Spotify's own lyric preview is showing beside that tilt. Showing the switch or
                   another visible element keeps Spotify's square; changes in the floating unit, including
@@ -1765,7 +1778,7 @@ Redesigned:
                   again from every update at the next thing that can change what it draws — the next portion, the next
                   line's start, or any later line's sung end — never nearer than 20 ms and never aimed further than
                   0.5 s (with 0.1 s tolerance for a distant boundary because speed can change between reports; no timer
-                  while paused, hidden, without synced lines, or after the final portion is drawn),
+                  while paused, hidden (including under the expanded Queue sheet), without synced lines, or after the final portion is drawn),
                   with song time turned to wall time by the playback rate; no display link, which at 60 Hz would drag the
                   player's 120 Hz transitions down. A player report re-aims it when the rate changed (a pause or a
                   resume), and, paused, on any move of the place, else only when the position is more than 500 ms off
@@ -1814,7 +1827,8 @@ Redesigned:
                   they are for every song in it, SongLanguage.m; and Write Pronunciation and Explain References, which ask
                   the AI service picked from a submenu and keep its answer for the song), in the order of sizes the Lyrics page sets
                   (LyricsText.h). With the Lyrics page's Pronunciation on, a line in another alphabet has its reading in
-                  the pronunciation's own place in that order, at its size and look: the source's own pronunciation where
+                  the pronunciation's own place in that order, at its size and look, so the corner menu omits its
+                  Show/Hide Pronunciation action while that setting is on: the source's own pronunciation where
                   the line has one, else one generated in the alphabet chosen (Latin letters, or Hangul with that picked) as
                   timed words (SGLyricsPrepareExtras, Shared/Lyrics), each anchored by its source range to the lyric word it
                   spells, so it sits under that word, takes its clock and is swept with the line, even where every clock
@@ -1936,7 +1950,7 @@ Redesigned:
                   a glass pill in its cover's color with its name in bold on up to two lines; in FLEX builds a meter
                   of each scroll's frames and the hooks' time (Home.h lists its files)
     Search/       the Browse page decluttered to its category cards (an allow list of the list's cells: the watch feed
-                  carousels and promos collapse (each on a switch of the Search page, on until switched off, and back when it is off), and the cards move up by the spacing they leave), the header the way Home
+                  carousels and promos collapse (each on a switch of the Search page, on until switched off, and back when it is off), and the cards move up by the spacing they leave, the list's end with them), the header the way Home
                   has it without the camera, and each card as Liquid Glass tinted by its own color, read off the Box's
                   shape layer, its name the redesign's own label over Spotify's transparent one, Headline semibold (17 pt,
                   capped at Large) 12 pt in from the top leading corner on up to two lines on every card, where Spotify
