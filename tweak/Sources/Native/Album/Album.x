@@ -104,6 +104,7 @@ static const SGNativeSectionRule sections[] = {
     {@"Merch", SGHideAlbumMerch, NO},
     {@"You might also like", SGHideAlbumYouMightLike, NO},
     {@"의 곡 더 보기", SGHideAlbumMoreBy, NO, YES},
+    {@"콘서트", SGHideAlbumConcerts, NO},
     {@"굿즈", SGHideAlbumMerch, NO},
     {@"이건 어떠세요", SGHideAlbumYouMightLike, NO},
 };

@@ -46,6 +46,7 @@ static NSIndexPath *path(NSInteger item, NSInteger section) {
 static void checkAlbumHeadings(void) {
     for (NSArray *row in @[
         @[@"The Weeknd의 곡 더 보기", SGHideAlbumMoreBy, SGRKeyAlbumHideMoreBy],
+        @[@"콘서트", SGHideAlbumConcerts, SGRKeyAlbumHideConcerts],
         @[@"굿즈", SGHideAlbumMerch, SGRKeyAlbumHideMerch],
         @[@"이건 어떠세요", SGHideAlbumYouMightLike, SGRKeyAlbumHideYouMightLike],
         @[@"MORE BY The Weeknd", SGHideAlbumMoreBy, SGRKeyAlbumHideMoreBy],

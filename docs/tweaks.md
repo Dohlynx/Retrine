@@ -2028,8 +2028,8 @@ Redesigned:
                   by harness/album-credits/; a switch on the Albums page). Under the tracks
                   everything the server sends is dropped -- more by the artist, videos, concerts, merch, you might also
                   like, and whatever it adds next -- but the album's own line and its copyright, each section back
-                  once its switch on the Albums page is off. Both looks recognize the English headings and three
-                  Korean ones: “<artist>의 곡 더 보기”, “굿즈” and “이건 어떠세요”. Unrecognized headings follow
+                  once its switch on the Albums page is off. Both looks recognize the English headings and four
+                  Korean ones: “<artist>의 곡 더 보기”, “콘서트”, “굿즈” and “이건 어떠세요”. Unrecognized headings follow
                   Everything else in the redesign and are left alone in the native look. Album notes, from Apple Music's catalog, have a
                   place of their own on the Albums page (Under Play, Under tracks — the default — or Off; AlbumNotes.m):
                   Under Play an arranged sibling after the header in the page's own scrolling stack, Under tracks the

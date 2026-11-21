@@ -89,7 +89,7 @@ static void settle(UICollectionViewCell *cell, CGFloat natural, CGFloat lead, CG
 static const struct { __unsafe_unretained NSString *title, *key; BOOL prefix; __unsafe_unretained NSString *korean; } kSections[] = {
     {@"More by ", SGRKeyAlbumHideMoreBy, YES, @"의 곡 더 보기"},
     {@"Related Music Videos", SGRKeyAlbumHideVideos, NO},
-    {@"Concerts", SGRKeyAlbumHideConcerts, NO},
+    {@"Concerts", SGRKeyAlbumHideConcerts, NO, @"콘서트"},
     {@"Merch", SGRKeyAlbumHideMerch, NO, @"굿즈"},
     {@"You might also like", SGRKeyAlbumHideYouMightLike, NO, @"이건 어떠세요"},
 };
