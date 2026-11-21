@@ -77,17 +77,18 @@ const CGFloat SGRRadiusThumb = 6;
 // While covers are held none lands, as a slow download's; each fetch's progress is kept by the song's title.
 static UIImage *fetchedCover;
 static BOOL coversHeld;
+static BOOL offline;
 static NSMutableDictionary<NSString *, NSProgress *> *coverFetches;
 static NSCountedSet<NSString *> *coverAsks;
 NSProgress *SGRPlayerTrackCover(SPTPlayerTrack *track, BOOL small, void (^done)(UIImage *image)) {
-    BOOL named = ![track.trackTitle isEqual:@"Current"];
+    if ([track.trackTitle isEqual:@"Current"]) { done(nil); return nil; }
     NSProgress *progress = [NSProgress discreteProgressWithTotalUnitCount:1];
     if (!coverFetches) coverFetches = [NSMutableDictionary dictionary];
     if (!coverAsks) coverAsks = [NSCountedSet set];
     coverFetches[track.trackTitle] = progress;
     [coverAsks addObject:track.trackTitle];
     // On the run loop rather than the main queue, so a check waiting in the run loop (spin) sees it land.
-    if (!coversHeld) CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{ if (!progress.cancelled) done(named ? fetchedCover : nil); });
+    if (!coversHeld) CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{ if (!progress.cancelled) done(offline ? nil : fetchedCover); });
     return progress;
 }
 NSNotificationName const SGAutoMixTransitionDidChangeNotification = @"queue-test.mix";
@@ -97,7 +98,7 @@ static void check(BOOL condition, NSString *message) {
     checked++;
     printf("%s %s\n", condition ? "PASS" : "FAIL", message.UTF8String);
     fflush(stdout);
-    if (!condition) exit(1);
+    if (!condition) HARNESS_FAIL(@"%@", message);
 }
 static QueueTrack *song(NSString *uid, NSString *title) {
     QueueTrack *track = [QueueTrack new];
@@ -228,13 +229,22 @@ static void run(void) {
     [screen.navigationController pushViewController:[UIViewController new] animated:NO];
     spin(0.3);
     check(keptCover.cancelled, @"Playing Next leaving the screen cancels the covers still coming");
-    // Back on screen with the same list and cells: the cancelled cover is asked for once more and lands.
+    // Back with the same cells: first the cancelled request is retried offline, then the failed request online.
     coversHeld = NO;
+    offline = YES;
+    NSUInteger cancelledAsks = [coverAsks countForObject:@"Kept"];
+    [screen.navigationController popViewControllerAnimated:NO];
+    spin(0.3);
+    check(shown(row(2, 0)) && shown(row(2, 0)) != fetchedCover && [coverAsks countForObject:@"Kept"] == cancelledAsks + 1,
+          @"back on screen offline, the cancelled cover is requested again but stays a placeholder");
+    [screen.navigationController pushViewController:[UIViewController new] animated:NO];
+    spin(0.3);
+    offline = NO;
     NSUInteger keptAsks = [coverAsks countForObject:@"Kept"];
     [screen.navigationController popViewControllerAnimated:NO];
     spin(0.3);
     check(shown(row(2, 0)) == fetchedCover && [coverAsks countForObject:@"Kept"] == keptAsks + 1,
-          [NSString stringWithFormat:@"Playing Next shown again asks once more for a cover cancelled while away and shows it (%lu asks)",
+          [NSString stringWithFormat:@"Playing Next shown again retries the failed cover once and shows it (%lu asks)",
                                      (unsigned long)([coverAsks countForObject:@"Kept"] - keptAsks)]);
     NSUInteger asksShown = coverAsks.count, totalAsks = 0;
     for (NSString *title in coverAsks) totalAsks += [coverAsks countForObject:title];

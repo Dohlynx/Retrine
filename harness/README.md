@@ -122,9 +122,11 @@ their check executable in the workflow.
 | `palette/build.sh` | Generated image with asserted edge/main colors. |
 | `palette/field-check.sh` | Catalyst player field palette requests across mode changes and stale replies. |
 | `pitch/build.sh` | Synthetic sine pitch/speed assertions, no song argument. |
-| `player/title-notification-check.sh` | Real Logos controller with offline notification fixtures. |
+| `player/queue-check.sh` | Playing Next history, selection and cover delivery, including cancellation and a retry after an offline failure. |
+| `player/title-notification-check.sh` | Player labels enabled live from an all-off launch and landscape title notifications, using offline fixtures. |
 | `player/title-style-check.sh` | Catalyst: the player's title and artist type through the real `PlayerTitle.x`, Korean text, Spotify's setters, lyrics 17/17 and Spotify's family kept. |
-| `now-playing-bar/check.sh` | Catalyst title and artists split of the redesigned now playing bar through Logos: titles with and without " • ", with and without a device line, neighbour pages and an unknown track. |
+| `now-playing-bar/check.sh` | Catalyst title and artist split through Logos: device and plain lines, neighbour pages, unknown tracks, and live title setting changes with the same player state. |
+| `album/cover-check.sh` | Album artwork reading and hero rendering, including late images from a replaced header view. |
 | `artwork-clear/build.sh` | Clearing downloaded animated covers and artist answers in a sandboxed Caches folder: size, alert, Cancel, leased clips, stale transfers and lookups, failure reporting; songs, chosen covers, edits and lyrics untouched. |
 | `fonts/build.sh` | Catalyst `FontLibrary.m` and the Free fonts page with Core Text faked at its two entry calls: installed families register off main, publish on main, never twice, and a removal is never overridden by a late publish; the real Font page (free and imported families) opens and the Free fonts page finishes a download while registrations are held, a block queued on main runs before each release, and the previews and the chosen font update after; a hidden Font page reloads nothing. |
 | `gesture-hold/check.sh` | Mac check of the hold-to-play-faster helpers (`GestureHold.m`): defaults, index to speed, clamping, independence from the double tap, label and announcement text. |

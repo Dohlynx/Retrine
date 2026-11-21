@@ -639,6 +639,19 @@ static void checkDarkPortrait(void) {
 int main(int argc, char *argv[]) {
     @autoreleasepool {
         NSString *mode = argc > 1 ? @(argv[1]) : @"";
+        if ([mode isEqual:@"rebuilt"]) {
+            Page p = makePage(solidDarkCover());
+            UIImageView *current = [[UIImageView alloc] initWithFrame:p.source.frame];
+            current.image = colourfulCover();
+            [p.hero followCover:current];
+            UIImageView *picture = [p.hero valueForKey:@"picture"];
+            HARNESS_CHECK(picture.image == current.image);
+            current.image = solidRedCover();
+            HARNESS_CHECK(picture.image == current.image);
+            p.source.image = solidLightCover();
+            if (picture.image != current.image) HARNESS_FAIL(@"Retired header cover replaced the hero");
+            return 0;
+        }
         if ([mode isEqualToString:@"off"]) {
             HARNESS_CHECK(argc > 2);
             Page p = makePage(colourfulCover());

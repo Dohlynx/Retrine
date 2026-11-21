@@ -63,7 +63,20 @@ SPTPlayerState *SGPlayerState(void) { return sg_state; }
 static SGHarnessPlayer *sg_player;
 id SGPlayer(void) { return sg_player; }
 
+#import "Core/SGCore.h"
+#import "Shared/Lyrics/Lyrics.h"
+#import "Shared/LyricsTranslation/LyricsTranslation.h"
+static BOOL simplify;
+static BOOL barFlag(NSString *key, BOOL fallback) {
+    if ([key isEqual:SGKeyLyricsSimplifyTitles]) return simplify;
+    if ([key isEqual:SGKeyLyricsTranslateTitles]) return NO;
+    return SGFlag(key, fallback);
+}
+#define SGRedesignedUI() YES
+#define SGFlag barFlag
 #include "NowPlayingBar.gen.m"
+#undef SGFlag
+#undef SGRedesignedUI
 #include "../shared/bar-title-notifications.inc"
 
 // The player owns the title policy; give its neighbour a distinct answer for the bar to draw.
@@ -457,6 +470,25 @@ static void checkArtworkShape(void) {
     unset(SGRKeyBarArtworkShape);
 }
 
+static void runEnabled(UIView *page);
+static void runDisabled(void);
+@interface TitleRefreshProbe : UIView
+@property BOOL requested;
+@end
+@implementation TitleRefreshProbe
+- (void)setNeedsLayout { [super setNeedsLayout]; self.requested = YES; }
+@end
+static void toggleTitles(BOOL enabled, dispatch_block_t next) {
+    TitleRefreshProbe *root = [TitleRefreshProbe new];
+    sgr_nowPlayingRoot = root;
+    root.requested = NO;
+    simplify = enabled;
+    [NSNotificationCenter.defaultCenter postNotificationName:SGSimplifyTitlesDidChangeNotification object:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!root.requested) HARNESS_FAIL(@"Title setting did not request a mini player layout");
+        next();
+    });
+}
 static void run(void) {
     if (getenv("HARNESS_CAPSULE")) { checkCapsule(); return; }
     SPTPlayerTrack *plain = makeTrack(@"Stay High", @"Juice WRLD"), *dotted = makeTrack(@"Rock • Roll", @"The Band");
@@ -490,13 +522,17 @@ static void run(void) {
     expect(@"collision, current", makePage(@"Rock", nil, NO, @"Roll"), @"Rock", @"Roll");
 
     SPTPlayerTrack *remaster = makeTrack(@"Whiplash - Remastered", @"aespa");
-    sg_showTitles = YES;
     remaster.URI = [NSURL URLWithString:@"spotify:track:next"];
     sg_state = [SPTPlayerState new];
     sg_state.track = makeTrack(@"Rock", @"Roll");
     sg_state.track.URI = @"spotify:track:current";
     sg_state.future = @[remaster];
-    expect(@"simplified neighbour", makePage(@"Whiplash - Remastered • aespa", @"", YES, nil), @"Whiplash", @"aespa");
+    UIView *page = makePage(@"Whiplash - Remastered • aespa", @"", YES, nil);
+    expect(@"neighbour before enabling", page, @"Whiplash - Remastered", @"aespa");
+    toggleTitles(YES, ^{ runEnabled(page); });
+}
+static void runEnabled(UIView *page) {
+    expect(@"simplified neighbour", page, @"Whiplash", @"aespa");
     expect(@"playing page unchanged", makePage(@"Rock", nil, NO, @"Roll"), @"Rock", @"Roll");
     sg_state = [SPTPlayerState new];
     sg_state.track = makeTrack(@"Whiplash - Remastered", @"aespa");
@@ -517,7 +553,13 @@ static void run(void) {
     expect(@"same title, multiple artists", makePage(@"Echo", nil, NO, @"유리상자, Guest"), @"Title b", @"유리상자, Guest");
     expect(@"combined line, longest artist prefix", makePage(@"Echo • 유리상자, Guest", @"", YES, nil), @"Title b", @"유리상자, Guest");
     expect(@"same title, unknown artist keeps first match", makePage(@"Echo", nil, NO, @"Guest"), @"Title a", @"Guest");
-    sg_showTitles = NO;
+    UIView *combined = makePage(@"Echo • 유리상자, Guest", @"", YES, nil);
+    toggleTitles(NO, ^{
+        expect(@"neighbour after disabling", combined, @"Echo", @"유리상자, Guest");
+        runDisabled();
+    });
+}
+static void runDisabled(void) {
 
     // The same page laid out again, with the same state and line, is not scanned again; a new line or a new state
     // is, and its answer follows.

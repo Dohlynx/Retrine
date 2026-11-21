@@ -569,23 +569,23 @@ void SGRShownTitleWatch(UIView *unit) {
     SGRShownTitleRestyle();
 }
 
-%ctor {
-    if (!SGRedesignedUI()) return;
+static void readTitleSettings(void) {
     sg_simplify = SGFlag(SGKeyLyricsSimplifyTitles, NO);
     sg_on = sg_simplify || SGFlag(SGKeyLyricsTranslateTitles, NO);
-    // The labels take the Music app's type either way; the text is theirs unless one of the two is on.
-    if (!sg_on) return;
-    [NSNotificationCenter.defaultCenter addObserverForName:SGTranslatedTitleDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
-        dispatch_async(dispatch_get_main_queue(), ^{ refresh(); });
-    }];
-    [NSNotificationCenter.defaultCenter addObserverForName:SGTitleTranslationSettingsDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
-        dispatch_async(dispatch_get_main_queue(), ^{ refresh(); });
-    }];
-    [NSNotificationCenter.defaultCenter addObserverForName:SGSimplifyTitlesDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            sg_simplify = SGFlag(SGKeyLyricsSimplifyTitles, NO);
-            refresh();
-        });
-    }];
-    SGLog(@"redesign player: titles shown %@%@", sg_simplify ? @"simplified" : @"as they are", SGFlag(SGKeyLyricsTranslateTitles, NO) ? @", translated" : @"");
+}
+
+%ctor {
+    if (!SGRedesignedUI()) return;
+    readTitleSettings();
+    for (NSString *name in @[SGSimplifyTitlesDidChangeNotification, SGTranslatedTitleDidChangeNotification,
+                             SGTitleTranslationSettingsDidChangeNotification]) {
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                BOOL wasOn = sg_on;
+                readTitleSettings();
+                if (wasOn || sg_on) refresh();
+            });
+        }];
+    }
+    if (sg_on) SGLog(@"redesign player: titles shown %@%@", sg_simplify ? @"simplified" : @"as they are", SGFlag(SGKeyLyricsTranslateTitles, NO) ? @", translated" : @"");
 }

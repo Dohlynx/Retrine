@@ -1616,10 +1616,10 @@ Redesigned:
                   Native keeps its own header hooks. Playing Next in the ⋯ menu (PlayerQueue.m) reads Spotify's whole queue:
                   up to ten recently played songs, oldest first, as read-only History above Now Playing,
                   then fifty Up Next songs with the existing skip-ahead action. Empty History is omitted. Each row
-                  shows the cover its track's metadata names, 44 pt with the thumbnail corner, fetched once per track
-                  (SGRPlayerTrackCover, shared with the player's mix), a faint square until it lands; a cover still
-                  coming is cancelled when its song leaves the list or Playing Next leaves the screen, and asked for
-                  again for the rows shown when Playing Next comes back (only while on screen, never twice); the Up Next
+                  shows the cover its track's metadata names, 44 pt with the thumbnail corner, or a faint square
+                  until it lands. Rows share a single pending fetch per track (SGRPlayerTrackCover) and keep a
+                  successful image. Leaving the list or closing Playing Next cancels pending covers; a row shown
+                  again retries a cancelled or failed fetch. The Up Next
                   heading and the blend under it are a header of the table's own kind, so they share the margins of
                   History and Now Playing.
                   The list follows Spotify's queue reports, falling back to the state's shorter lists when
@@ -1794,8 +1794,9 @@ Redesigned:
                   so it breathes and fades with them. Simplify song titles and Translate song titles change what the
                   player's own title and artist labels draw (Player/PlayerTitle.x, which gives those two labels a
                   subclass of their own class), the landscape lyrics' title, and the title and matching artist on each
-                  now playing bar page, never Spotify's text underneath. Both refresh after title
-                  translation completes or its settings change; a landscape refresh leaves controls and idle timers alone.
+                  now playing bar page, never Spotify's text underneath. The player and bar refresh when either
+                  switch changes, even if both were off at launch, and when a translation arrives. A landscape
+                  refresh leaves controls and idle timers alone.
                   Keep screen on (SGRKeyLyricsKeepAwake, off) holds the idle timer off while lines show and the song moves,
                   and lets it go 5 s into a pause, when the view leaves its window or the app leaves the front.
                   A word held 0.9 s or more glows and its letters rise in a wave as the sweep reaches
@@ -1962,7 +1963,8 @@ Redesigned:
                   playlist's. The shared Cover beside the title setting uses the same regular-width iPad fit as
                   Playlists, without replacing the page controller or its source views. The existing hero carries
                   both still and animated covers in the leading square; motion eligibility and the page's colour
-                  source stay unchanged. Compact widths and an unfitting side column retain the stacked header.
+                  source stay unchanged. If Spotify replaces the header's artwork view, only the new view can
+                  update the hero and page colour. Compact widths and an unfitting side column retain the stacked header.
                   It shares nothing with Playlist/ but the Kit: the cover, in the Full screen layout full bleed, dissolving into the
                   field (Apple Music's animated cover over it where the album has one: the header asks with the album artist
                   first. Only a fresh page with an unidentified release uses one title search, indexed off main,

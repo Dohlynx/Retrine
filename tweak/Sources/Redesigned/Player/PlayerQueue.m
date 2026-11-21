@@ -190,8 +190,9 @@ static NSArray<NSString *> *signatureOf(NSArray<SPTPlayerTrack *> *tracks) {
     BOOL _fetching;
     UILabel *_empty;
     SGRQueueUpNextHeader *_upNext;
-    // Each row's cover by the track's URI, NSNull for a track whose metadata names none, and the ones on their way.
-    NSCache<NSString *, id> *_covers;
+    // Each row's cover by the track's URI once it has landed (a failed or missing one is asked for again when its row
+    // next comes on screen), and the ones on their way.
+    NSCache<NSString *, UIImage *> *_covers;
     NSMutableDictionary<NSString *, NSProgress *> *_coming;
 }
 
@@ -371,16 +372,17 @@ static UIImage *coverPlaceholder(void) {
 - (UIImage *)coverOf:(SPTPlayerTrack *)track {
     NSString *uri = SGURIString(track.URI);
     if (!uri) return nil;
-    id cover = [_covers objectForKey:uri];
-    if (cover) return [cover isKindOfClass:UIImage.class] ? cover : nil;
+    UIImage *cover = [_covers objectForKey:uri];
+    if (cover) return cover;
     if (_coming[uri] || !self.viewIfLoaded.window) return nil;
     __weak typeof(self) weakSelf = self;
     NSProgress *coming = SGRPlayerTrackCover(track, YES, ^(UIImage *image) {
         typeof(self) self = weakSelf;
         if (!self) return;
         [self->_coming removeObjectForKey:uri];
-        [self->_covers setObject:image ?: NSNull.null forKey:uri];
-        if (image && self.isViewLoaded) [self showCoverOf:uri];
+        if (!image) return;
+        [self->_covers setObject:image forKey:uri];
+        if (self.isViewLoaded) [self showCoverOf:uri];
     });
     // Nil when there was nothing to fetch, `done` having run already.
     if (coming) _coming[uri] = coming;

@@ -1025,6 +1025,7 @@ static void *kReadyContext = &kReadyContext;
 // artwork is still being fetched while the page is already on screen. The log line says once that the watch,
 // and not one of the header's passes, is what filled the hero.
 - (void)takeCover:(UIImageView *)source late:(BOOL)late {
+    if (late && source != _cover) return;
     UIImage *image = source.image;
     if (!image || source.bounds.size.width < kMinCover || _picture.image == image) return;
     _picture.image = image;

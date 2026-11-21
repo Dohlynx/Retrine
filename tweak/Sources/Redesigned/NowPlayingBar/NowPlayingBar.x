@@ -958,6 +958,9 @@ static NSMutableDictionary *sg_knownTitles;
 
 // With either title setting on, cache the track instead of just the split point's title.
 static BOOL sg_showTitles;
+static BOOL showTitlesEnabled(void) {
+    return SGFlag(SGKeyLyricsSimplifyTitles, NO) || SGFlag(SGKeyLyricsTranslateTitles, NO);
+}
 static NSString *knownTitleOf(NSString *line, NSString *visibleArtist, SPTPlayerTrack **match) {
     SPTPlayerState *state = SGPlayerState();
     if (!sg_knownTitles || state != sg_knownState) {
@@ -1289,15 +1292,19 @@ static SGRBarOptionsWatcher *sg_optionsWatcher;
     %init;
     sg_optionsWatcher = [SGRBarOptionsWatcher new];
     SGAddPlayerStateObserver(sg_optionsWatcher);
-    sg_showTitles = SGFlag(SGKeyLyricsSimplifyTitles, NO) || SGFlag(SGKeyLyricsTranslateTitles, NO);
-    if (sg_showTitles) {
-        for (NSString *name in @[SGSimplifyTitlesDidChangeNotification, SGTranslatedTitleDidChangeNotification,
-                                 SGTitleTranslationSettingsDidChangeNotification]) {
-            [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
-                // The next layout places every page after the player has applied its own settings notification.
-                dispatch_async(dispatch_get_main_queue(), ^{ [sgr_nowPlayingRoot setNeedsLayout]; });
-            }];
-        }
+    sg_showTitles = showTitlesEnabled();
+    for (NSString *name in @[SGSimplifyTitlesDidChangeNotification, SGTranslatedTitleDidChangeNotification,
+                             SGTitleTranslationSettingsDidChangeNotification]) {
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+            // The next layout places every page after the player has applied its own settings notification.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                BOOL enabled = showTitlesEnabled();
+                if (!enabled && !sg_showTitles) return;
+                if (sg_showTitles != enabled) [sg_knownTitles removeAllObjects];
+                sg_showTitles = enabled;
+                [sgr_nowPlayingRoot setNeedsLayout];
+            });
+        }];
     }
     // Posted on the main thread.
     [NSNotificationCenter.defaultCenter addObserverForName:SGRAccentDidChangeNotification object:nil queue:nil
