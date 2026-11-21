@@ -1029,6 +1029,64 @@ CGRect SGRPlayerLyricLineIn(UIView *view) {
 %end
 %end
 
+// Spotify's own lyric preview takes no touch itself. A tap on it goes up to the covers' list, which selects the
+// cell, and for that Spotify opens the cover's viewer: not through the tilt view's handleTap (PlayerGestures.x), so
+// whatever the Full screen cover on tap switch says (issue #36; read from the call stack of the viewer going up,
+// 9.2.0 in the simulator). A tap on a preview that shows opens the lyrics instead, as the line and the footer's
+// glyph do. The recognizer cancels the touch, so the list never selects, and waits for the zones' double tap
+// while Gestures is on.
+@interface SGRPreviewTap : NSObject <UIGestureRecognizerDelegate>
+@end
+
+@implementation SGRPreviewTap
++ (instancetype)shared {
+    static SGRPreviewTap *shared;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ shared = [SGRPreviewTap new]; });
+    return shared;
+}
+
+// A preview the line hid is not there to tap.
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
+    UIView *preview = recognizer.view;
+    CALayer *mask = objc_getAssociatedObject(preview, &kPreviewMaskKey);
+    return !SGRPlayerLyricsOpen() && !(mask && preview.layer.mask == mask);
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldRequireFailureOfGestureRecognizer:(UIGestureRecognizer *)other {
+    return [other isKindOfClass:UITapGestureRecognizer.class] && ((UITapGestureRecognizer *)other).numberOfTapsRequired > 1;
+}
+
+- (void)tapped:(UITapGestureRecognizer *)recognizer {
+    if (SGRPlayerLyricsOpen()) return;
+    SGLog(@"redesign player: Spotify's lyric preview opens the lyrics");
+    SGRPlayerToggleLyrics();
+}
+@end
+
+static void watchPreviewTaps(UIView *preview) {
+    static char key;
+    if (!preview.window || objc_getAssociatedObject(preview, &key)) return;
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:SGRPreviewTap.shared action:@selector(tapped:)];
+    tap.delegate = SGRPreviewTap.shared;
+    [preview addGestureRecognizer:tap];
+    objc_setAssociatedObject(preview, &key, tap, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+%hook _TtC25Lyrics_NPVElementsKitImpl24LyricsElementWrapperView
+- (void)didMoveToWindow {
+    %orig;
+    watchPreviewTaps((UIView *)self);
+}
+%end
+
+%hook _TtC22Lyrics_NPVContainerKit19LyricsContainerView
+- (void)didMoveToWindow {
+    %orig;
+    watchPreviewTaps((UIView *)self);
+}
+%end
+
 %hook _TtC19NowPlaying_ViewImpl24NowPlayingViewController
 - (void)viewDidDisappear:(BOOL)animated {
     if (((UIViewController *)self).viewIfLoaded == sg_host) {

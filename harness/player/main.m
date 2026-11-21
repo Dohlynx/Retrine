@@ -112,6 +112,8 @@ void SGRHarnessClearTrack(void);
 // ../tabbar/touch.m: a finger's touches, through UIKit's own recognizers.
 extern void SGHarnessHold(UIWindow *window, CGPoint point, NSTimeInterval seconds);
 extern void SGHarnessTap(UIWindow *window, CGPoint point);
+extern UICollectionViewCell *SGHarnessSelectableCover(UICollectionView *covers, Class cellClass);
+extern void SGHarnessCheckPreviewTap(UIView *preview, dispatch_block_t givePreviewBack);
 extern void SGHarnessDrag(UIWindow *window, CGPoint from, CGPoint to, NSTimeInterval seconds);
 // stubs.m: the commands sent to the player.
 NSUInteger SGRHarnessPlayerCommands(void);
@@ -831,7 +833,10 @@ static void loadLyrics(void) {
     // The replacement can discover a pager Spotify has already faded out; compact must repair it.
     if ([scenario() isEqualToString:@"adaptive"] && !getenv("HARNESS_OPENING") && SGRPlayerIPadRegular(host))
         covers.alpha = 0;
-    UIView *cell = box(covers, _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl.class, covers.bounds, @"nowplaying-contentlayer-cell-0");
+    BOOL previewTap = [scenario() isEqual:@"preview-tap"];
+    Class cellClass = _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl.class;
+    UIView *cell = previewTap ? SGHarnessSelectableCover(covers, cellClass)
+                              : box(covers, cellClass, covers.bounds, @"nowplaying-contentlayer-cell-0");
     UIView *band = box(((UICollectionViewCell *)cell).contentView, UIView.class, CGRectMake(0, bandTop, W, bandHeight), nil);
     UIView *inner = box(band, UIView.class, CGRectMake(24, 8, W - 48, bandHeight - 16), nil);
     UIView *tilt = box(inner, _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView.class,
@@ -854,6 +859,10 @@ static void loadLyrics(void) {
         cover.autoresizingMask = UIViewAutoresizingNone;
     } else [coverElement addSubview:cover];
     UIView *previewShell = box(inner, _TtC22Lyrics_NPVContainerKit19LyricsContainerView.class, CGRectMake(0, inner.bounds.size.height, coverSide, 0), nil);
+    if (previewTap) {
+        previewShell.frame = CGRectMake(0, inner.bounds.size.height - 80, coverSide, 32);
+        ((UILabel *)box(previewShell, UILabel.class, previewShell.bounds, nil)).text = @"One lyric line";
+    }
     if ([scenario() isEqualToString:@"lyric-line"]) {
         // Spotify keeps a populated, invisible wrapper beside the ordinary cover on tracks without a preview.
         previewShell.frame = CGRectMake(0, inner.bounds.size.height, coverSide, 100);
@@ -910,7 +919,7 @@ static void loadLyrics(void) {
     chip.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
     chip.layer.cornerRadius = 16;
     UILabel *chipLabel = [[UILabel alloc] initWithFrame:chip.bounds];
-    if ([scenario() hasPrefix:@"lyric-line"]) chip.hidden = YES;
+    if ([scenario() hasPrefix:@"lyric-line"] || previewTap) chip.hidden = YES;
     if ([scenario() isEqual:@"lyric-line-chip"]) {
         chip.accessibilityIdentifier = @"nowplaying-npv-musicvideos-switch";
         chipLabel.frame = CGRectInset(chip.bounds, 8, 8);
@@ -1088,6 +1097,15 @@ static void loadLyrics(void) {
     };
     unitSpace(!ownerChip);
     [self layOut];
+    if (previewTap) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            SGHarnessCheckPreviewTap(previewShell, ^{
+                SGKaraokeKeepLines(@"harness", @[]);
+                [floating viewDidLayoutSubviews];
+            });
+        });
+        return YES;
+    }
     __block CGRect beforeSwitch = CGRectNull;
     if (ownerChip) after(2, ^{
         beforeSwitch = SGRPlayerCoverFrameIn(host);
@@ -5887,6 +5905,9 @@ static NSUInteger footerBandsIn(UIView *player) {
 
 // Before every %ctor, so the redesign's gate reads on, and every session gets the picture server.
 __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
+    if ([scenario() isEqual:@"preview-tap"]) {
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:SGKeyHideFullScreenCover];
+    }
     [NSUserDefaults.standardUserDefaults setBool:!([scenario() isEqual:@"video-native"] || [scenario() isEqual:@"settings-pending-redesigned"]) forKey:@"spotifyglass.redesign"];
     if ([scenario() hasPrefix:@"settings-pending-"]) {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyStock];
@@ -5977,7 +5998,7 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
         for (NSString *key in @[SGRKeyPlayerAnimatedStill, SGRKeyPlayerAnimatedVisualiser, SGRKeyPlayerHideShuffle, SGRKeyPlayerHideRepeat,
                                 SGKeyHideVideoSwitch, SGRKeyPlayerHeaderGlass, SGRKeyPlayerStarAdd]) [store removeObjectForKey:key];
     }
-    [NSUserDefaults.standardUserDefaults setBool:[scenario() hasPrefix:@"lyric-line"] forKey:@"spotifyglass.redesign.player.lyricLine"];
+    [NSUserDefaults.standardUserDefaults setBool:([scenario() hasPrefix:@"lyric-line"] || [scenario() isEqual:@"preview-tap"]) forKey:SGRKeyPlayerLyricLine];
     if ([scenario() hasPrefix:@"lyric-line"]) {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.redesign.lyricsTranslation"];
         SGRSetPlayerLineSmall(NO);

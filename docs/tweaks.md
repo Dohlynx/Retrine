@@ -905,6 +905,11 @@ Shared:
                   it does while Gestures is on (the tap is then half of a double tap), the native look's on the
                   player's cover only. Spotify's cover_art_tilt_enabled flag is left alone: with it off the cover has
                   no CoverArtTiltView, which the redesign's cover rounding and the native hold to play faster hang on.
+                  Spotify's own lyric preview under the cover takes no touch, so a tap on it reached the covers' list,
+                  which selected the cell and opened the same viewer whatever the switch said (issue #36). In the
+                  redesign a tap on a showing preview opens the lyrics instead (PlayerLyricLine.x's SGRPreviewTap,
+                  which waits for the Gestures double tap and leaves a preview the lyric line hid alone);
+                  `harness/player/ui-check.py preview-tap` sends the tap.
                   The sleep timer (SleepTimer.m, set from the Live Activity) pauses Spotify at a time, at the end of
                   the track or at the end of the album or playlist, the last track of it found by the tracks to come
                   that are neither queued by hand nor autoplay's (SPTPlayerTrack's provider), or by the next one

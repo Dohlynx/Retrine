@@ -79,6 +79,13 @@ not rerun here.
 
 ## Simulator harness
 
+Run `/usr/bin/lockf -k /tmp/vitrine-build.lock python3 harness/player/ui-check.py preview-tap`
+for issue #36. With Full screen cover on tap off, a synthesized finger taps Spotify's
+mock lyric preview inside a selectable cover cell. While the redesigned line masks the
+preview, UIKit selects the cell and lyrics stay closed. When the line gives the preview
+back, a tap opens lyrics without another selection. The runner uses a disposable simulator
+and temporary build; `SRC=/path/to/tweak/Sources` selects alternative production sources.
+
 `python3 harness/player/ui-check.py settings automix` builds once and runs both assertion
 scenarios on one owned simulator, then shuts down/deletes it and removes the build.
 The individual `settings-check.sh` and `automix-check.sh` entry points select one scenario.
