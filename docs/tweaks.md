@@ -1964,7 +1964,8 @@ Redesigned:
                   system's own glass. Compact library (the Library page of Mod Settings, redesign only,
                   spotifyglass.redesign.library.hideChips, off, read at launch; LibrarySettings.m, over a preview of Your
                   Library) takes the root page's chips away, closes the header up by what they leave, and puts a menu button
-                  (LibraryMenu.m) before the avatar. The menu is built as it opens, from Spotify's own controls found live on
+                  (LibraryMenu.m) before the avatar. In Spotify 9.2.0's stack, the folded header's bottom is pinned to
+                  the control row's bottom so it follows safe-area changes. The menu is built as it opens, from Spotify's own controls found live on
                   the page: Sort, with the order the sort row shows, the list and grid views with the current one checked
                   (Spotify's toggle under its own name when the current one cannot be told) and Clear filter while a filter
                   is on. Each fires Spotify's control, in place while it is on screen, else once the list has been taken to

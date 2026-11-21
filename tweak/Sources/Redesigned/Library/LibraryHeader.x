@@ -39,7 +39,7 @@
 // (design/spotify-920/920-library-tree.txt:488-489). There Auto Layout gives the header its height: the row hangs
 // off the safe area, the chips under it, and the chips' bottom is the header's (filters.bottom == header.bottom),
 // with the stack pinned only at its top and sides so that it follows the header. A frame set on that header is
-// undone on the next pass, so Compact library sizes it through that chain instead (holdHeight).
+// undone on the next pass, so Compact library sizes it through that chain instead (pinToRow).
 //
 // The header neither moves nor shrinks as the list scrolls -- 03.txt, 05.txt and 06.txt hold it at
 // {0, 0} 402x159.33 at three scroll positions -- so there is nothing here to follow: the row is laid out once a
@@ -265,21 +265,23 @@ static NSLayoutConstraint *chipsToBottom(UIView *header, UIView *filters) {
     return nil;
 }
 
-// The stacked header ended at `height` in place of the chips' bottom, which Spotify's link is kept for
-// unfoldChips. Spotify making the link again on a pass of its own has it taken out again here. foldChips calls it
-// only while the header has one or the other.
-static void holdHeight(UIView *header, UIView *filters, CGFloat height) {
+// End the stacked header at the row instead of the chips so a safe-area change moves both bottoms in
+// the same layout pass. Keep Spotify's link for unfoldChips, including any replacement it installs.
+static void pinToRow(UIView *header, UIView *filters, UIView *control) {
+    UIView *row = control;
+    while (row && row.superview != header) row = row.superview;
+    if (!row) return;
     NSLayoutConstraint *hold = objc_getAssociatedObject(header, &kHoldKey);
     NSLayoutConstraint *chain = chipsToBottom(header, filters);
     if (chain) {
         chain.active = NO;
         objc_setAssociatedObject(header, &kChainKey, chain, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    if (!hold) {
-        hold = [header.heightAnchor constraintEqualToConstant:height];
+    if (hold.secondItem != row) {
+        hold.active = NO;
+        hold = [header.bottomAnchor constraintEqualToAnchor:row.bottomAnchor];
         objc_setAssociatedObject(header, &kHoldKey, hold, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    if (fabs(hold.constant - height) > 0.5) hold.constant = height;
     hold.active = YES;
 }
 
@@ -315,7 +317,7 @@ static void foldChips(UIView *header, UIView *control, UIView *filters, UIScroll
         objc_setAssociatedObject(header, &kHeightKey, spotify, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (stacked(header)) {
-        holdHeight(header, filters, wanted);
+        pinToRow(header, filters, control);
     } else {
         CGRect frame = header.frame;
         if (fabs(frame.size.height - wanted) > 0.5) {

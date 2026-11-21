@@ -42,6 +42,7 @@ run "PASS all noclear" check compact noclear
 run "PASS all compact" check compact wrapped
 run "PASS all noclear" check compact noclear wrapped
 run "PASS all safearea" check compact safearea
+run "PASS all safearea" check compact wrapped safearea
 run "PASS all safearea" check compact safearea bottomfirst
 run "PASS all compact" check compact -tag large-text -UIPreferredContentSizeCategoryName UICTContentSizeCategoryAccessibilityXXXL
 run "PASS all compact" check compact -tag rtl -AppleTextDirection YES -NSForceRightToLeftWritingDirection YES
