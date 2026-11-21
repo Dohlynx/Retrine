@@ -103,7 +103,9 @@ static void clearSurface(UIView *view) {
     if (color && SGIsBaseSurface(color.CGColor)) view.backgroundColor = UIColor.clearColor;
 }
 
-static void applyHairline(UIView *row, CGFloat leading) {
+// `leading`: how far in from the row's leading edge the line starts; it ends SGRSideMargin short of the trailing edge,
+// both mirrored right to left.
+static void applyHairline(UIView *row, CGFloat leading, BOOL rtl) {
     CALayer *line = objc_getAssociatedObject(row, &kLineKey);
     if (!line) {
         line = [CALayer layer];
@@ -113,8 +115,8 @@ static void applyHairline(UIView *row, CGFloat leading) {
     }
     if (line.superlayer != row.layer) [row.layer addSublayer:line];
     CGRect bounds = row.bounds;
-    CGRect frame = CGRectMake(leading, bounds.size.height - kHairline,
-                              MAX(0, bounds.size.width - leading - SGRSideMargin), kHairline);
+    CGFloat width = MAX(0, bounds.size.width - leading - SGRSideMargin);
+    CGRect frame = CGRectMake(rtl ? SGRSideMargin : leading, bounds.size.height - kHairline, width, kHairline);
     if (CGRectEqualToRect(line.frame, frame)) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -144,6 +146,8 @@ static BOOL applyRow(UIView *cell) {
     if (!row) return NO;
     clearSurface(row);
 
+    // From the leading edge: right to left the artwork is on the right and the text ends at its left edge.
+    BOOL rtl = row.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
     CGFloat leading = SGRSideMargin + 48 + kHairlineGap;
     UIView *art = SGRFindByIdentifier(row, @"Encore.ImageView", &kArtKey) ?: artHolderIn(row);
     if (art) {
@@ -153,7 +157,7 @@ static BOOL applyRow(UIView *cell) {
             art.clipsToBounds = YES;
         }
         CGRect frame = [row convertRect:art.bounds fromView:art];
-        if (frame.size.width > 0) leading = CGRectGetMaxX(frame) + kHairlineGap;
+        if (frame.size.width > 0) leading = (rtl ? row.bounds.size.width - CGRectGetMinX(frame) : CGRectGetMaxX(frame)) + kHairlineGap;
     }
 
     UIView *subtitle = SGRFindByIdentifier(row, @"Track.Row.Content.Subtitle", &kSubtitleKey);
@@ -163,7 +167,7 @@ static BOOL applyRow(UIView *cell) {
         if (![label.textColor isEqual:SGRSecondary()]) label.textColor = SGRSecondary();
     });
 
-    applyHairline(row, leading);
+    applyHairline(row, leading, rtl);
     return YES;
 }
 

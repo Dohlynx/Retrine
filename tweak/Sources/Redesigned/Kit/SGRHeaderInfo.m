@@ -214,9 +214,9 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     SGRMirrorButton *_shuffle, *_trailing;
     SGRPlayCapsule *_play;
     __weak UIView *_creatorLink;
-    // contentHeightForWidth:'s last answer, for _measuredWidth; a negative width is none. Cleared when the text or
-    // the title picture changes, the only things it measures.
-    CGFloat _measuredWidth, _measuredHeight;
+    // The lines measured at each text width a pass asks at (-sgr_linesAt:). Emptied when what they are measured from
+    // changes: the text, the fonts, the title picture, the creator's picture or faces.
+    NSMutableDictionary<NSNumber *, NSArray<NSValue *> *> *_lines;
     // Where the content starts, as last laid out; and the mask that clips it under the top bar (-clipUnderTopBar).
     CGFloat _contentTop;
     CAGradientLayer *_barClip;
@@ -231,7 +231,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
-    _measuredWidth = -1;
+    _lines = [NSMutableDictionary dictionary];
     _title = infoLabel(self, infoFont(SGRInfoTitle), SGRPrimary(), 2, NSTextAlignmentCenter);
     _title.accessibilityTraits = UIAccessibilityTraitHeader;
     _creator = infoLabel(self, infoFont(SGRInfoCreator), SGRSecondary(), 1, NSTextAlignmentCenter);
@@ -269,27 +269,44 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previous {
     [super traitCollectionDidChange:previous];
-    if (_besideRefresh && (previous.horizontalSizeClass != self.traitCollection.horizontalSizeClass ||
-        ![previous.preferredContentSizeCategory isEqual:self.traitCollection.preferredContentSizeCategory])) {
-        _besideRefresh();
+    BOOL textSize = ![previous.preferredContentSizeCategory isEqual:self.traitCollection.preferredContentSizeCategory];
+    // The fonts are made at the text size they were made at, beside the cover or stacked: made again at the new one.
+    if (textSize) {
+        [self sgr_besideTypography:_besideFonts traits:self.traitCollection];
+        [self setNeedsLayout];
     }
+    if (_besideRefresh && (textSize || previous.horizontalSizeClass != self.traitCollection.horizontalSizeClass)) _besideRefresh();
+}
+
+// The stacked title's: the artist's Large Title (largeTitle) or Title 2, capped with the rest.
+- (UIFont *)sgr_stackedTitleFont {
+    return _largeTitle ? SGCategoryCappedFont(UIFontTextStyleLargeTitle, UIFontWeightBold, UIContentSizeCategoryExtraLarge)
+                       : infoFont(SGRInfoTitle);
 }
 
 - (void)sgr_besideTypography:(BOOL)beside traits:(UITraitCollection *)traits {
     NSArray<UILabel *> *labels = @[_title, _creator, _length, _about];
+    BOOL changed = NO;
     for (SGRInfoLine i = SGRInfoTitle; i < labels.count; i++) {
         UILabel *label = labels[i];
+        UIFont *font;
+        NSInteger lines;
         if (beside) {
             UIFont *preferred = [UIFont preferredFontForTextStyle:infoStyle(i) compatibleWithTraitCollection:traits];
-            label.font = [UIFont systemFontOfSize:preferred.pointSize weight:infoWeight(i)];
-            label.numberOfLines = 0;
+            font = [UIFont systemFontOfSize:preferred.pointSize weight:infoWeight(i)];
+            lines = 0;
         } else {
-            label.font = infoFont(i);
-            label.numberOfLines = i == SGRInfoTitle || i == SGRInfoAbout ? 2 : 1;
+            font = i == SGRInfoTitle ? [self sgr_stackedTitleFont] : infoFont(i);
+            lines = i == SGRInfoTitle || i == SGRInfoAbout ? 2 : 1;
         }
+        if ([label.font isEqual:font] && label.numberOfLines == lines) continue;
+        label.font = font;
+        label.numberOfLines = lines;
+        changed = YES;
     }
     _besideFonts = beside;
-    _measuredWidth = -1;
+    // A page hands the same fonts over on every pass beside the cover: measured again only for ones that changed.
+    if (changed) [_lines removeAllObjects];
 }
 
 - (CGRect)sgr_coverBesideIn:(UIView *)space available:(CGRect)available fitHeight:(BOOL)fitHeight
@@ -410,7 +427,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
         [self addSubview:_logo];
     }
     _titleImage = image;
-    _measuredWidth = -1;
+    [_lines removeAllObjects];
     _title.accessibilityElementsHidden = image != nil;
     if (image) {
         if (!_logo.image) [UIView performWithoutAnimation:^{ self->_logo.frame = self->_title.frame; }];
@@ -442,13 +459,52 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     return label == _creator ? 4 : 2;
 }
 
-// The title's line: the picture's fitted height where there is a picture, the label's otherwise.
+// How many text widths the lines are kept measured at: one pass asks at the column beside the cover, the header's
+// width and the info's own; a width past those is one changing, whose earlier ones are not asked at again.
+static const NSUInteger kMeasuredWidths = 3;
+
+// The lines at the text width `text`, in SGRInfoLine order, then the creator's picture: measured once for the width, so
+// a pass that changes none of what they are measured from (a scroll collapsing the header) measures no text. A hidden
+// line is CGSizeZero. The title's line is the picture's fitted size where there is a picture; the creator's name is
+// measured at the width its faces or picture leave it; the picture is as high and wide as the name is across all of
+// `text`, zero without one.
+- (NSArray<NSValue *> *)sgr_linesAt:(CGFloat)text {
+    NSNumber *key = @(text);
+    NSArray<NSValue *> *lines = _lines[key];
+    if (lines) return lines;
+    CGFloat picture = _picture.image && !_creator.hidden ? ceil([_creator sizeThatFits:CGSizeMake(text, CGFLOAT_MAX)].height) : 0;
+    CGFloat lead = _faceImages.count ? [self sgr_facesWidth] : picture;
+    NSMutableArray<NSValue *> *measured = [NSMutableArray array];
+    for (UILabel *label in @[_title, _creator, _length, _about]) {
+        CGSize size = CGSizeZero;
+        if (label.hidden) {
+        } else if (label == _title && _titleImage) {
+            CGSize image = _titleImage.size;
+            if (image.width > 0 && image.height > 0) {
+                CGFloat scale = MIN(text * kLogoWidthShare / image.width, kLogoMaxHeight / image.height);
+                size = CGSizeMake(round(image.width * scale), round(image.height * scale));
+            }
+        } else {
+            CGFloat across = label == _creator && lead ? MAX(0, text - lead - kPictureGap) : text;
+            size = [label sizeThatFits:CGSizeMake(across, CGFLOAT_MAX)];
+        }
+        [measured addObject:[NSValue valueWithCGSize:size]];
+    }
+    [measured addObject:[NSValue valueWithCGSize:CGSizeMake(picture, picture)]];
+    if (_lines.count >= kMeasuredWidths) [_lines removeAllObjects];
+    _lines[key] = measured;
+    return measured;
+}
+
+// How wide what stands before the creator's name is: the faces, or the picture; 0 with neither.
+- (CGFloat)sgr_creatorLeadAt:(CGFloat)text {
+    if (_faceImages.count) return [self sgr_facesWidth];
+    return [self sgr_linesAt:text][SGRInfoAbout + 1].CGSizeValue.width;
+}
+
 - (CGSize)sgr_sizeOf:(UILabel *)label width:(CGFloat)text {
-    if (label != _title || !_titleImage) return [label sizeThatFits:CGSizeMake(text, CGFLOAT_MAX)];
-    CGSize image = _titleImage.size;
-    if (image.width <= 0 || image.height <= 0) return CGSizeZero;
-    CGFloat scale = MIN(text * kLogoWidthShare / image.width, kLogoMaxHeight / image.height);
-    return CGSizeMake(round(image.width * scale), round(image.height * scale));
+    SGRInfoLine line = label == _title ? SGRInfoTitle : label == _creator ? SGRInfoCreator : label == _length ? SGRInfoLength : SGRInfoAbout;
+    return [self sgr_linesAt:text][line].CGSizeValue;
 }
 
 - (BOOL)showTitle:(NSString *)title creator:(NSString *)creator length:(NSString *)length about:(NSString *)about {
@@ -458,7 +514,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     changed |= setText(_length, length);
     changed |= setText(_about, about);
     if (changed) {
-        _measuredWidth = -1;
+        [_lines removeAllObjects];
         [self setNeedsLayout];
     }
     return changed;
@@ -497,6 +553,8 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 - (void)sgr_takePicture:(UIImage *)image {
     if (image == _picture.image) return;
     BOOL appears = image && !_picture.image;
+    // The name is measured at the width the picture leaves it.
+    if (!image != !_picture.image) [_lines removeAllObjects];
     _picture.image = image;
     _picture.hidden = image == nil;
     [self setNeedsLayout];
@@ -557,6 +615,8 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 - (void)sgr_setFaces:(NSArray<UIImage *> *)images {
     if ([_faceImages ?: @[] isEqualToArray:images]) return;
     BOOL appears = images.count && !_faceImages.count;
+    // The name is measured at the width the faces leave it.
+    if (images.count != _faceImages.count) [_lines removeAllObjects];
     _faceImages = images.count ? images : nil;
     if (!_faces && images.count) {
         _faces = [UIView new];
@@ -687,9 +747,8 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
 - (void)setLargeTitle:(BOOL)largeTitle {
     if (_largeTitle == largeTitle) return;
     _largeTitle = largeTitle;
-    _title.font = largeTitle ? SGCategoryCappedFont(UIFontTextStyleLargeTitle, UIFontWeightBold, UIContentSizeCategoryExtraLarge)
-                             : infoFont(SGRInfoTitle);
-    _measuredWidth = -1;
+    _title.font = [self sgr_stackedTitleFont];
+    [_lines removeAllObjects];
     [self setNeedsLayout];
 }
 
@@ -699,7 +758,6 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     _play.round = roundPlay;
     _play.cutOut = roundPlay && cutOutPlay();
     [self sgr_fillPlay];
-    _measuredWidth = -1;
     [self setNeedsLayout];
 }
 
@@ -772,15 +830,12 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     }
     if (previous) height += kRowAbove;
     height += [self sgr_rowHeight];
-    if (!_about.hidden) height += kAboutAbove + ceil([_about sizeThatFits:CGSizeMake(text, CGFLOAT_MAX)].height);
+    if (!_about.hidden) height += kAboutAbove + ceil([self sgr_sizeOf:_about width:text].height);
     return height;
 }
 
 - (CGFloat)contentHeightForWidth:(CGFloat)width {
-    if (width == _measuredWidth) return _measuredHeight;
-    _measuredWidth = width;
-    _measuredHeight = [self sgr_contentHeightForTextWidth:MAX(0, width - 2 * (_beside ? 0 : kSide))];
-    return _measuredHeight;
+    return [self sgr_contentHeightForTextWidth:MAX(0, width - 2 * (_beside ? 0 : kSide))];
 }
 
 - (void)layoutSubviews {
@@ -812,7 +867,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
         // is on the right in a right-to-left language.
         // The faces, where the creator has them, take the picture's place: centred on the line, which keeps its height.
         if (label == _creator) {
-            CGFloat lead = faces ? [self sgr_facesWidth] : height;
+            CGFloat lead = [self sgr_creatorLeadAt:text];
             CGFloat picture = faces || !_picture.hidden ? lead + kPictureGap : 0;
             CGFloat named = MIN(ceil(size.width), MAX(0, text - picture));
             CGFloat x = round((width - picture - named) / 2);
@@ -822,8 +877,8 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
                 CGFloat side = [self sgr_faceSide], scale = self.traitCollection.displayScale ?: UIScreen.mainScreen.scale;
                 [self sgr_placeFaces:CGRectMake(leadX, y + round((height - side) / 2 * scale) / scale, lead, side) rtl:rtl];
             } else {
-                _picture.frame = CGRectMake(leadX, y, height, height);
-                _picture.layer.cornerRadius = height / 2;
+                _picture.frame = CGRectMake(leadX, y, lead, lead);
+                _picture.layer.cornerRadius = lead / 2;
             }
             label.frame = CGRectMake(rtl ? x : x + picture, y, named, height);
         }
@@ -879,7 +934,7 @@ NSArray<UIImageView *> *SGRCreatorFaces(UIView *root) {
     if (!_about.hidden) {
         y += kAboutAbove;
         _about.textAlignment = _beside ? leading : NSTextAlignmentNatural;
-        _about.frame = CGRectMake(inset, y, text, ceil([_about sizeThatFits:CGSizeMake(text, CGFLOAT_MAX)].height));
+        _about.frame = CGRectMake(inset, y, text, ceil([self sgr_sizeOf:_about width:text].height));
     }
     if (_clipsUnderBar) [self clipUnderTopBar];
 }

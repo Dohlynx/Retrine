@@ -16,6 +16,7 @@
 #import "more-check.h"
 #import "Album.h"
 #import "beside-check.h"
+#import "layout-check.h"
 #import "download-background-check.h"
 
 // Download and ⋯ as one glass capsule: adjacent, level, one 88x44 shape (radius 22) under both, carried by
@@ -483,6 +484,7 @@ static NSString *trailingLabel(UIView *root) {
     }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"cover-beside"])
         [NSUserDefaults.standardUserDefaults setBool:YES forKey:SGRKeyCoverBeside];
+    layoutPrepare();
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     CGFloat W = self.window.bounds.size.width, H = self.window.bounds.size.height;
     CGFloat fixtureWidth = [NSUserDefaults.standardUserDefaults doubleForKey:@"header-width"];
@@ -572,7 +574,7 @@ static NSString *trailingLabel(UIView *root) {
         NSLog(@"[harness] artist picture: %@, name at %@", picture ? NSStringFromCGRect([picture convertRect:picture.bounds toView:info]) : @"none",
               NSStringFromCGRect(name.frame));
     });
-    label(parentRow, CGRectMake(32, 4.33, 72, 15.33), @"The Weeknd", 11, UIColor.whiteColor, @"Encore.Label");
+    UILabel *artistName = label(parentRow, CGRectMake(32, 4.33, 72, 15.33), @"The Weeknd", 11, UIColor.whiteColor, @"Encore.Label");
 
     UIView *bottomGroup = box(outer, UIView.class, CGRectMake(0, 329.33, W, 71.33), nil);
     UIStackView *bottomStack = (UIStackView *)box(bottomGroup, UIStackView.class, bottomGroup.bounds, nil);
@@ -892,6 +894,13 @@ static NSString *trailingLabel(UIView *root) {
     [condensed addSubview:disc];
 
     [self.window makeKeyAndVisible];
+    if (layoutCase()) {
+        layoutRun(self.window, page, cover, artistName, ^{
+            [page setNeedsLayout];
+            [page layoutIfNeeded];
+        });
+        return YES;
+    }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"cover-beside"]) {
         besideRun(self.window, root, page, @"Album", ^{
             [page setNeedsLayout];

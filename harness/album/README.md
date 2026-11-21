@@ -25,6 +25,20 @@ against Footnote's 16); every other literal is unchanged.
 The iPad playlist also checks Card cover restoration after switching beside off,
 compact width and replacing the source cover, with both nil and existing masks.
 
+`python3 harness/album/layout-check.py --screenshots <directory> [case ...]` (`layout-check.h`, `layout <case>` on the
+launch line) runs the album header through the changes an open page lives through, on an iPhone 17 Pro and an iPad Pro
+13-inch (M5) of its own: `text-size` opens the page at Extra Small, changes the simulator's text size to Extra Extra
+Extra Large once the page says READY, and requires the title, artist and details at Title 2, Title 3 and Caption 1 at
+Extra Large (the cap), an artist header's Large Title the same, and that header's content measured again onto its
+bottom edge; `resize-card` narrows the iPad page to 68% with Spotify's square re-centred and requires the hero's square
+on it, then held while Spotify's square shrinks at that width, then widens it to 84% with Spotify centring its square a
+pass after the header's width and requires the hero's square there; `beside-scrim` turns Cover beside off over a Full
+screen cover and requires the contrast gradient back; `beside-faces` gives the artist line, beside the cover with its
+face, names that fit the column on one line but not after the face, and requires them wrapped, not cut, with the details
+under them. Each of those writes `album-<case>.png` before its checks. `measure` (iPhone) counts `sizeThatFits:` on the
+header info's labels and requires none over ten header and info passes with nothing changed, some once the artist's
+name changes (the line then as wide as the new name), and none over ten passes after.
+
 The side-column checks require a 28pt cover gap, leading text/actions (mirrored in
 RTL), a description wrapped below the row, and action sizes identical to the
 stacked header. The pale strip in the default album artwork is intentional:
@@ -160,6 +174,10 @@ which the AMOLED rule paints black. The scanned sleeve checks the
 pale border and reflected square edge, including the actual layer composition: adjacent-row mean absolute linear
 sRGB luminance difference must not exceed 0.02 within 24pt of the edge. The layer composition also checks
 24pt above the scanned sleeve's stripe at 94% through the square's extension; the drawing must be opaque.
+`rebuilt` hands the hero a replacement artwork view and requires the retired one's later pictures ignored, then rebuilds
+a header under the page's own header pass: the cover element gone for one pass, then back with the replacement still
+under the lookup's 80pt. A picture landing in the retired view after either pass is ignored, and the replacement's is
+taken once it is sized and filled on passes of its own, with no header or page pass between.
 `still-swap` reuses a hero from A with a clip to B without one: both an installed still and late poster/read replies
 must leave B blue. A -> B -> A reuses the identical clip URL and checks both delayed stages against the new album
 lifetime, then accepts its current still. Media lookup, poster delivery and player readiness are test doubles;

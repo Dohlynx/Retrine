@@ -405,10 +405,14 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
 // Where Spotify lays its cover square out, in the hero's coordinates. With Full bleed covers off the picture is
 // drawn there instead, on the field with neither gradient, until an animated cover fills the hero over it.
 @property (nonatomic) CGRect square;
+// The header's width when the square was taken.
+@property (nonatomic) CGFloat squareWidth;
 @property (nonatomic) CGRect besideFrame;
 // The cover in Spotify's artwork view, and every cover it puts there afterward: the hero keeps itself
 // right, rather than being handed a picture on each of the header's passes and staying empty between them.
 - (void)followCover:(UIImageView *)source;
+// The artwork view in Spotify's cover element followed, or, while none in it is at the lookup's size, waited for.
+- (void)followCoverIn:(UIView *)element;
 // Apple Music's animated cover over the picture, where the album has one. The same album again is a no-op.
 - (void)playMotionForArtist:(NSString *)artist album:(NSString *)album;
 // The square's shadow, copied off whichever layer under Spotify's concealed cover casts one (its ShadowContainer),
@@ -422,6 +426,7 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
     CAGradientLayer *_dissolve;
     CALayer *_shadow;   // under the square, which clips and so cannot cast its own
     __weak UIImageView *_cover;
+    __weak UIView *_awaited;   // the cover element whose image views wait for the artwork (-followCoverIn:)
     UIView *_extension;   // iOS 26's UIBackgroundExtensionView around the picture, nil before it
     NSString *_motionAlbum;
     __weak UIView *_motionPage;
@@ -621,8 +626,8 @@ static char kScrollContext;
         holder.clipsToBounds = YES;
         if (_extension) _picture.frame = _extension.bounds;
         _shadow.hidden = bleeds;
-        self.scrim.hidden = !bleeds;
     }
+    self.scrim.hidden = !bleeds;
     _shadow.frame = CGRectOffset(_square, 0, self.stretch);
     _motion.frame = bounds;
     [self sgr_updateMotion];
@@ -632,7 +637,6 @@ static char kScrollContext;
     }
     if (beside) {
         self.content.layer.mask = nil;
-        self.scrim.hidden = YES;
         _shadow.hidden = YES;
         _render.hidden = YES;
     } else {
@@ -1029,12 +1033,45 @@ static char kScrollContext;
 }
 
 - (void)followCover:(UIImageView *)source {
-    if (!source) return;
+    // Spotify's cover holds no artwork view of the lookup's size: the one followed is not its cover any more (a rebuilt
+    // header's replacement can still be undersized here), and a picture landing in it later is not the album's.
+    if (!source) {
+        _cover = nil;
+        return;
+    }
     [self takeCover:source late:NO];
     if (_cover == source) return;
     _cover = source;
     __weak SGRAlbumHero *weakSelf = self;
     SGRObserveImage(source, ^(UIImageView *view) { [weakSelf takeCover:view late:YES]; });
+}
+
+// A rebuilt header's replacement artwork view can be under the lookup's size on the header's pass and get its size and
+// its picture on passes of its own, which reach neither the header nor the page. Until one is followed, every image
+// view in the element looks again when it gets a picture and, where its layout can be watched, when it is laid out at
+// the lookup's size; the walk is made once per element waited on, and a pass under the size costs one comparison.
+- (void)followCoverIn:(UIView *)element {
+    UIImageView *artwork = SGRHeaderArtworkIn(element);
+    [self followCover:artwork];
+    if (artwork) {
+        _awaited = nil;
+        return;
+    }
+    if (!element || element == _awaited) return;
+    _awaited = element;
+    __weak SGRAlbumHero *weakSelf = self;
+    __weak UIView *weakElement = element;
+    void (^look)(UIView *) = ^(UIView *view) {
+        SGRAlbumHero *hero = weakSelf;
+        UIView *root = weakElement;
+        if (!hero || !root || hero->_cover || view.bounds.size.width < kMinCover) return;
+        [hero followCoverIn:root];
+    };
+    SGForEachView(element, ^(UIView *v) {
+        if (![v isKindOfClass:UIImageView.class]) return;
+        SGRObserveImage((UIImageView *)v, ^(UIImageView *view) { look(view); });
+        SGRObserveLayout(v, look);
+    });
 }
 
 // `late` is a cover that arrived after the header had laid out -- an album opened for the first time, whose
@@ -1085,14 +1122,23 @@ static void applyHero(UIView *header, UIView *cover, CGFloat bottom) {
     hero.fieldColor = SGRAlbumFieldColor(header);
     // Spotify's square at full size, in the header's coordinates, which are the hero's: grow-only like the height,
     // so the square stays put while the header fades and collapses. Its bottom too, since the cover can reach its
-    // full size before the header's top inset is in.
+    // full size before the header's top inset is in. A header of another width (an iPad window resized) has Spotify
+    // lay its square out anew: the one kept is dropped and the square taken again from there. Spotify can centre it
+    // in the new width a pass later, so one of the same size and height moved sideways is taken too: a scroll never
+    // moves the square sideways.
     if (!SGRPageFullCover(SGRKeyAlbumFullCover)) {
-        CGRect square = [cover convertRect:cover.bounds toView:header];
-        if (square.size.width >= kMinCover && (square.size.width > hero.square.size.width + 0.5
-                                               || CGRectGetMaxY(square) > CGRectGetMaxY(hero.square) + 0.5)) hero.square = square;
+        CGRect square = [cover convertRect:cover.bounds toView:header], kept = hero.square;
+        CGFloat width = header.bounds.size.width;
+        BOOL sideways = fabs(square.size.width - kept.size.width) <= 0.5 && fabs(square.size.height - kept.size.height) <= 0.5
+            && fabs(CGRectGetMinY(square) - CGRectGetMinY(kept)) <= 0.5 && fabs(CGRectGetMinX(square) - CGRectGetMinX(kept)) > 0.5;
+        if (square.size.width >= kMinCover && (fabs(width - hero.squareWidth) > 0.5 || sideways || square.size.width > kept.size.width + 0.5
+                                               || CGRectGetMaxY(square) > CGRectGetMaxY(kept) + 0.5)) {
+            hero.square = square;
+            hero.squareWidth = width;
+        }
         [hero takeShadowFrom:cover];
     }
-    [hero followCover:SGRHeaderArtworkIn(cover)];
+    [hero followCoverIn:cover];
     SGRConcealView(cover);
 }
 
@@ -1333,7 +1379,10 @@ static void applyHeader(UIView *header, UIView *page) {
     SGRAlbumHero *existingHero = objc_getAssociatedObject(header, &kHeroKey);
     existingHero.besideFrame = beside;
     CGFloat bottom = rest - SGRHeaderInfoBottom - [info contentHeightForWidth:header.bounds.size.width] + SGRHeaderInfoTitleRise;
+    // A pass without Spotify's cover element (the header rebuilding) leaves the hero following no artwork view: the
+    // one it followed is retired with the element.
     if (cover) applyHero(header, cover, bottom);
+    else [existingHero followCover:nil];
     SGRAlbumHero *hero = objc_getAssociatedObject(header, &kHeroKey);
     hero.besideFrame = beside;
     header.accessibilityElements = info.sgr_coverBeside ? @[hero, info] : nil;

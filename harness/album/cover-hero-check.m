@@ -636,6 +636,68 @@ static void checkDarkPortrait(void) {
 }
 #endif
 
+// Spotify's header rebuilt, through the page's own header pass (AlbumHeader.x's applyHeader): the cover element gone for
+// one pass, then back with a replacement artwork view still under the lookup's 80pt on that pass. A picture landing in
+// the retired view after either is not the hero's; the replacement's is once it has its size and its picture, on passes
+// of its own that reach neither the header nor the page.
+static void checkRebuiltUndersized(void) {
+    UIView *page = [[_TtC28CreativeWorkPlatform_PageKit24CreativeWorkTemplateView alloc] initWithFrame:CGRectMake(0, 0, kWidth, 874)];
+    page.accessibilityIdentifier = @"CreativeWorkPlatform.CreativeWorkTemplateView";
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kWidth, 486)];
+    header.accessibilityIdentifier = @"CreativeWorkPlatform.Components.UI.CreativeWorkHeader";
+    [page addSubview:header];
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(16, 334, 300, 25)];
+    title.text = @"Hurry Up Tomorrow";
+    title.accessibilityIdentifier = @"CreativeWorkPlatform.Components.UI.TitleRow";
+    [header addSubview:title];
+    UIView *element = [[UIView alloc] initWithFrame:CGRectMake((kWidth - 248) / 2, 78, 248, 248)];
+    element.accessibilityIdentifier = @"CreativeWorkPlatform.Components.UI.ArtWorkElement.WithCoverArt";
+    [header addSubview:element];
+    UIImageView *retired = [[UIImageView alloc] initWithFrame:element.bounds];
+    retired.image = solidDarkCover();
+    [element addSubview:retired];
+    [page layoutIfNeeded];
+    UIView *hero = nil;
+    for (UIView *sub in header.subviews) {
+        if ([NSStringFromClass(sub.class) isEqualToString:@"SGRAlbumHero"]) hero = sub;
+    }
+    HARNESS_CHECK(hero);
+    UIImageView *picture = [hero valueForKey:@"picture"];
+    HARNESS_CHECK(picture.image == retired.image);
+
+    // The element gone for one of the header's passes.
+    [element removeFromSuperview];
+    [page setNeedsLayout];
+    [page layoutIfNeeded];
+    UIImage *shown = picture.image;
+    retired.image = solidLightCover();
+    if (picture.image != shown) HARNESS_FAIL(@"a picture landing in the artwork view of a cover element gone for a pass replaced the hero's");
+
+    // Back, rebuilt, its artwork view undersized on the header's pass.
+    [retired removeFromSuperview];
+    [header addSubview:element];
+    UIImageView *replacement = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 40, 40)];
+    [element addSubview:replacement];
+    [page setNeedsLayout];
+    [page layoutIfNeeded];
+    retired.image = solidRedCover();
+    if (picture.image != shown) HARNESS_FAIL(@"a picture landing in the retired artwork view replaced the hero's");
+
+    // Sized and filled on its own passes.
+    replacement.frame = element.bounds;
+    [replacement layoutIfNeeded];
+    replacement.image = colourfulCover();
+    if (picture.image != replacement.image)
+        HARNESS_FAIL(@"the replacement artwork view, sized and filled after the header's pass, did not reach the hero");
+    replacement.image = flatSleeve(0.10, 0.20, 0.85, 0.6);
+    HARNESS_CHECK(picture.image == replacement.image);
+    [page setNeedsLayout];
+    [page layoutIfNeeded];
+    HARNESS_CHECK(picture.image == replacement.image);
+    NSLog(@"[harness] PASS rebuilt header: the retired artwork view's late pictures ignored, with the cover element gone for a "
+          "pass and back undersized; the replacement followed once sized and filled on its own passes");
+}
+
 int main(int argc, char *argv[]) {
     @autoreleasepool {
         NSString *mode = argc > 1 ? @(argv[1]) : @"";
@@ -650,6 +712,7 @@ int main(int argc, char *argv[]) {
             HARNESS_CHECK(picture.image == current.image);
             p.source.image = solidLightCover();
             if (picture.image != current.image) HARNESS_FAIL(@"Retired header cover replaced the hero");
+            checkRebuiltUndersized();
             return 0;
         }
         if ([mode isEqualToString:@"off"]) {

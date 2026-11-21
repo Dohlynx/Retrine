@@ -11,7 +11,9 @@
 // header is restyled (large title, avatar at the trailing edge), in either shape of the tree; with `compact`
 // (spotifyglass.redesign.library.hideChips on) the chips fold away and come back, and the header's menu sorts,
 // switches the view and clears a filter through the mock's own controls; `late`, `nosort` and `noclear` play a list
-// loading after the page, a list without its sort row and a filter with no clear chip the menu knows. `look compact`
+// loading after the page, a list without its sort row and a filter with no clear chip the menu knows; `safearea` the
+// top safe area changing under the folded chips, and `bottomfirst` each page pass setting the list's bottom inset on a
+// set of its own before the whole inset, the top carried in it as it stands. `look compact`
 // opens the menu with a finger for a screenshot. `settings` checks the Library page of Mod Settings and its preview.
 #import <UIKit/UIKit.h>
 #import <os/log.h>
@@ -26,6 +28,12 @@ void SGHarnessTap(UIWindow *window, CGPoint point);
 #define HLog(fmt, ...) os_log(OS_LOG_DEFAULT, "[harness] %{public}s", [NSString stringWithFormat:(fmt), ##__VA_ARGS__].UTF8String)
 
 static const CGFloat kHeaderHeight = 159.33;
+// Spotify's header: the control row on the safe area and the chips under it, 159.33pt under the 62pt of an iPhone 17
+// Pro; the list is inset by all of it.
+static const CGFloat kRowHeight = 48, kChipsHeight = 49.33;
+static CGFloat spotifyHeaderHeight(UIView *view) {
+    return (view.window ? view.safeAreaInsets.top : 62) + kRowHeight + kChipsHeight;
+}
 
 #pragma mark - Spotify's classes, by name
 
@@ -149,11 +157,11 @@ static const CGFloat kHeaderHeight = 159.33;
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width;
-    CGFloat top = self.window ? self.window.safeAreaInsets.top : 62;
-    self.gradient.frame = CGRectMake(0, 0, width, kHeaderHeight);
+    CGFloat top = self.window ? self.safeAreaInsets.top : 62;
+    self.gradient.frame = CGRectMake(0, 0, width, spotifyHeaderHeight(self));
     if (self.chained) return;
-    self.row.frame = CGRectMake(0, top, width, 48);
-    self.filters.frame = CGRectMake(0, top + 48, width, 49.33);
+    self.row.frame = CGRectMake(0, top, width, kRowHeight);
+    self.filters.frame = CGRectMake(0, top + kRowHeight, width, kChipsHeight);
 }
 @end
 
@@ -164,6 +172,9 @@ static const CGFloat kHeaderHeight = 159.33;
 // pinned at its top and sides only, so as tall as the header it arranges.
 @property (nonatomic, strong) UIView *content, *header, *wrapper;
 @property (nonatomic, strong) UICollectionView *list;
+// `bottomfirst`: each pass sets the list's bottom inset on a set of its own first, the top carried in it as the list
+// has it, then the whole inset.
+@property (nonatomic) BOOL bottomFirst;
 @end
 
 @implementation _TtC28YourLibrary_YourLibraryXImpl15YourLibraryView {
@@ -173,9 +184,14 @@ static const CGFloat kHeaderHeight = 159.33;
     [super layoutSubviews];
     self.content.frame = self.bounds;
     self.list.frame = self.content.bounds;
-    if (!self.wrapper) self.header.frame = CGRectMake(0, 0, self.bounds.size.width, kHeaderHeight);
+    if (!self.wrapper) self.header.frame = CGRectMake(0, 0, self.bounds.size.width, spotifyHeaderHeight(self));
+    if (self.bottomFirst) {
+        UIEdgeInsets carried = self.list.contentInset;
+        carried.bottom = self.safeAreaInsets.bottom;
+        self.list.contentInset = carried;
+    }
     UIEdgeInsets inset = self.list.contentInset;
-    inset.top = kHeaderHeight;
+    inset.top = spotifyHeaderHeight(self);
     self.list.contentInset = inset;
     // The list opens at its top, under the header.
     if (!_rested) {
@@ -711,6 +727,7 @@ void SGRRunSettingsChecks(UIWindow *window);
 
     _TtC28YourLibrary_YourLibraryXImpl15YourLibraryView *page = [[_TtC28YourLibrary_YourLibraryXImpl15YourLibraryView alloc] initWithFrame:self.window.bounds];
     page.backgroundColor = UIColor.blackColor;
+    page.bottomFirst = [args containsObject:@"bottomfirst"];
     self.page = page;
 
     page.content = box(page, _TtC28YourLibrary_YourLibraryXImpl22YourLibraryContentView.class, page.bounds, nil);
@@ -812,27 +829,28 @@ void SGRRunSettingsChecks(UIWindow *window);
 - (void)expectChipsShown:(NSString *)moment {
     UIView *header = self.page.header, *filters = [header valueForKey:@"filters"];
     UIScrollView *list = self.page.list;
+    CGFloat spotify = spotifyHeaderHeight(self.page);
     if (filters.alpha < 1 || !filters.userInteractionEnabled || filters.accessibilityElementsHidden
-        || !near(header.bounds.size.height, kHeaderHeight) || !near(list.contentInset.top, kHeaderHeight)) {
-        HARNESS_FAIL(@"%@: chips alpha %.2f touches %d hidden from VoiceOver %d, header %.2f, list inset %.2f", moment, filters.alpha,
-                     filters.userInteractionEnabled, filters.accessibilityElementsHidden, header.bounds.size.height, list.contentInset.top);
+        || !near(header.bounds.size.height, spotify) || !near(list.contentInset.top, spotify)) {
+        HARNESS_FAIL(@"%@: chips alpha %.2f touches %d hidden from VoiceOver %d, header %.2f, list inset %.2f (expected %.2f)", moment, filters.alpha,
+                     filters.userInteractionEnabled, filters.accessibilityElementsHidden, header.bounds.size.height, list.contentInset.top, spotify);
     }
-    printf("PASS %s: the chips are Spotify's, the header %.2fpt and the list inset by it\n", moment.UTF8String, kHeaderHeight);
+    printf("PASS %s: the chips are Spotify's, the header %.2fpt and the list inset by it\n", moment.UTF8String, spotify);
 }
 
 // The chips gone and the page closed up by their band, worked out here from the mock's own frames.
 - (void)expectChipsFolded:(NSString *)moment {
     UIView *header = self.page.header, *filters = [header valueForKey:@"filters"], *row = [header valueForKey:@"row"];
     UIScrollView *list = self.page.list;
-    CGFloat rowBottom = CGRectGetMaxY(row.frame), band = CGRectGetMaxY(filters.frame) - rowBottom;
+    CGFloat rowBottom = CGRectGetMaxY(row.frame), band = CGRectGetMaxY(filters.frame) - rowBottom, spotify = spotifyHeaderHeight(self.page);
     if (filters.alpha > 0 || filters.userInteractionEnabled || !filters.accessibilityElementsHidden) {
         HARNESS_FAIL(@"%@: chips alpha %.2f touches %d hidden from VoiceOver %d", moment, filters.alpha, filters.userInteractionEnabled, filters.accessibilityElementsHidden);
     }
-    if (!near(header.bounds.size.height, rowBottom) || !near(list.contentInset.top, kHeaderHeight - band)) {
+    if (!near(header.bounds.size.height, rowBottom) || !near(list.contentInset.top, spotify - band)) {
         HARNESS_FAIL(@"%@: header %.2f (row ends at %.2f), list inset %.2f (expected %.2f)", moment, header.bounds.size.height, rowBottom,
-                     list.contentInset.top, kHeaderHeight - band);
+                     list.contentInset.top, spotify - band);
     }
-    printf("PASS %s: the chips folded, the header %.2fpt and the list inset %.2f\n", moment.UTF8String, rowBottom, kHeaderHeight - band);
+    printf("PASS %s: the chips folded, the header %.2fpt and the list inset %.2f\n", moment.UTF8String, rowBottom, spotify - band);
 }
 
 // The header's row in reading order from its leading edge -- the title, the menu button, the controls shown, the
@@ -939,6 +957,7 @@ void SGRRunSettingsChecks(UIWindow *window);
     [self expectChipsFolded:@"after another page pass"];
 
     if ([args containsObject:@"noclear"]) [self checkFilterWithoutClearChip];
+    if ([args containsObject:@"safearea"]) [self checkSafeAreaChange];
 
     UICollectionView *list = page.list;
     CGFloat top = -list.adjustedContentInset.top;
@@ -1041,6 +1060,47 @@ void SGRRunSettingsChecks(UIWindow *window);
     [self expectChipsShown:@"the menu opened over a filter with no clear chip"];
     if (![menu isEqualToString:@"Sort (Recents) | List, Grid*"]) HARNESS_FAIL(@"the menu over a filter with no clear chip reads \"%@\"", menu);
     printf("PASS all noclear\n");
+    exit(0);
+}
+
+// `safearea`: the page's top safe area changing with the chips folded (a rotation or a window resize moves it the same
+// way), Spotify's header and its inset for the list changing with it, one page pass each: the list rests the chips' band
+// under Spotify's new inset, back again when the safe area is, and the chips coming back after such a change give the
+// list Spotify's new inset.
+- (void)checkSafeAreaChange {
+    UIViewController *root = self.window.rootViewController;
+    root.additionalSafeAreaInsets = UIEdgeInsetsMake(20, 0, 0, 0);
+    [self pass];
+    [self.window layoutIfNeeded];
+    UIImage *image = [[[UIGraphicsImageRenderer alloc] initWithSize:self.window.bounds.size] imageWithActions:^(UIGraphicsImageRendererContext *c) {
+        HARNESS_CHECK([self.window drawViewHierarchyInRect:self.window.bounds afterScreenUpdates:YES]);
+    }];
+    NSString *file = [[NSHomeDirectory() stringByAppendingPathComponent:@"Documents"] stringByAppendingPathComponent:
+                      @"library-safearea.png"];
+    HARNESS_CHECK([UIImagePNGRepresentation(image) writeToFile:file atomically:YES]);
+    printf("SHOT %s\n", file.UTF8String);
+    [self expectChipsFolded:@"the safe area 20pt taller"];
+    root.additionalSafeAreaInsets = UIEdgeInsetsZero;
+    [self pass];
+    [self expectChipsFolded:@"the safe area back"];
+    root.additionalSafeAreaInsets = UIEdgeInsetsMake(20, 0, 0, 0);
+    [self pass];
+    // The sort row gone when the menu fires it, the list at its top: the chips come back.
+    UICollectionView *list = self.page.list;
+    [list setContentOffset:CGPointMake(0, -list.adjustedContentInset.top) animated:NO];
+    self.items.sortRow = NO;
+    [list reloadData];
+    [list layoutIfNeeded];
+    pick(self.page, @"Sort");
+    spin(1.0);
+    [self.page layoutIfNeeded];
+    UIView *filters = [self.page.header valueForKey:@"filters"];
+    CGFloat spotify = spotifyHeaderHeight(self.page);
+    if (filters.alpha < 1 || !near(list.contentInset.top, spotify))
+        HARNESS_FAIL(@"the chips back at the taller safe area: chips alpha %.2f, list inset %.2f (expected Spotify's %.2f)", filters.alpha,
+                     list.contentInset.top, spotify);
+    printf("PASS the chips back at the taller safe area: the list inset by Spotify's %.2f\n", spotify);
+    printf("PASS all safearea\n");
     exit(0);
 }
 

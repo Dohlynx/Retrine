@@ -14,8 +14,9 @@
 // (LibraryMenu.m), and while that menu can stand in for them the chips go and the header closes up by the band
 // they leave: the header is shrunk to the bottom of its control row, which hangs off the safe area and so answers
 // the same on every pass, and the list's top inset is lowered by the band, taken once from the live frames and
-// then held against Spotify setting it again from its own pass. When the menu can no longer stand in -- a filter
-// on with no clear chip, a control it fired gone -- the chips, the header's height and the inset come back. A
+// then held against Spotify setting it again from its own pass, until the safe area moves. When the menu can no
+// longer stand in -- a filter on with no clear chip, a control it fired gone -- the chips, the header's height and
+// the inset come back. A
 // filter can change in the chips or the list alone, on passes of their own that reach neither the header nor the
 // page, so a change there, and the menu opening, have the page look again at once. A folder keeps its chips and
 // its own controls either way.
@@ -282,6 +283,12 @@ static void holdHeight(UIView *header, UIView *filters, CGFloat height) {
     hold.active = YES;
 }
 
+// The top of the safe area of the page `list` is in, which the header's row hangs off. The page's own: the list's is
+// worked out after the page's pass, where Spotify sets the list's inset from the page's.
+static CGFloat safeTop(UIView *list) {
+    return SGRLibraryPageAbove(list).safeAreaInsets.top;
+}
+
 // The chips gone and the page closed up by the band they leave (see the top of the file). `control` is any of the
 // header's controls: they fill its row, so the bottom of one is the bottom of the row. What Spotify had -- the
 // chips' alpha, the header's height and the band, the list's inset -- is kept for unfoldChips.
@@ -324,7 +331,7 @@ static void foldChips(UIView *header, UIView *control, UIView *filters, UIScroll
     CGFloat top = list.contentInset.top, band = spotify[1].doubleValue;
     if (top < spotify[0].doubleValue - 0.5) return;
     BOOL atTop = list.contentOffset.y <= -top + 0.5;
-    objc_setAssociatedObject(list, &kInsetKey, @[@(top - band), @(top)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(list, &kInsetKey, @[@(top - band), @(top), @(safeTop(list))], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UIEdgeInsets inset = list.contentInset;
     inset.top = top - band;
     list.contentInset = inset;
@@ -356,7 +363,7 @@ static void unfoldChips(UIView *header, UIView *filters, UIScrollView *list) {
         frame.size.height = spotify[0].doubleValue;
         header.frame = frame;
     }
-    NSArray<NSNumber *> *held = list ? objc_getAssociatedObject(list, &kInsetKey) : nil;   // held, Spotify's
+    NSArray<NSNumber *> *held = list ? objc_getAssociatedObject(list, &kInsetKey) : nil;   // held, Spotify's, safe area
     if (!held) return;
     objc_setAssociatedObject(list, &kInsetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     BOOL atTop = list.contentOffset.y <= -list.contentInset.top + 0.5;
@@ -434,11 +441,23 @@ static void layoutFolder(UIView *page) {
 // Spotify works the list's top inset out from the header it made, chips and all, and sets it again whenever it lays
 // the page out. While the chips are folded the list keeps the one foldChips took instead, so the two never take
 // turns setting it: a scroll view laying out again from every set of ours is a loop the page cannot settle out of.
+// The one held is worked out for the safe area it was taken under. Once that moves (a rotation, a window resize) the
+// next top Spotify sets of its own is the one for the new safe area, and the inset held and the one unfoldChips gives
+// back are taken again from it, by the same band. A set that carries the held top back (Spotify changing only the
+// bottom from the list's inset as it stands) is not one: the held top is kept and the safe area still waits.
 %group CompactLibrary
 %hook _TtC21YourLibrary_CommonKit25YourLibraryCollectionView
 - (void)setContentInset:(UIEdgeInsets)inset {
-    NSArray<NSNumber *> *held = objc_getAssociatedObject(self, &kInsetKey);
-    if (held) inset.top = held[0].doubleValue;
+    NSArray<NSNumber *> *held = objc_getAssociatedObject(self, &kInsetKey);   // held, Spotify's, safe area
+    if (held) {
+        CGFloat safe = safeTop((UIView *)self);
+        if (fabs(safe - held[2].doubleValue) > 0.5 && fabs(inset.top - held[0].doubleValue) > 0.5) {
+            CGFloat band = held[1].doubleValue - held[0].doubleValue;
+            held = @[@(inset.top - band), @(inset.top), @(safe)];
+            objc_setAssociatedObject(self, &kInsetKey, held, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        inset.top = held[0].doubleValue;
+    }
     %orig(inset);
 }
 
