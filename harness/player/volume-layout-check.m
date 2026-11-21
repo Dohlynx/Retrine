@@ -125,6 +125,14 @@ static BOOL checkReusedTitle(void) {
     BOOL ok = CGRectGetMinX(row.frame) + 12 == 32 && CGRectGetMaxX(row.frame) == 382;
     NSLog(@"%@ reused title starts at %.0f", ok ? @"PASS" : @"FAIL", CGRectGetMinX(row.frame)+12);
     if (!ok) return NO;
+    // Issue #35: once inset, the row lays its title out 8 pt in for 12. That is the inset row's own layout, not
+    // Spotify's offset, so the row stays where the first reading put it.
+    SGRPlayerHoldMargin(row, 8);
+    [host setNeedsLayout];
+    [host layoutIfNeeded];
+    ok = CGRectGetMinX(row.frame) == 20 && CGRectGetMaxX(row.frame) == 382;
+    NSLog(@"%@ inset title row holds at %.0f", ok ? @"PASS" : @"FAIL", CGRectGetMinX(row.frame));
+    if (!ok) return NO;
     // UIKit can normalize a direct leadingMargin constraint into one on
     // the unit's own guide. A sibling's margin is genuinely not that pin.
     UIView *rail = [[UIView alloc] initWithFrame:host.bounds];

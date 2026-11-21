@@ -105,9 +105,10 @@ void SGRPlayerHoldField(void);
 static const CGFloat SGRPlayerSideMargin = 32;
 // Insets `view`, which Spotify's constraints lay out in its superview (a unit's view), on both sides so that its content,
 // starting `contentX` in from the view's own leading edge, starts SGRPlayerSideMargin in from the superview's. Called
-// after each of Spotify's layout passes; the inset is measured from the native leading pin and added to the constants of
-// Spotify's side constraints (each one's own constant kept), so it never compounds, the content inside lays out for
-// the new width, and a view Spotify already insets as far is left alone.
+// after each of Spotify's layout passes; the inset is measured from the native leading pin and the first pass's `contentX`
+// (later ones are of the inset view's own layout and are not used) and added to the constants of Spotify's side
+// constraints (each one's own constant kept), so it never compounds, the content inside lays out for the new width, and
+// a view Spotify already insets as far is left alone.
 void SGRPlayerHoldMargin(UIView *view, CGFloat contentX);
 // The Music app's gap from the volume row's middle to the footer row's middle: the footer's rhythm makes the room for it
 // (PlayerFooter.x) and the volume row stands this far over the footer where the room allows (PlayerVolume.m).

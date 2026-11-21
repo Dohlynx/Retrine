@@ -508,7 +508,7 @@ static UIView *rowAbove(UIView *row) {
 
 #pragma mark - margins and rhythm
 
-static char kMarginInsetKey, kMarginOriginalsKey;
+static char kMarginInsetKey, kMarginOriginalsKey, kMarginContentKey;
 
 // +1 for a constraint on the leading side of `view` that moves it in as its constant grows, -1 for one that moves it
 // out, and on the trailing side the other way round; 0 for any other.
@@ -524,10 +524,16 @@ static CGFloat insetSign(NSLayoutConstraint *constraint, UIView *view) {
 // The inset goes into the constants of Spotify's constraints that hold the view's sides in its superview, so the
 // constraints inside it lay its content out for the new width. Each constraint's own constant is kept to add to, and a
 // constraint Spotify makes anew is taken up on the next pass. For a row pinned to the unit, its native margin is
-// in the pin, not in the frame (which can still be the reused row's last adjusted frame).
+// in the pin, not in the frame (which can still be the reused row's last adjusted frame). Where the content starts in
+// the view is Spotify's only until the view is inset: the narrowed title row lays its content out anew (the title 8 pt
+// in for 12 on the next pass, 9.2.0), and an inset measured from that changed pass by pass, the row left 24, 32 or
+// 36 pt in by where the passes stopped (issue #35). So it is read once, on the view's first pass.
 void SGRPlayerHoldMargin(UIView *view, CGFloat contentX) {
     UIView *unit = view.superview;
     if (!unit) return;
+    NSNumber *content = objc_getAssociatedObject(view, &kMarginContentKey);
+    if (!content) objc_setAssociatedObject(view, &kMarginContentKey, content = @(contentX), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    contentX = content.doubleValue;
     NSMapTable<NSLayoutConstraint *, NSNumber *> *originals = objc_getAssociatedObject(view, &kMarginOriginalsKey);
     BOOL rtl = unit.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
     NSNumber *inset = nil;
