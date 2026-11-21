@@ -1161,6 +1161,47 @@ static void durationLaidOut(UIViewController *unit) {
 }
 %end
 
+#pragma mark - Podcast buffering
+
+static Class sg_episodeSlider, sg_episodeAudio;
+
+%group SGRBufferingHooks
+%hook SGRSliderBufferingView
+- (void)setFrame:(CGRect)frame {
+    UIView *band = (UIView *)self;
+    UIView *slider = band.superview;
+    if ([slider isKindOfClass:sg_episodeSlider]) {
+        // Spotify follows UIKit's track rect, but the chapters draw in a sibling below it.
+        for (UIView *audio in slider.subviews) {
+            if (![audio isKindOfClass:sg_episodeAudio]) continue;
+            CGRect track = audio.frame;
+            BOOL rtl = slider.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+            CGFloat left = CGRectGetMinX(frame), right = CGRectGetMaxX(frame);
+            if (rtl) left = MIN(right, MAX(left, CGRectGetMinX(track)));
+            else right = MAX(left, MIN(right, CGRectGetMaxX(track)));
+            frame = CGRectMake(left, track.origin.y, right - left, track.size.height);
+            band.layer.maskedCorners = rtl ? kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner
+                                           : kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
+            band.layer.cornerRadius = audio.layer.cornerRadius;
+            band.clipsToBounds = YES;
+            break;
+        }
+    }
+    %orig(frame);
+}
+%end
+%end
+
+%ctor {
+    if (!SGRedesignedUI()) return;
+    sg_episodeSlider = NSClassFromString(@"_TtCO17NowPlaying_ECMKit11ProgressBar6Slider");
+    sg_episodeAudio = NSClassFromString(@"_TtCO17NowPlaying_ECMKit11ProgressBar9AudioView");
+    Class band = NSClassFromString(@"NowPlaying_ECMKit.SliderBufferingAnimationView");
+    if (band && sg_episodeSlider && sg_episodeAudio) { %init(SGRBufferingHooks, SGRSliderBufferingView = band); }
+}
+
+#pragma mark - Duration hooks
+
 // The DJ unit is another class, hooked only when the build has it (see %ctor).
 %group SGRDJControlsDurationHooks
 %hook SGRDJControlsDurationUnit

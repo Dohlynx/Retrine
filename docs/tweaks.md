@@ -1545,7 +1545,9 @@ Redesigned:
                   and the volume row are drawn the one way, the Music app's, on every iOS: default-style sliders with an
                   empty thumb whose tracks are 7 pt capsule images (SGRPlayerBarImage, Spotify's track height), so the
                   fill ends square inside the round track. They are translucent: the fill a light white the background
-                  shows through, the track dimmer. Both progress sliders skip playback updates within the same
+                  shows through, the track dimmer. On podcast episodes with chapters, the loading band sits on the
+                  chapter bar, running from the thumb no farther than the bar's rounded end. Spotify still controls
+                  when it appears and how it animates. Both progress sliders skip playback updates within the same
                   device pixel, never rounding Spotify's value or filtering tap-to-seek, animated, tracking or off-window sets.
                   PlayerProgress.m stops the work upstream when a NowPlaying_ElementsImpl duration tracker
                   has written only invisible views. The mini bar rests under the settled player, detached
