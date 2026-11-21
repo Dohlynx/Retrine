@@ -181,6 +181,11 @@ void SGMotionClipFor(NSString *uri, NSURL *canvas, NSString *artist, NSString *a
 
 SGMotionTicket *SGMotionRequestClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, CGFloat pixels,
                                    void (^done)(NSURL *file, NSString *source)) {
+    return SGMotionRequestSongClip(uri, canvas, artist, album, nil, pixels, done);
+}
+
+SGMotionTicket *SGMotionRequestSongClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, NSString *song,
+                                       CGFloat pixels, void (^done)(NSURL *file, NSString *source)) {
     SGMotionTicket *ticket = [SGMotionTicket new];
     NSArray<NSString *> *order = SGMotionSourceOrder();
     // The walk holds itself until it ends, when it lets go.
@@ -213,7 +218,7 @@ SGMotionTicket *SGMotionRequestClip(NSString *uri, NSURL *canvas, NSString *arti
                 else next(nil);
             });
         } else {
-            ticket.child = SGMotionRequestAlbumCover(artist, album, pixels, next);
+            ticket.child = SGMotionRequestSongCover(artist, album, song, pixels, next);
         }
     };
     ask = step;

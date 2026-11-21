@@ -680,7 +680,12 @@ Shared:
                   bright busy, a dark and any given videos). What reaches the
                   system's now playing through this hook and Player/NowPlayingExtras.x is checked by harness/now-playing/
     AnimatedArtwork/ moving artwork (AnimatedArtwork.h): the track's Canvas, else Apple Music's animated album cover
-                  (SGMotionCatalog.m: searched without the album's edition, the edition of the same name first, and
+                  (SGMotionCatalog.m: the full release title including the edition and the album artist suffice, even
+                  when a song's title differs. Otherwise a single release must contain the song with its artist credit;
+                  trailing features and version tags are simplified on the song, never on the album. A soundtrack's songs
+                  share the title search; only a full page with no identified release can be narrowed by artist.
+                  An identified album without video stays still rather than borrowing another artist's cover. Header and track share the
+                  master and media playlist lookup for the same stream size. The catalog is
                   left alone for 10 minutes after a 403 or 429; an album's answer kept on disk for a week, so a relaunch skips the search), kept as local files (SGMotionStore.m, a download that
                   fails on a transient error (a timeout, a lost connection, DNS or no network, HTTP 408, 429 or 5xx) tried once more while
                   someone still waits for it, its body streamed to a temporary partial that is moved into the store only when the whole
@@ -1930,7 +1935,11 @@ Redesigned:
                   both still and animated covers in the leading square; motion eligibility and the page's colour
                   source stay unchanged. Compact widths and an unfitting side column retain the stacked header.
                   It shares nothing with Playlist/ but the Kit: the cover, in the Full screen layout full bleed, dissolving into the
-                  field (Apple Music's animated cover over it where the album has one, fading in once its first frame
+                  field (Apple Music's animated cover over it where the album has one: the header asks with the album artist
+                  first. Only a fresh page with an unidentified release uses one title search, indexed off main,
+                  for at most eight distinct song/credit pairs; a page, hero or track list reused for another
+                  release is header-only. The pairs come from
+                  this page's own settled track list, never the playing song or cells in a list update. The cover fades in once its first frame
                   is decoded and moving only in front of the app with Reduce Motion and Low Power Mode off and Auto-Play
                   Video Previews on), the title, the artist and the kind and date centered under it, and the same row of glass
                   controls, shuffle, Play and add -- play and shuffle float over the album page outside its header, so they are concealed
@@ -1953,7 +1962,7 @@ Redesigned:
                   common entities and numeric references are decoded, so an escaped "<…" stays literal text; a document
                   over 64 KB gives nothing. Only an exact, unambiguous match is used, and only for an album whose own
                   edition is known on the page: the artist and the album's name as Spotify spells it (no edition
-                  qualifier borrowed, unlike motion), with the track count from the page's consumption cell (read as
+                  qualifier borrowed), with the track count from the page's consumption cell (read as
                   the leading number of the localized "count · duration"), the release year from the header's metadata
                   row (and only when no two labels disagree) and the explicit rating the page proves (an explicit track
                   seen, or every track loaded with none). A second record that fits equally well gives nothing, as does a

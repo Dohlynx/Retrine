@@ -11,6 +11,7 @@ FLAGS=(-target arm64-apple-ios17.0-macabi -isysroot "$SDK"
 xcrun -sdk macosx clang "${FLAGS[@]}" -DSG_MOTION_TEST_STORE main.m ../album-notes/catalog-boundary.m \
     ../../tweak/Sources/Core/SGLog.m \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionCatalog.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m \
+    ../../tweak/Sources/Shared/Lyrics/LyricsLanguage.m -framework NaturalLanguage -Wl,-dead_strip \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
     ../../tweak/Sources/Core/SGDataRoot.m -o "$OUT/retrine-artist-artwork-check"
 RETRINE_TEST_ROOT="$OUT/catalog" "$OUT/retrine-artist-artwork-check" fixtures/catalog.json

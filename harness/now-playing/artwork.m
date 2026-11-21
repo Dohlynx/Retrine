@@ -163,7 +163,7 @@ void SGMotionClipFor(NSString *uri, NSURL *canvas, NSString *artist, NSString *a
     done(sourceFile, sourceFile ? @"canvas" : nil);
 }
 // The follower's ticketed lookup: the stub source answers at once, so the ticket has nothing to cancel.
-SGMotionTicket *SGMotionRequestClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album,
+SGMotionTicket *SGMotionRequestSongClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, NSString *song,
                                    CGFloat pixels, void (^done)(NSURL *, NSString *)) {
     SGMotionClipFor(uri, canvas, artist, album, pixels, done);
     return [SGMotionTicket new];

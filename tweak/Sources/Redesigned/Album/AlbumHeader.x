@@ -423,6 +423,8 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
     __weak UIImageView *_cover;
     UIView *_extension;   // iOS 26's UIBackgroundExtensionView around the picture, nil before it
     NSString *_motionAlbum;
+    __weak UIView *_motionPage;
+    NSString *_motionRelease;
     NSUInteger _motionGeneration;
     AVPlayerLayer *_motion;
     AVQueuePlayer *_player;
@@ -845,7 +847,17 @@ static void *kReadyContext = &kReadyContext;
 
 - (void)playMotionForArtist:(NSString *)artist album:(NSString *)album {
     NSString *key = artist.length && album.length ? [NSString stringWithFormat:@"%@\n%@", artist, album] : nil;
-    if (_motionAlbum == key || [key isEqualToString:_motionAlbum]) return;
+    UIView *page = SGRAlbumPageOf(self);
+    NSString *release = SGRFindByIdentifier(self.superview, @"Components.UI.ContextMenuButton-*", &kMoreKey).accessibilityIdentifier;
+    SGRAlbumMotionHeader(page, self, key, release);
+    BOOL changedRelease = release.length && _motionRelease.length && ![_motionRelease isEqual:release];
+    if (_motionPage == page && !changedRelease && (_motionAlbum == key || [key isEqualToString:_motionAlbum])) {
+        if (release) _motionRelease = [release copy];
+        return;
+    }
+    SGRAlbumWaitForMotionRow(_motionPage, NO, nil);
+    _motionPage = page;
+    _motionRelease = [release copy];
     NSUInteger generation = ++_motionGeneration;
     _motionAlbum = [key copy];
     // Stop owning A immediately, not only when B supplies a replacement clip.
@@ -854,11 +866,31 @@ static void *kReadyContext = &kReadyContext;
     // The player's size: at the screen's full width a square cover ran to the 1920 stream, tens of MB.
     CGFloat pixels = SGMotionPixels();
     __weak SGRAlbumHero *weakSelf = self;
+    __weak UIView *weakPage = page;
     // Tall, as the Music app's album page: the hero runs past the title, taller than wide, and a square clip
     // filled into it lost its sides. An album with only a square clip gets that one.
-    SGMotionAlbumCover(artist, album, pixels, ^(NSURL *file) {
+    SGMotionPageAlbumCover(artist, album, pixels, ^(NSURL *file, BOOL identified) {
         SGRAlbumHero *hero = weakSelf;
-        if (hero && file && hero->_motionGeneration == generation) [hero showMotion:file];
+        UIView *owner = weakPage;
+        if (!hero || hero->_motionGeneration != generation || SGRAlbumPageOf(hero) != owner) return;
+        if (file) { [hero showMotion:file]; return; }
+        if (identified || !SGRAlbumMotionRowsAllowed(owner)) return;
+        BOOL (^stillCurrent)(void) = ^BOOL {
+            SGRAlbumHero *current = weakSelf;
+            return current && current->_motionGeneration == generation && SGRAlbumPageOf(current) == weakPage &&
+                   SGRAlbumMotionRowsAllowed(weakPage);
+        };
+        SGRAlbumWaitForMotionRow(owner, NO, ^BOOL(NSString *credit, NSString *song) {
+            if (!stillCurrent()) return YES;
+            SGMotionAlbumRowMatcher(artist, album, pixels, ^(SGMotionRowMatch match) {
+                // Read rows again from the settled list, not strings captured before the search.
+                if (stillCurrent()) SGRAlbumWaitForMotionRow(weakPage, YES, match);
+            }, ^(NSURL *clip) {
+                SGRAlbumHero *target = weakSelf;
+                if (clip && stillCurrent()) [target showMotion:clip];
+            });
+            return YES;
+        });
     });
 }
 

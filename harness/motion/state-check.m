@@ -11,10 +11,11 @@
 @interface SPTPlayerTrack ()
 @property (nonatomic, readwrite) id URI;
 @property (nonatomic, readwrite) NSString *artistName;
+@property (nonatomic, readwrite) NSString *trackTitle;
 @property (nonatomic, readwrite) NSDictionary *metadata;
 @end
 @implementation SPTPlayerTrack
-@dynamic artistURI, trackTitle, provider;
+@dynamic artistURI, provider;
 @end
 @interface SPTPlayerState ()
 @property (nonatomic, readwrite) SPTPlayerTrack *track;
@@ -31,9 +32,19 @@
 static SPTPlayerState *state;
 static __weak id<SGPlayerStateObserver> observer;
 static NSURL *walkCanvas;
+static NSArray *walkEvidence;
 static NSURL *store;
 static NSString *edition = @"first";
 static NSDictionary *editorialVideos;
+static NSArray *coverResults;
+static NSMutableArray *coverSearches;
+static NSUInteger masterHits, mediaHits;
+static NSUInteger sentinelReads;
+extern NSString *fixtureSimplifiedTitle(NSString *);
+NSString *SGLyricsSimplifiedTitle(NSString *title) {
+    if ([title isEqual:@"catalog sentinel"]) sentinelReads++;
+    return fixtureSimplifiedTitle(title);
+}
 static NSData *redLogo, *blueLogo;
 static BOOL blue;
 
@@ -47,9 +58,10 @@ NSURL *SGMotionCanvasIn(NSDictionary *metadata) {
     NSString *address = metadata[@"canvas.url"];
     return address ? [NSURL URLWithString:address] : nil;
 }
-SGMotionTicket *SGMotionRequestClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album,
+SGMotionTicket *SGMotionRequestSongClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, NSString *song,
                      CGFloat pixels, void (^done)(NSURL *, NSString *)) {
     walkCanvas = canvas;
+    walkEvidence = @[artist ?: @"", album ?: @"", song ?: @""];
     SGMotionTicket *ticket = [SGMotionTicket new];
     [requested addObject:uri];
     tickets[uri] = ticket;
@@ -89,18 +101,31 @@ static void waitFor(BOOL (^ready)(void)) {
             for (NSURLQueryItem *item in parts.queryItems) query[item.name] = item.value;
             BOOL artist = [query[@"types"] isEqual:@"artists"];
             NSString *term = query[@"term"];
-            NSDictionary *attributes = artist
-                ? @{@"name": term, @"editorialArtwork": @{@"musicContentColorLogoTrimmed":
-                    @{@"url": @"https://fixture.invalid/logo.png", @"width": @1024, @"height": @1024}}}
-                : @{@"name": [term substringFromIndex:@"Artist ".length], @"artistName": @"Artist",
-                    @"editorialVideo": editorialVideos ?: @{@"motionTallVideo3x4": @{@"video":
-                        [NSString stringWithFormat:@"https://fixture.invalid/%@/%@/master.m3u8", edition,
-                            [[term substringFromIndex:@"Artist ".length] stringByReplacingOccurrencesOfString:@" " withString:@"-"]]}}};
+            NSArray *records = coverResults;
+            if (records) {
+                [coverSearches addObject:term];
+                if (![query[@"include[albums]"] isEqual:@"tracks"]) { // the normal search has no track relationship
+                    NSMutableArray *bare = [NSMutableArray array];
+                    for (NSDictionary *record in records) [bare addObject:@{@"attributes": record[@"attributes"]}];
+                    records = bare;
+                }
+            } else {
+                NSDictionary *attributes = artist
+                    ? @{@"name": term, @"editorialArtwork": @{@"musicContentColorLogoTrimmed":
+                        @{@"url": @"https://fixture.invalid/logo.png", @"width": @1024, @"height": @1024}}}
+                    : @{@"name": [term substringFromIndex:@"Artist ".length], @"artistName": @"Artist",
+                        @"editorialVideo": editorialVideos ?: @{@"motionTallVideo3x4": @{@"video":
+                            [NSString stringWithFormat:@"https://fixture.invalid/%@/%@/master.m3u8", edition,
+                                [[term substringFromIndex:@"Artist ".length] stringByReplacingOccurrencesOfString:@" " withString:@"-"]]}}};
+                records = @[@{@"attributes": attributes}];
+            }
             data = [NSJSONSerialization dataWithJSONObject:
-                @{@"results": @{artist ? @"artists" : @"albums": @{@"data": @[@{@"attributes": attributes}]}}} options:0 error:nil];
+                @{@"results": @{artist ? @"artists" : @"albums": @{@"data": records}}} options:0 error:nil];
         } else if ([url.path hasSuffix:@"master.m3u8"]) {
+            masterHits++;
             data = [@"#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=720x960\nmedia.m3u8" dataUsingEncoding:NSUTF8StringEncoding];
         } else if ([url.path hasSuffix:@"media.m3u8"]) {
+            mediaHits++;
             data = [@"#EXTM3U\nclip.mp4" dataUsingEncoding:NSUTF8StringEncoding];
         } else {
             CHECK([url.path isEqual:@"/logo.png"]);
@@ -129,6 +154,99 @@ static UIImage *logo(NSString *artist) {
     waitFor(^BOOL { return finished; });
     return value;
 }
+
+static NSDictionary *release(NSString *name, NSString *artist, BOOL single, NSArray *songs) {
+    return @{@"attributes": @{@"name": name, @"artistName": artist, @"isSingle": @(single),
+        @"editorialVideo": @{@"motionTallVideo3x4": @{@"video": @"https://fixture.invalid/f1/master.m3u8"}}},
+        @"relationships": @{@"tracks": @{@"data": songs}}};
+}
+
+static NSURL *songCover(NSString *artist, NSString *album, NSString *song) {
+    __block BOOL finished = NO;
+    __block NSURL *result;
+    SGMotionRequestSongCover(artist, album, song, 720, ^(NSURL *file) { result = file; finished = YES; });
+    waitFor(^BOOL { return finished; });
+    return result;
+}
+
+static void checkSoundtrack(void) {
+    // Trimmed US catalog 1810796698 (the final five entries are music videos),
+    // and the different display credits from Spotify album 2HwRKkEp7jXbxXwcGyZYHK.
+    NSArray *rows = @[
+        @[@"Lose My Mind (feat. Doja Cat)", @"Don Toliver", @"Don Toliver, Doja Cat"],
+        @[@"No Room For A Saint (feat. Nathan Nicholson)", @"Dom Dolla & Nathan Nicholson", @"Dom Dolla, Nathan Nicholson"],
+        @[@"Drive", @"Ed Sheeran"], @[@"Just Keep Watching", @"Tate McRae"], @[@"Messy", @"ROSÉ"],
+        @[@"Don't Let Me Drown", @"Burna Boy"], @[@"Underdog", @"Roddy Ricch"], @[@"Grandma Calls The Boy Bad News", @"RAYE"],
+        @[@"Bad As I Used To Be", @"Chris Stapleton"], @[@"Baja California", @"Myke Towers"],
+        @[@"OMG!", @"Tiësto & Sexyy Red", @"Tiësto, Sexyy Red"], @[@"All At Once", @"Madison Beer"], @[@"D.A.N.C.E", @"Peggy Gou"],
+        @[@"DOUBLE C", @"PAWSA"], @[@"Attention", @"Mr Eazi"], @[@"Give Me Love", @"Darkoo"], @[@"Gasoline", @"Obongjayar"]
+    ];
+    NSMutableArray *tracks = [NSMutableArray array];
+    for (NSArray *row in rows) [tracks addObject:@{@"attributes": @{@"name": row[0], @"artistName": row[1]}}];
+    NSString *name = @"F1 The Album";
+    coverResults = @[release(name, @"Various Artists", NO, tracks), release(@"F1 The Album (Cinematic Edition)", @"Hans Zimmer", NO, tracks)];
+    CHECK(!songCover(name, name, nil)); // the old header strings alone don't identify a compilation
+    CHECK(songCover(@"Various Artists", name, nil)); // opening the album fetched both playlists
+    NSUInteger masters = masterHits, media = mediaHits;
+    coverSearches = [NSMutableArray array];
+    for (NSArray *row in rows) CHECK([songCover(row.lastObject, name, row[0]).path isEqual:@"/f1/clip.mp4"]);
+    CHECK(masterHits == masters && mediaHits == media);
+    CHECK([coverSearches isEqual:@[name]]); // no per-track search for the same soundtrack
+    // A full first page would normally invite a narrower artist-qualified network search.
+    // For album-page rows the same record set must be used even after a localized credit misses.
+    NSString *page = @"Page soundtrack";
+    NSArray *pageTracks = [tracks arrayByAddingObject:@{@"attributes": @{@"name": @"Catalog Sentinel", @"artistName": @"Singer"}}];
+    NSMutableArray *full = [NSMutableArray arrayWithObject:release(page, @"Various Artists", NO, pageTracks)];
+    while (full.count < 10) [full addObject:release(@"Other release", @"Another artist", NO, @[])];
+    coverResults = full;
+    [coverSearches removeAllObjects];
+    __block BOOL rowDone = NO;
+    SGMotionAlbumRowMatcher(@"Spotify soundtrack credit", page, 720, ^(SGMotionRowMatch match) {
+        CHECK(sentinelReads == 1); // catalog normalization finished before the first cell
+        CHECK(match && !match(@"현지화된 이름", @"Drive"));
+        CHECK(match(@"Ed Sheeran", @"Drive"));
+        CHECK(sentinelReads == 1);
+    }, ^(NSURL *clip) { CHECK([clip.path isEqual:@"/f1/clip.mp4"]); rowDone = YES; });
+    waitFor(^BOOL { return rowDone; });
+    CHECK([coverSearches isEqual:@[page]]);
+    CHECK(!songCover(@"Someone Else", name, @"Drive"));
+    CHECK(!songCover(@"Ed Sheeran", name, @"Different Song"));
+    coverResults = @[release(@"Starboy", @"The Weeknd", NO, @[@{@"attributes":
+        @{@"name": @"Starboy (feat. Daft Punk)", @"artistName": @"The Weeknd"}}])];
+    CHECK(songCover(@"The Weeknd, Daft Punk", @"Starboy", @"Starboy"));
+    CHECK(songCover(@"The Weeknd", @"Starboy", @"A song missing from the returned track list"));
+    coverResults = @[release(@"Soundtrack", @"Cast", NO, @[@{@"attributes":
+        @{@"name": @"Theme (2017 Remaster)", @"artistName": @"Singer"}}])];
+    CHECK(songCover(@"Singer", @"Soundtrack", @"Theme - 2021 Remaster"));
+
+    coverResults = @[release(@"Original (Deluxe)", @"Artist", NO, tracks)];
+    CHECK(!album(@"Original"));
+    CHECK(album(@"Original (Deluxe)")); // the bare miss must not mask the edition's hit
+    coverResults = @[release(@"Only Remaster - 2011 Remaster", @"Various Artists", NO, tracks)];
+    CHECK(!songCover(@"Ed Sheeran", @"Only Remaster", @"Drive"));
+    coverResults = @[release(@"Single Trap", @"Ed Sheeran", YES, tracks)];
+    CHECK(!songCover(@"Ed Sheeran", @"Single Trap", @"Drive"));
+    coverResults = @[release(@"Ambiguous", @"Various Artists", NO, tracks), release(@"Ambiguous", @"Another Album Artist", NO, tracks)];
+    CHECK(!songCover(@"Ed Sheeran", @"Ambiguous", @"Drive"));
+    coverResults = @[release(@"Cast Recording", @"Stage Cast", NO, tracks)];
+    CHECK(songCover(@"Ed Sheeran", @"Cast Recording", @"Drive"));
+    CHECK(!songCover(@"Ed Sheeran & Band", @"Cast Recording", @"Drive"));
+    NSString *hits = @"Greatest Hits";
+    coverResults = @[@{@"attributes": @{@"name": hits, @"artistName": @"Artist", @"isSingle": @NO}},
+                     release(hits, @"Other Band", NO, @[@{@"attributes": @{@"name": @"Theme", @"artistName": @"Artist"}}])];
+    BOOL stayedStill = !songCover(@"Artist", hits, @"Theme");
+    __block BOOL exactStill = NO;
+    SGMotionPageAlbumCover(@"Artist", hits, 720, ^(NSURL *file, BOOL identified) { CHECK(!file && identified); exactStill = YES; });
+    waitFor(^BOOL { return exactStill; });
+    [coverSearches removeAllObjects];
+    coverResults = @[];
+    CHECK(!songCover(@"Solo", @"Absent", @"Theme"));
+    coverResults = @[release(@"Different Title", @"Artist", NO, tracks)];
+    CHECK(!songCover(@"Solo", @"Short result", @"Theme"));
+    CHECK(stayedStill);
+    CHECK(([coverSearches isEqual:@[@"Absent", @"Short result"]]));
+    coverResults = nil;
+}
 static NSData *makeLogo(BOOL red) {
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
     format.scale = 1; format.opaque = YES;
@@ -148,7 +266,7 @@ static BOOL isBlue(UIImage *image) {
     return pixel[2] > 240 && pixel[0] < 10;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     @autoreleasepool {
         __block BOOL visible = YES;
         __attribute__((objc_precise_lifetime)) SGMotionFollower *follower = [[SGMotionFollower alloc] initWithBegin:^BOOL(NSString *uri, SPTPlayerState *value) {
@@ -168,8 +286,11 @@ int main(void) {
         CHECK([walkCanvas.absoluteString isEqual:@"https://fixture.invalid/late.mp4"]);
         [requested removeAllObjects];
         SPTPlayerTrack *a = [SPTPlayerTrack new]; a.URI = @"spotify:track:a";
+        a.trackTitle = @"OMG!"; a.artistName = @"Tiësto";
+        a.metadata = @{@"album_title": @"F1 The Album", @"artist_name": @"Tiësto", @"artist_name:1": @"Sexyy Red"};
         SPTPlayerTrack *b = [SPTPlayerTrack new]; b.URI = @"spotify:track:b";
         state.future = @[a]; publish(state);
+        CHECK(([walkEvidence isEqual:@[@"Tiësto, Sexyy Red", @"F1 The Album", @"OMG!"]]));
         CHECK(([requested isEqual:@[@"spotify:track:a"]]));
         SGMotionTicket *old = tickets[a.URI];
         state.future = @[b]; publish(state);
@@ -207,10 +328,11 @@ int main(void) {
         NSURL *root = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
             URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
         CHECK([NSFileManager.defaultManager createDirectoryAtURL:root withIntermediateDirectories:YES attributes:nil error:nil]);
-        store = [root URLByAppendingPathComponent:@"answers.plist"];
-        CHECK(([@{@"album\n1\nartist\nexpired": @{@"url": @"https://fixture.invalid/expired.mp4",
+        store = argc == 3 ? [NSURL fileURLWithPath:@(argv[2])] : [root URLByAppendingPathComponent:@"answers.plist"];
+        if (argc != 3) CHECK(([@{@"album\n2\nartist\nexpired": @{@"url": @"https://fixture.invalid/expired.mp4",
             @"at": [NSDate dateWithTimeIntervalSinceNow:-8 * 24 * 3600]},
-            @"album\n1\nartist\nsaved": @{@"url": @"https://fixture.invalid/saved.mp4", @"at": NSDate.date}}
+            @"album\n1\nartist\noriginal": @{@"url": @"https://fixture.invalid/wrong-edition.mp4", @"at": NSDate.date},
+            @"album\n2\nartist\nsaved": @{@"url": @"https://fixture.invalid/saved.mp4", @"at": NSDate.date}}
             writeToURL:store atomically:YES]));
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
         NSString *tokenKey = @"spotifyglass.motion.token";
@@ -218,16 +340,31 @@ int main(void) {
         NSData *claims = [NSJSONSerialization dataWithJSONObject:@{@"exp": @4102444800} options:0 error:nil];
         [defaults setObject:[NSString stringWithFormat:@"e30.%@.test", [claims base64EncodedStringWithOptions:0]] forKey:tokenKey];
         CHECK([NSURLProtocol registerClass:CatalogProtocol.class]);
+        if (argc == 3) {
+            BOOL first = [@(argv[1]) isEqual:@"seed"];
+            coverSearches = [NSMutableArray array];
+            coverResults = first ? @[release(@"Ordinary", @"Solo", NO, @[@{@"attributes": @{@"name": @"One", @"artistName": @"Solo"}}])] : @[];
+            CHECK(songCover(@"Solo", @"Ordinary", first ? @"One" : @"Two"));
+            if (first) {
+                CHECK(coverSearches.count == 1);
+                waitFor(^BOOL { return [NSDictionary dictionaryWithContentsOfURL:store].count > 0; });
+            }
+            else CHECK(!coverSearches.count && !masterHits && !mediaHits);
+            if (prior) [defaults setObject:prior forKey:tokenKey]; else [defaults removeObjectForKey:tokenKey];
+            CHECK([NSFileManager.defaultManager removeItemAtURL:root error:nil]);
+            return 0;
+        }
+        checkSoundtrack();
         CHECK([album(@"Saved").absoluteString isEqual:@"https://fixture.invalid/saved.mp4"]);
         for (NSUInteger i = 0; i < 201; i++) {
             NSString *name = [NSString stringWithFormat:@"Album %lu", (unsigned long)i];
             CHECK(album(name) != nil);
         }
         waitFor(^BOOL {
-            return [NSDictionary dictionaryWithContentsOfURL:store][@"album\n1\nartist\nalbum 200"] != nil;
+            return [NSDictionary dictionaryWithContentsOfURL:store][@"album\n2\nartist\nalbum 200"] != nil;
         });
         NSDictionary *saved = [NSDictionary dictionaryWithContentsOfURL:store];
-        CHECK(saved.count == 200 && !saved[@"album\n1\nartist\nexpired"] && !saved[@"album\n1\nartist\nalbum 0"]);
+        CHECK(saved.count == 200 && !saved[@"album\n2\nartist\nexpired"] && !saved[@"album\n2\nartist\nalbum 0"]);
         edition = @"second";
         CHECK([album(@"Album 200").absoluteString isEqual:@"https://fixture.invalid/first/Album-200/clip.mp4"]);
         CHECK([album(@"Album 0").absoluteString isEqual:@"https://fixture.invalid/second/Album-0/clip.mp4"]);
@@ -265,7 +402,7 @@ int main(void) {
         [NSURLProtocol unregisterClass:CatalogProtocol.class];
         if (prior) [defaults setObject:prior forKey:tokenKey]; else [defaults removeObjectForKey:tokenKey];
         waitFor(^BOOL {
-            return [[NSDictionary dictionaryWithContentsOfURL:store][@"album\n1\nartist\nalbum 0"][@"url"]
+            return [[NSDictionary dictionaryWithContentsOfURL:store][@"album\n2\nartist\nalbum 0"][@"url"]
                 isEqual:@"https://fixture.invalid/second/Album-0/clip.mp4"];
         });
         CHECK([NSFileManager.defaultManager removeItemAtURL:root error:nil]);

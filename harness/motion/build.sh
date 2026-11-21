@@ -10,6 +10,11 @@ xcrun clang -fobjc-arc -O2 -I ../../tweak/Sources \
     -framework Foundation -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework CoreGraphics \
     main.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
     -o "$OUT/motion"
+# Count normalizations at the lyrics boundary while executing its real implementation.
+xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
+    -iframework "$(xcrun --sdk macosx --show-sdk-path)/System/iOSSupport/System/Library/Frameworks" \
+    -fobjc-arc -I ../../tweak/Sources -DSGLyricsSimplifiedTitle=fixtureSimplifiedTitle \
+    -c ../../tweak/Sources/Shared/Lyrics/LyricsLanguage.m -o "$OUT/language.o"
 xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
     -iframework "$(xcrun --sdk macosx --show-sdk-path)/System/iOSSupport/System/Library/Frameworks" \
@@ -17,10 +22,14 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -framework UIKit -framework Foundation -framework CoreGraphics -framework AVFoundation -framework CoreMedia -framework CoreVideo \
     -framework Network \
     state-check.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionFollower.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m ../../tweak/Sources/Core/SGLog.m \
-    ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionCatalog.m \
+    ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionCatalog.m "$OUT/language.o" -framework NaturalLanguage -Wl,-dead_strip \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
     ../../tweak/Sources/Core/SGDataRoot.m -o "$OUT/state-check"
 "$OUT/state-check"
+relaunch=$(mktemp -d)
+trap 'rm -rf "$relaunch"' EXIT
+"$OUT/state-check" seed "$relaunch/album.plist"
+"$OUT/state-check" relaunch "$relaunch/album.plist"
 xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \
     -iframework "$(xcrun --sdk macosx --show-sdk-path)/System/iOSSupport/System/Library/Frameworks" \

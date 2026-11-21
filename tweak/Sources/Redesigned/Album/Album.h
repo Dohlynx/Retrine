@@ -52,6 +52,10 @@ UIViewController *SGRAlbumSettingsPage(void);
 // The album's artist as the header of the page `view` is on shows it, for the rows to compare theirs with. A
 // change lays the page's track rows out again; the same artist again is a no-op.
 void SGRAlbumSetArtist(UIView *view, NSString *artist);
+void SGRAlbumMotionHeader(UIView *page, UIView *hero, NSString *albumKey, NSString *releaseID);
+BOOL SGRAlbumMotionRowsAllowed(UIView *page);
+// The first row can wake a pending search; only evaluating its answer consumes evidence.
+void SGRAlbumWaitForMotionRow(UIView *page, BOOL evaluating, BOOL (^use)(NSString *artist, NSString *song));
 // AlbumCredits.m. Whether a row's artist line says nothing the album's header does not: it is the album's
 // artist, or the album's artist and the guests the title names after "feat.", "ft.", "featuring" or "with".
 BOOL SGRCreditRepeatsAlbum(NSString *albumArtist, NSString *rowArtist, NSString *title);

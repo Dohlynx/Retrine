@@ -39,7 +39,7 @@ hero() {
         "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGFileHash.m \
         "$SRC"/Core/SGBackdrop.m "$SRC"/Core/SGFlagForce.m "$SRC"/Core/SGUIMode.m "$HERE/../page-style-with-presenter-stubs.m" \
         "$SRC"/Redesigned/Kit/SGRTokens.m "$SRC"/Redesigned/Kit/SGRPalette.m "$field" "$SRC"/Redesigned/Kit/SGRFlow.m \
-        "$SRC"/Redesigned/Kit/SGRFluid.m "$SRC"/Redesigned/Kit/SGRFluidGPU.m "$SRC"/Shared/AnimatedArtwork/SGMotionCatalog.m \
+        "$SRC"/Redesigned/Kit/SGRFluid.m "$SRC"/Redesigned/Kit/SGRFluidGPU.m "$SRC"/Shared/AnimatedArtwork/SGMotionCatalog.m "$SRC"/Shared/Lyrics/LyricsLanguage.m -framework NaturalLanguage -Wl,-dead_strip \
         "$SRC"/Shared/AnimatedArtwork/SGMotionStore.m "$SRC"/Shared/AnimatedArtwork/SGMotionTicket.m \
         "$SRC"/Redesigned/Kit/SGRGlass.m "$SRC"/Redesigned/Kit/SGRGlyph.m "$SRC"/Redesigned/Kit/SGRRestyle.m \
         "$SRC"/Redesigned/Kit/SGRActionRow.m "$SRC"/Redesigned/Kit/SGRDownload.m "$SRC"/Redesigned/Kit/SGRHeaderInfo.m "$SRC"/Redesigned/Kit/SGRHeroVeil.m "$SRC"/Redesigned/Kit/SGRStretchHero.m \
@@ -53,6 +53,7 @@ hero() {
 }
 
 hero "$OUT/hero"
+"$OUT/hero/cover-hero-check" motion-row
 "$OUT/hero/cover-hero-check" on -spotifyglass.redesign.album.adaptiveCover YES
 "$OUT/hero/cover-hero-check" swap -spotifyglass.redesign.album.adaptiveCover YES
 "$OUT/hero/cover-hero-check" still-swap -spotifyglass.redesign.album.adaptiveCover YES

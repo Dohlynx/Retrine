@@ -952,7 +952,7 @@ UIView *SGRPlayerMotionPreview(void (^arrived)(void)) {
     sg_previewLooking = YES;
     NSUInteger generation = sg_previewGeneration;
     SGLog(@"redesign player: the Player page looks up the clip of %@%@", track, shown.current ? @"" : @", the last played");
-    sg_previewTicket = SGMotionRequestClip(track, shown.canvasURL, shown.artist, shown.album, SGMotionPixels(),
+    sg_previewTicket = SGMotionRequestSongClip(track, shown.canvasURL, shown.artist, shown.album, shown.title, SGMotionPixels(),
                     ^(NSURL *file, NSString *source) {
         if (generation != sg_previewGeneration) return;
         // Nothing found is not kept: the page asks again the next time it shows Animated.

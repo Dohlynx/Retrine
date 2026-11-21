@@ -232,6 +232,99 @@ static void layOutRowsAgain(UIView *page) {
     });
 }
 
+static char kMotionRowKey, kMotionBatchDepth, kMotionPageKey, kMotionOwnerKey;
+static const NSUInteger kMotionPagePairs = 8;
+
+@interface SGRAlbumMotionLifetime : NSObject
+@property (nonatomic, copy) NSString *album, *releaseID;
+@property (nonatomic) BOOL headerOnly;
+@property (nonatomic, strong) NSMutableSet *pairs;
+@end
+@implementation SGRAlbumMotionLifetime
+@end
+
+static void observeRelease(SGRAlbumMotionLifetime *state, NSString *album, NSString *releaseID) {
+    if ((state.album && album && ![state.album isEqual:album]) ||
+        (state.releaseID && releaseID && ![state.releaseID isEqual:releaseID])) state.headerOnly = YES;
+    if (!state.album && album) state.album = album;
+    if (!state.releaseID && releaseID) state.releaseID = releaseID;
+}
+
+// A replaced hero must not forget the page's album, nor may a reparented list
+// bring rows from its previous owner. The state holds no view or callback.
+static SGRAlbumMotionLifetime *bindMotionOwner(UIView *page, UIView *owner) {
+    SGRAlbumMotionLifetime *state = objc_getAssociatedObject(page, &kMotionPageKey);
+    if (!state) {
+        state = [SGRAlbumMotionLifetime new];
+        objc_setAssociatedObject(page, &kMotionPageKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    SGRAlbumMotionLifetime *prior = objc_getAssociatedObject(owner, &kMotionOwnerKey);
+    if (state != prior) {
+        observeRelease(state, prior.album, prior.releaseID);
+        if (prior.headerOnly) state.headerOnly = YES;
+        objc_setAssociatedObject(owner, &kMotionOwnerKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return state;
+}
+
+void SGRAlbumMotionHeader(UIView *page, UIView *hero, NSString *albumKey, NSString *releaseID) {
+    if (!page) return;
+    SGRAlbumMotionLifetime *state = bindMotionOwner(page, hero);
+    observeRelease(state, albumKey, releaseID);
+    if (state.headerOnly) objc_setAssociatedObject(page, &kMotionRowKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
+}
+
+BOOL SGRAlbumMotionRowsAllowed(UIView *page) {
+    SGRAlbumMotionLifetime *state = objc_getAssociatedObject(page, &kMotionPageKey);
+    return state.album != nil && !state.headerOnly;
+}
+
+void SGRAlbumWaitForMotionRow(UIView *page, BOOL evaluating, BOOL (^use)(NSString *, NSString *)) {
+    if (!page) return;
+    SGRAlbumMotionLifetime *state = objc_getAssociatedObject(page, &kMotionPageKey);
+    if (!use || !SGRAlbumMotionRowsAllowed(page) || state.pairs.count >= kMotionPagePairs) {
+        objc_setAssociatedObject(page, &kMotionRowKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        return;
+    }
+    if (evaluating && !state.pairs) state.pairs = [NSMutableSet set];
+    BOOL (^offer)(NSArray *) = ^BOOL(NSArray *pair) {
+        if (!evaluating) return use(pair[0], pair[1]);
+        if ([state.pairs containsObject:pair]) return NO;
+        [state.pairs addObject:pair];
+        return use(pair[0], pair[1]) || state.pairs.count >= kMotionPagePairs;
+    };
+    objc_setAssociatedObject(page, &kMotionRowKey, offer, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    layOutRowsAgain(page); // existing rows may have laid out while the header search was pending
+}
+
+static NSArray *motionEvidence(UIView *row) {
+    NSString *song = titleOf(row).text, *credit = onlyLabel(subtitleOf(row)).text;
+    if (!song.length || !credit.length) return nil;
+    return @[[credit stringByReplacingOccurrencesOfString:@" 및 " withString:@", "], song];
+}
+
+static void offerMotionRow(UICollectionViewCell *cell, UIView *row, UIView *page) {
+    NSString *kind = row.accessibilityIdentifier;
+    if (![kind isEqual:@"Components.UI.RetrievalRowElementUI_Loaded"] && ![kind isEqual:@"Components.UI.RetrievalRowElementUI"]) return;
+    // The device tree's track cell belongs directly to the template's list, not a carousel
+    // or a header's nested collection. Recheck the live ancestry, not a recycled cell's cached place.
+    UICollectionView *list = (id)cell.superview;
+    if (![list isKindOfClass:UICollectionView.class] ||
+        ![list.superview isKindOfClass:%c(_TtC32CreativeWorkPlatform_TemplateKit28CreativeWorkTemplateListView)] ||
+        SGRAlbumPageOf(list.superview) != page) return;
+    if (bindMotionOwner(page, list).headerOnly) {
+        objc_setAssociatedObject(page, &kMotionRowKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        return;
+    }
+    BOOL (^use)(NSArray *) = objc_getAssociatedObject(page, &kMotionRowKey);
+    if (!use || cell.hidden || [objc_getAssociatedObject(list, &kMotionBatchDepth) unsignedIntegerValue] ||
+        ![list indexPathForCell:cell]) return;
+    NSArray *pair = motionEvidence(row);
+    if (!pair) return;
+    if (use(pair) && objc_getAssociatedObject(page, &kMotionRowKey) == use)
+        objc_setAssociatedObject(page, &kMotionRowKey, nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
+}
+
 void SGRAlbumSetArtist(UIView *view, NSString *artist) {
     UIView *page = SGRAlbumPageOf(view);
     NSString *known = objc_getAssociatedObject(page, &kArtistKey);
@@ -701,6 +794,7 @@ static void applyRow(UIView *cell, UIView *page) {
     });
 
     applyHairline(row);
+    offerMotionRow((UICollectionViewCell *)cell, row, page);
     if (countsPlace() == SGRAlbumPlayCountsInRow) applyCount(cell, row, page);
     else if (countsPlace() == SGRAlbumPlayCountsInMenu) watchMenu(cell, row);
     if (hidesCredits()) applyCredit(cell, row, page);
@@ -708,6 +802,34 @@ static void applyRow(UIView *cell, UIView *page) {
 }
 
 #pragma mark - the cells
+
+// As for album notes, a valid index path during a reload/batch can still name the
+// previous snapshot. Track the album list itself, including when editorial notes are off.
+static void motionBatch(UICollectionView *list, NSInteger delta) {
+    NSInteger depth = [objc_getAssociatedObject(list, &kMotionBatchDepth) integerValue] + delta;
+    objc_setAssociatedObject(list, &kMotionBatchDepth, depth ? @(depth) : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!depth && objc_getAssociatedObject(SGRAlbumPageOf(list), &kMotionRowKey))
+        for (UICollectionViewCell *cell in list.visibleCells) [cell setNeedsLayout];
+}
+
+%hook _TtC32CreativeWorkPlatform_TemplateKitP33_5F894CA2C02A3F3767683E90D6AA015014CollectionView
+- (void)layoutSubviews {
+    UICollectionView *list = (id)self;
+    UIView *page = SGRAlbumPageOf(list.superview);
+    if (page) bindMotionOwner(page, list);
+    %orig;
+}
+- (void)reloadData {
+    motionBatch((id)self, 1);
+    %orig;
+    motionBatch((id)self, -1);
+}
+- (void)performBatchUpdates:(void (^)(void))updates completion:(void (^)(BOOL))completion {
+    UICollectionView *list = (id)self;
+    motionBatch(list, 1);
+    %orig(updates, ^(BOOL finished) { motionBatch(list, -1); if (completion) completion(finished); });
+}
+%end
 
 %hook _TtC12Element_List18CollectionViewCell
 - (void)layoutSubviews {

@@ -8,6 +8,10 @@ NSArray<SGMotionTicket *> *SGRHarnessMotionTickets(void) { return sg_backgroundT
 
 SGMotionTicket *SGMotionRequestClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, CGFloat pixels,
                                    void (^done)(NSURL *file, NSString *source)) {
+    return SGMotionRequestSongClip(uri, canvas, artist, album, nil, pixels, done);
+}
+SGMotionTicket *SGMotionRequestSongClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, NSString *song, CGFloat pixels,
+                                       void (^done)(NSURL *file, NSString *source)) {
     SGMotionTicket *ticket = [SGMotionTicket new];
     if ([NSProcessInfo.processInfo.environment[@"HARNESS_SCENARIO"] isEqual:@"background"]) {
         if (!sg_backgroundTickets) sg_backgroundTickets = [NSMutableArray array];
