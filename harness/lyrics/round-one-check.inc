@@ -229,7 +229,18 @@ static void providerRevisionChecks(UIWindow *window) {
     UIScrollView *scroll = [view valueForKey:@"scroll"];
     [scroll.delegate scrollViewWillBeginDragging:scroll];
     scroll.contentOffset = CGPointMake(0, 24);
-    CGPoint offset = scroll.contentOffset;
+    // A browsed page keeps its first wholly visible verse where it is drawn (showStyle:tops:), so a row
+    // above it changing height moves the offset, not the verse.
+    CGFloat (^anchorY)(void) = ^CGFloat {
+        CGFloat best = CGFLOAT_MAX;
+        for (UIView *row in [[view valueForKey:@"shown"] allValues]) {
+            CGFloat y = CGRectGetMinY(row.frame) - CGRectGetMinY(scroll.bounds);
+            if (y >= 0 && y < best && CGRectGetMaxY(row.frame) <= CGRectGetMaxY(scroll.bounds)) best = y;
+        }
+        return best;
+    };
+    CGFloat anchor = anchorY();
+    BOOL (^anchored)(void) = ^BOOL { return anchor < CGFLOAT_MAX && fabs(anchorY() - anchor) < 1; };
     [defaults setObject:@"ko" forKey:@"translateTo"];
 
     NSMutableArray<SGKaraokeLine *> *cleared = [NSMutableArray array];
@@ -240,10 +251,10 @@ static void providerRevisionChecks(UIWindow *window) {
     SGKaraokeKeepLines(SGHarnessPlayingTrack, cleared);
     UIView *oldRow = firstRow();
     autoTick(view);
-    check(firstRow() == oldRow && CGPointEqualToPoint(offset, scroll.contentOffset),
+    check(firstRow() == oldRow && anchored(),
           @"provider removal keeps rendered rows and scroll while replacement layout runs");
     check(extrasWait(^BOOL { return firstRow() && !firstRow().accessibilityValue.length; }) &&
-          CGPointEqualToPoint(offset, scroll.contentOffset),
+          anchored(),
           @"provider removal clears English from loaded timed karaoke without moving scroll");
 
     NSMutableArray<SGKaraokeLine *> *korean = [NSMutableArray array];
@@ -253,10 +264,10 @@ static void providerRevisionChecks(UIWindow *window) {
     SGKaraokeKeepLines(SGHarnessPlayingTrack, korean);
     oldRow = firstRow();
     autoTick(view);
-    check(firstRow() == oldRow && CGPointEqualToPoint(offset, scroll.contentOffset),
+    check(firstRow() == oldRow && anchored(),
           @"Korean arrival keeps rendered rows and scroll while replacement layout runs");
     check(extrasWait(^BOOL { return [firstRow().accessibilityValue isEqual:@"안녕하세요"]; }) &&
-          CGPointEqualToPoint(offset, scroll.contentOffset),
+          anchored(),
           @"Korean provider revision appears in loaded timed karaoke without moving scroll");
 
     // A replacement must also be adopted when the current snapshot already has a translation.
@@ -266,7 +277,7 @@ static void providerRevisionChecks(UIWindow *window) {
     SGKaraokeKeepLines(SGHarnessPlayingTrack, replacement);
     autoTick(view);
     check(extrasWait(^BOOL { return [firstRow().accessibilityValue isEqual:@"다른 번역"]; }) &&
-          CGPointEqualToPoint(offset, scroll.contentOffset),
+          anchored(),
           @"provider replacement updates existing translated karaoke without moving scroll");
 
     NSMutableArray<SGKaraokeLine *> *unchanged = [NSMutableArray array];
@@ -277,7 +288,7 @@ static void providerRevisionChecks(UIWindow *window) {
     SGKaraokeKeepLines(SGHarnessPlayingTrack, unchanged);
     autoTick(view);
     pump(); // Let any incorrectly scheduled replacement layout reach the presented rows.
-    check(firstRow() == unchangedRow && CGPointEqualToPoint(offset, scroll.contentOffset),
+    check(firstRow() == unchangedRow && anchored(),
           @"unchanged provider translations preserve presented rows without another restyle");
     check([unchangedRow accessibilityActivate] && SGKaraokePositionMs() == SGKaraokeDelayMs(),
           @"preserved lyric row VoiceOver activation seeks after an equivalent replacement");
