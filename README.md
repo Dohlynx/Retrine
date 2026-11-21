@@ -151,7 +151,7 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 | Remove every app extension (PlugIns/) | 꺼짐 | IPA에서 앱 확장을 모두 제거합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 | Include app-local WireGuard / proxy | 켜짐 | **9.1.78과 9.1.88에서는 꺼야 합니다.** [WireGuard](#wireguard--프록시) 항목을 참고하세요. |
 | Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0 또는 9.1.90 빌드와 정확히 일치해야 합니다. **9.1.78과 9.1.88에서는 꺼야 합니다.** |
-| Bundle ID | (비워 둠) | 비워 두면 Spotify의 `com.spotify.client`를 유지합니다. 입력하면 서명할 App ID와 같아야 하며, 앱 확장 ID도 이를 따라갑니다. |
+| Bundle ID | `app.retrine.player` | 서명할 App ID와 같아야 하며, 앱 확장 ID도 이를 따라갑니다. Spotify의 ID를 유지하려면 `com.spotify.client`를 직접 입력합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 
 내려받은 파일은 먼저 검사하므로, HTML 로그인 페이지나 중간에 끊긴 파일이면 바로 실패합니다.
 
@@ -182,7 +182,9 @@ make release NO_PLUGINS=1    # 앱 확장 모두 제거
 make install                 # 빌드 후 본인 인증서로 서명해 기기에 설치
 ```
 
-번들 ID를 바꾸려면 환경 변수로 지정합니다: `BUNDLE_ID=<본인 App ID> make release`
+Mac에서 빌드하면 번들 ID를 따로 지정하지 않는 한 Spotify의 `com.spotify.client`가 유지됩니다. 바꾸려면
+환경 변수로 지정합니다: `BUNDLE_ID=<본인 App ID> make release` (GitHub Actions 빌드의 기본값은
+`BUNDLE_ID=app.retrine.player`입니다.)
 
 `make install`은 `.signing.env`에서 `SIGN_P12`, `SIGN_PROFILE`, `SIGN_P12_PASSWORD`를 읽습니다.
 `.signing.env.example`을 복사해 채워 넣으세요.
@@ -198,8 +200,13 @@ make install                 # 빌드 후 본인 인증서로 서명해 기기�
 
 ## 서명과 번들 ID
 
-- **기본 ID(`com.spotify.client`)를 유지하면** 정식 Spotify 위에 덮어 설치되어 이를 대체합니다.
-- **번들 ID를 바꾸려면 인증서의 App ID와 같아야 합니다.** 앱 확장 ID도 이를 따라갑니다. 일치하지 않아도
+- **GitHub Actions 빌드의 기본 ID는 `app.retrine.player`입니다.** 정식 Spotify와 별개의 앱으로 설치됩니다.
+- **Spotify의 ID(`com.spotify.client`)로 빌드하면** 정식 Spotify 위에 덮어 설치되어 이를 대체합니다. 무료
+  Apple ID로 서명하면 그 ID가 본인 Apple 계정에 등록됩니다. 무료 계정의 서명이 막혔다는 제보가 최근
+  늘었고 원인은 확인되지 않았지만, 그래서 기본값에서는 뺐습니다.
+- **예전 기본값으로 설치한 앱이 있다면** 새 기본값으로 빌드한 IPA는 별개의 앱으로 설치되어 로그인과
+  설정, 다운로드가 넘어오지 않습니다. 기존 앱을 그대로 업데이트하려면 `com.spotify.client`를 직접 입력하세요.
+- **번들 ID는 인증서의 App ID와 같아야 합니다.** 앱 확장 ID도 이를 따라갑니다. 일치하지 않아도
   앱은 동작하지만 잠금 화면의 플레이어를 눌러도 앱이 열리지 않으며, 첫 실행 때 어떤 ID를 써야 하는지
   알려 줍니다.
 - Feather에서는 App ID를 **Identifier**에 붙여 넣고 **PPQ protection**은 꺼 두세요. AltStore, SideStore,

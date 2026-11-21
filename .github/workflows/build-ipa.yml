@@ -25,8 +25,8 @@ on:
         type: boolean
         default: true
       bundle_id:
-        description: "Bundle ID must match the signing App ID; extension IDs follow it (empty keeps Spotify's ID)"
-        default: ""
+        description: "Bundle ID must match the signing App ID; extension IDs follow it (type com.spotify.client to keep Spotify's ID)"
+        default: "app.retrine.player"
         required: false
         type: string
 
@@ -111,12 +111,16 @@ jobs:
 
       - name: Build IPA
         env:
-          BUNDLE_ID: ${{ inputs.bundle_id }}
+          # A cleared field is the default again, never Spotify's ID: a free Apple ID registers the
+          # ID it signs under with Apple, so Spotify's has to be asked for by name.
+          BUNDLE_ID: ${{ inputs.bundle_id || 'app.retrine.player' }}
           WIREGUARD: ${{ inputs.enable_wireguard && '1' || '0' }}
           PIXIE: ${{ inputs.enable_pixie && '1' || '0' }}
           MAKEFLAGS: -k
         run: |
           set -o pipefail
+          # The pipeline keeps Spotify's ID when it is given none.
+          if [[ "$BUNDLE_ID" == "com.spotify.client" ]]; then export BUNDLE_ID=; fi
           if make release IPA=ipa/spotify.ipa NO_PLUGINS=${{ inputs.remove_plugins && '1' || '0' }} 2>&1 | tee "$RUNNER_TEMP/ipa-build.log"; then
             exit 0
           else

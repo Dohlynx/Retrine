@@ -152,7 +152,7 @@ Build the IPA instead.
 | Remove every app extension (PlugIns/) | Off | Removes every app extension from the IPA. See [Signing](#signing-and-bundle-id). |
 | Include app-local WireGuard / proxy | On | **Uncheck for 9.1.78 and 9.1.88.** See [WireGuard](#wireguard--proxy). |
 | Include Pixie native downloads | On | Requires the exact supported 9.2.0 or 9.1.90 build. **Uncheck for 9.1.78 and 9.1.88.** |
-| Bundle ID | (empty) | Empty keeps Spotify's `com.spotify.client`. If set, it must match your signing App ID; extension IDs follow it. |
+| Bundle ID | `app.retrine.player` | Must match your signing App ID; extension IDs follow it. Type `com.spotify.client` to keep Spotify's ID. See [Signing](#signing-and-bundle-id). |
 
 The downloaded file is checked first, so an HTML login page or a truncated download fails right away.
 
@@ -183,7 +183,9 @@ make release NO_PLUGINS=1    # remove every app extension
 make install                 # build, sign with your certificate and install on the device
 ```
 
-To change the bundle ID, set it in the environment: `BUNDLE_ID=<your App ID> make release`.
+A Mac build keeps Spotify's `com.spotify.client` unless you name a bundle ID. To change it, set it in the
+environment: `BUNDLE_ID=<your App ID> make release`. (The GitHub Actions build defaults to
+`BUNDLE_ID=app.retrine.player`.)
 
 `make install` reads `SIGN_P12`, `SIGN_PROFILE` and `SIGN_P12_PASSWORD` from `.signing.env`; copy
 `.signing.env.example` and fill it in.
@@ -200,8 +202,16 @@ that includes the Watch. `make install` does not do that yet.
 
 ## Signing and bundle ID
 
-- **Keep the default ID (`com.spotify.client`)** and the app installs over the real Spotify, replacing it.
-- **A custom bundle ID must match your certificate's App ID.** The app extensions' IDs follow it. If it
+- **The GitHub Actions build defaults to `app.retrine.player`.** It installs as an app of its own, beside
+  the real Spotify.
+- **Build with Spotify's ID (`com.spotify.client`)** and the app installs over the real Spotify, replacing
+  it. Signing with a free Apple ID registers that ID with your Apple account. Reports of free accounts
+  losing the ability to sign have grown lately; the cause is not confirmed, but it is why this is no longer
+  the default.
+- **If you installed a build made with the old default**, an IPA built with the new one installs as a
+  separate app, and your login, settings and downloads do not carry over. Type `com.spotify.client` to keep
+  updating the app you have.
+- **The bundle ID must match your certificate's App ID.** The app extensions' IDs follow it. If it
   doesn't match, the app still works, but tapping the player on the lock screen won't open it; the app tells
   you on first launch which ID to use.
 - In Feather, copy the App ID into **Identifier** and leave **PPQ protection** off. AltStore, SideStore and
