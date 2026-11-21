@@ -157,7 +157,8 @@ screenshot of what a page opening shows.
 the picture's parallax and pull zoom, the dim in the page's color and the header fading in over the 14pt under the top
 bar; `veil-card`, with `-spotifyglass.redesign.album.fullCover NO -spotifyglass.redesign.album.motion NO` as well,
 checks the same blur and dim on the square's picture alone, the square left where it is; `veil-off`, without the
-setting, checks that none of it is drawn. Each holds d = 0, 190 and 400 (with the veil on, "mid" too: the title half
+setting, checks that the artwork has no blur or dim and does not move, while the album text still clips under the
+top bar and is unclipped at rest. Each holds d = 0, 190 and 400 (with the veil on, "mid" too: the title half
 under the bar) for screenshots first, then exits 0 or logs a FAIL and exits 1. `veil-check.sh <UDID> [OUT]` builds this, the playlist and the artist harness and runs all of
 it, the artist's Play checks too (`../artist/README.md`), with the screenshots in OUT.
 

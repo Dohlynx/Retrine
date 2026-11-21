@@ -67,6 +67,7 @@
 #import <objc/message.h>
 #import <stdlib.h>
 #import "Shared/Lyrics/Lyrics.h"
+#import "Shared/Sing/Sing.h"
 #import "Redesigned/Player/Player.h"
 #import "Redesigned/Player/PlayerLyricLine.h"
 #import "Redesigned/Player/PlayerLyricFit.h"
@@ -4463,9 +4464,7 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
     return on;
 }
 
-// The lyrics up and left alone past the rest: only the controls under them fade, the lines grow down into
-// their room and still scroll, a tap brings the controls back and is not a seek, a scroll hides them again
-// and the thumbnail closes the lyrics from there.
+// Exercise Keep the title on the first open, then the unset (Everything) choice on the second.
 - (void)runImmersiveChecks {
     __block NSUInteger right = 0, checks = 0;
     void (^check)(NSString *, BOOL, NSString *) = ^(NSString *step, BOOL ok, NSString *detail) {
@@ -4474,7 +4473,15 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
         NSLog(@"[harness] immersive %@: %@ -- %@", step, detail, ok ? @"ok" : @"WRONG");
     };
     UIView *host = _host;
-    UIView *info = _units[0].view, *duration = _units[1].view, *playback = _units[3].view, *footer = _units[4].view;
+    UIView *(^unitView)(Class) = ^UIView *(Class type) {
+        for (UIViewController *unit in self->_units) if ([unit isKindOfClass:type]) return unit.view;
+        HARNESS_FAIL(@"immersive: missing %@", NSStringFromClass(type));
+    };
+    UIView *info = unitView(_TtC20NowPlaying_ModesImpl23InformationElementsUnit.class);
+    UIView *floating = unitView(_TtC20NowPlaying_ModesImpl20FloatingElementsUnit.class);
+    UIView *duration = unitView(_TtC20NowPlaying_ModesImpl19DurationElementUnit.class);
+    UIView *playback = unitView(_TtC20NowPlaying_ModesImpl28PlaybackControlsElementsUnit.class);
+    UIView *footer = unitView(_TtC20NowPlaying_ModesImpl18FooterElementsUnit.class);
     UIGestureRecognizer *wake = nil;
     for (UIGestureRecognizer *recognizer in host.gestureRecognizers) {
         if ([NSStringFromClass(recognizer.class) isEqualToString:@"SGRPlayerWake"]) wake = recognizer;
@@ -4485,12 +4492,18 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
     // Everything in the bottom stack but the title row and the chips: the volume row too, where there is one.
     NSMutableArray<UIView *> *lower = [NSMutableArray array];
     for (UIView *view in info.superview.subviews) {
-        if (view != info && view != self->_units[2].view) [lower addObject:view];
+        if (view != info && view != floating) [lower addObject:view];
     }
     BOOL (^lowerHidden)(void) = ^BOOL { for (UIView *v in lower) if (v.alpha != 0) return NO; return lower.count >= 3; };
     BOOL (^lowerShown)(void) = ^BOOL { for (UIView *v in lower) if (v.alpha != 1) return NO; return lower.count >= 3; };
 
-    after(1.5, ^{ SGRPlayerToggleLyrics(); });
+    NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
+    id previousHide = [prefs objectForKey:SGRKeyLyricsAutoHide], previousMic = [prefs objectForKey:SGKeySingButton];
+    after(1.5, ^{
+        SGSetEnabled(SGKeySingButton, YES);
+        SGSetInt(SGRKeyLyricsAutoHide, SGRLyricsHideControls);
+        SGRPlayerToggleLyrics();
+    });
     after(3, ^{
         withControls = [host convertRect:stage().bounds fromView:stage()];
         check(@"open, with the controls", SGRPlayerLyricsOpen() && lowerShown() && !wake.enabled && linesSeek(lines()),
@@ -4532,14 +4545,22 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
         lines().browsingBegan();
         check(@"a scroll hides the controls", lowerHidden() && wake.enabled, [NSString stringWithFormat:@"controls %.0f", duration.alpha]);
     });
+    after(9, ^{ [wake sgr_woke]; });
     after(9.5, ^{
+        UIView *thumb = [lyricsOverlay(host) valueForKey:@"thumb"];
+        CGPoint center = [thumb convertPoint:CGPointMake(CGRectGetMidX(thumb.bounds), CGRectGetMidY(thumb.bounds)) toView:host];
+        BOOL reachable = [[host hitTest:center withEvent:nil] isDescendantOfView:thumb];
         [lyricsOverlay(host) sgr_thumbTapped];
-        check(@"the thumbnail closes the lyrics while alone", !SGRPlayerLyricsOpen() && lowerShown() && !wake.enabled,
+        check(@"the woken thumbnail closes the lyrics", reachable && !SGRPlayerLyricsOpen() && lowerShown() && !wake.enabled,
               [NSString stringWithFormat:@"lyrics %@, controls %.0f", SGRPlayerLyricsOpen() ? @"up" : @"down", duration.alpha]);
     });
     // A sheet over the player keeps the controls up past the rest, and the clock runs again behind it, so
     // they fade within a rest of the sheet going.
-    after(11.5, ^{ SGRPlayerToggleLyrics(); });
+    after(11.5, ^{
+        [prefs removeObjectForKey:SGRKeyLyricsAutoHide];
+        SGPrefsChanged();
+        SGRPlayerToggleLyrics();
+    });
     __block UIViewController *sheet = nil;
     after(12, ^{
         sheet = [UIViewController new];
@@ -4552,6 +4573,14 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
     });
     after(22, ^{
         check(@"they fade once the sheet has gone", lowerHidden(), [NSString stringWithFormat:@"controls %.0f", duration.alpha]);
+        UIView *thumb = [lyricsOverlay(host) valueForKey:@"thumb"];
+        check(@"by default the title and thumbnail fade too", thumb && thumb.alpha == 0 && info.alpha == 0,
+              [NSString stringWithFormat:@"title row %.0f, thumbnail %.0f", info.alpha, thumb.alpha]);
+        CGRect alone = [host convertRect:stage().bounds fromView:stage()];
+        CGRect safe = UIEdgeInsetsInsetRect(host.bounds, host.safeAreaInsets);
+        check(@"by default the lines grow up and down", CGRectGetMinY(alone) < CGRectGetMinY(withControls)
+              && CGRectGetMaxY(alone) > CGRectGetMaxY(withControls) && CGRectContainsRect(safe, alone),
+              [NSString stringWithFormat:@"%@ from %@, safe area %@", NSStringFromCGRect(alone), NSStringFromCGRect(withControls), NSStringFromCGRect(safe)]);
         // Sing's mic stays with the lines on their own, and takes its own touch.
         UIView *mic = nil;
         for (UIView *view in lines().subviews) {
@@ -4582,7 +4611,11 @@ static BOOL linesSeek(SGRKaraokeView *lyrics) {
         check(@"lifted, the clock runs out", lowerHidden(), [NSString stringWithFormat:@"controls %.0f", duration.alpha]);
     });
     after(40, ^{
+        [prefs setObject:previousHide forKey:SGRKeyLyricsAutoHide];
+        [prefs setObject:previousMic forKey:SGKeySingButton];
+        SGPrefsChanged();
         NSLog(@"[harness] immersive checks: %lu of %lu right -- %@", (unsigned long)right, (unsigned long)checks, right == checks ? @"PASS" : @"FAIL");
+        if (right != checks) exit(1);
     });
 }
 

@@ -182,14 +182,14 @@ come late, out of order, or not at all.
   the AI DJ's header put in the same stack, its row and button take their touches; the row put back, the strip is the
   cover's. Moving the artwork band back up 135 pt without resizing the tilt must leave the cover at its original
   window position. The log ends with `cover checks: n of 15 right -- PASS` or `FAIL`.
-- `immersive` opens the lyrics and waits past the rest: only the bottom stack under the title row
+- `immersive` selects Keep the title, opens the lyrics and waits past the rest: only the bottom stack under the title row
   (progress bar, buttons, volume row, footer) fades, the lines grow down only, a touch where the buttons
   were lands on the lines, the thumbnail takes its own, and the lines' tap is off. Then the tap that
-  wakes them (fired in code), a scroll that hides them again and the thumbnail closing the lyrics. Then,
-  opened again, a sheet over the player keeps the controls up past the rest and they fade once it has
-  gone, Sing's mic stays with the lines and takes its own touch, and a finger held on the player (its
+  wakes them (fired in code), a scroll that hides them again, and another wake before the thumbnail closes the lyrics.
+  Reopened with the default (Everything), a sheet keeps the controls up past the rest. Once it has
+  gone, the title and thumbnail fade too and the lines grow up and down. Sing's mic still takes its own touch, and a finger held on the player (its
   touch watcher driven in code) keeps the controls up until it lifts. The log ends with
-  `immersive checks: n of 15 right -- PASS` or `FAIL`.
+  `immersive checks: n of 17 right -- PASS` or `FAIL`.
 - `badge` shows the hold's 2× badge on the cover by hand, holds again while it fades out and lets go.
   The log ends with `badge checks: n of 3 right -- PASS` or `FAIL`.
 - `lyric-line` and `lyric-line-clip` switch Lyrics Line on (PlayerLyricLine.x; off in every other scenario) with
