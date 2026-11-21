@@ -1394,10 +1394,16 @@ Redesigned:
                   overshoot; at once under Reduce Motion), from what is on screen, so a change turned back half way
                   carries on from there. A tab keeps one glyph as it moves between the row and a circle: its new button
                   starts where its old one's glyph was, on either bar; Search's circle comes out of Search's place in
-                  the row, over the shrinking main bar, and expanding goes back to it over the growing main bar, its
-                  glyph drawn until the main platter holds the whole circle; then the row's Search button, travelling
-                  with it, takes over, the circle goes under the main bar, and it leaves as the spring ends. Search's
-                  glyph is never under another bar's glass. No glass fades. While the bar is minimized the card follows its slot when the trailing
+                  the row, over the shrinking main bar. Expanding, Search's glyph goes back to its place in the row as
+                  a view of its own over both bars, on the bar's spring, drawn as the row draws it (lit when Search is
+                  the tab selected), the row's Search glyph cleared and its name left to the row; the circle, its own
+                  glyph hidden, goes under the main bar and along with the glyph, and its glass goes in the very frame
+                  the growing platter reaches it (issue #35: drawn over the row it was a darker disc), timed off the
+                  spring UIKit made, its layer's opacity held over a model of 0 so a busy main thread cannot make it
+                  late. As the spring ends the row's own glyph, which the spring has brought to the same place, takes
+                  over; a change that turns the expand back takes Search from the row and the circle as it is shown.
+                  Search's glyph is never under another bar's glass, and no glass is drawn over or under the growing
+                  row's. No glass fades. While the bar is minimized the card follows its slot when the trailing
                   circle comes or goes with Spotify's list of tabs. The selected tab shows Spotify's filled glyph and the others their outlines, also
                   after the bar minimizes and expands and when a tab's view is handed another icon: an older
                   SPTEncoreIcon gives its filled variant through -active, and 9.1.90's Swift Encore.Icon is drawn once with
@@ -1406,7 +1412,8 @@ Redesigned:
                   hidden or not, and the leading circle says it shows all tabs. Laid out on
                   the Mac against harness/tabbar/ (`mini`; a tap on the leading circle `tap`, real flings that turn
                   the bar half way `turns`, a minimize from inside Spotify's own animations `nested`, every frame of
-                  the move sampled `motion`, Search on the trailing circle and drawn once through every move `search`),
+                  the move sampled `motion`, Search on the trailing circle and drawn once through every move `search`,
+                  one expand recorded off the screen frame by frame by harness/tabbar/capture.sh),
                   the scroll's steps checked by harness/tabbar/minimize-check.c
     NowPlayingBar/ the glass now playing bar (NowPlayingBar.x). A regular-width iPad automatically gets a capsule
                   with shuffle, repeat, lyrics and queue alongside artwork, title and play. Shuffle and repeat use

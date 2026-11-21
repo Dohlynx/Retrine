@@ -204,6 +204,32 @@ once on expanding failed every expand (the growing platter's glass over the circ
 screen recording showing a faint ring there). After the change all pass; Search moves some 32 pt a frame at most across
 the row with `middle`.
 
+Issue #35 (a darker disc on the row's end through most of each expand): Search's glyph now goes back into the row as
+a view of its own over the bars. Each expand also checks, every frame, that the travelling glyph (the one glyph drawn
+outside the bars) has the image and color of the glyph the row shows for Search, its lit copy's when Search is
+selected; that while the bar expands no glass is drawn over or under the growing row's (`kOverlapSlackPt`) and, in an
+expand from rest, the circle's glass is drawn as long as the row's has not reached it (TabBar.x times it by the
+expand's own spring, which an expand turning a minimize back shares with what is left of the minimize's, so there it
+may go a frame early); and at rest after every move, that
+nothing but the bars is left among them, every tab's glyph and every glass on screen is drawn in full and every bar on
+screen takes touches. `expand turned back late` turns an expand back 0.25 s in, once the row has reached the circle:
+the circle comes out of the row again. `expand again inside an expand` expands, minimizes 0.08 s in and expands again
+0.16 s in; just after the first expand's spring ends, the second's glyph must still travel and the circle's glass be
+drawn exactly while the row has not reached it (the first expand's end once took the second one's hand over half way:
+no glyph travelling, Search drawn 0 times in 2 frames). 2026-11-21, iPhone 17 Pro on iOS 26.5: built from the tree before the change
+(`SRC=`), every expand failed with the circle's glass on the row's in 2 to 12 frames, the circle still drawn 0.25 s
+into the late turn; with the circle's glass taken away at once it failed `gone before the expanding row reached it`
+in 3 to 5 frames of every expand, and with the travelling glyph drawn from the row's plain copy `expand from Search`
+failed `unlike the row's`. After the change all pass, also under Reduce Motion.
+
+`capture.sh` records one expand off the screen of a simulator of its own (`search capture`: the bar minimized at once,
+then expanded), for a review frame by frame of what no presentation layer shows, such as the glass UIKit draws:
+`capture/expand-NNN.png` under `OUT`, the bottom 520 px of each frame the screen drew, NNN its 1/60 s from the last
+still frame, and `capture/sheet.png` with all of them. `selected`, `labels` and `middle` after the script go to the
+scenario. `capture-frames.py` (Python 3 with Pillow) cuts the expand out of the recording.
+
+    THEOS=$HOME/theos OUT=/tmp/<dir> ./capture.sh selected labels
+
 What it does not cover: Spotify's own chrome, which is Swift with no symbols (the constraints above
 are read from its code, not run), the real now playing bar's content and its page's inset, the tab
 bar hidden by a page, the player's open and close over the bars, and a regular width beyond the bar's narrower

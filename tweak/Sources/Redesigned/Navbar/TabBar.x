@@ -1063,87 +1063,155 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
     SGRAnimate(SGRMotionFade, ^{ for (UIView *v in faded) v.alpha = 1; }, nil);
 }
 
-// Whether all of a view is drawn inside every view between it and `top` that clips, by its bounds or its layer's mask,
-// as the screen shows them now.
-static BOOL isUnclipped(UIView *view, UIView *top) {
-    CALayer *topLayer = top.layer.presentationLayer ?: top.layer;
-    CALayer *layer = view.layer.presentationLayer ?: view.layer;
-    CGRect whole = [layer convertRect:layer.bounds toLayer:topLayer];
-    for (UIView *up = view.superview; up && up != top; up = up.superview) {
-        CALayer *upLayer = up.layer.presentationLayer ?: up.layer;
-        CALayer *mask = up.layer.mask.presentationLayer ?: up.layer.mask;
-        if (up.layer.masksToBounds && !CGRectContainsRect(CGRectInset([upLayer convertRect:upLayer.bounds toLayer:topLayer], -0.5, -0.5), whole)) return NO;
-        if (mask && !CGRectContainsRect(CGRectInset([upLayer convertRect:mask.frame toLayer:topLayer], -0.5, -0.5), whole)) return NO;
-    }
-    return YES;
+// How far apart two of UIKit's glass platters are, both capsules lying along x (a circle is one too), as `a` and `b` give
+// them in one view: the gap between their outlines, negative where they overlap.
+static CGFloat platterGapPt(CGRect a, CGRect b) {
+    CGFloat ra = MIN(a.size.width, a.size.height) / 2, rb = MIN(b.size.width, b.size.height) / 2;
+    CGFloat across = MAX(0, MAX((CGRectGetMinX(a) + ra) - (CGRectGetMaxX(b) - rb), (CGRectGetMinX(b) + rb) - (CGRectGetMaxX(a) - ra)));
+    return hypot(across, CGRectGetMidY(a) - CGRectGetMidY(b)) - ra - rb;
 }
 
-// Expanding, the tab on the trailing circle goes back into the row (setMinimized). Its row button travels with the
-// circle's glyph inside the main bar's platter, which grows from the leading circle: the platter clips the row's glyph
-// until its edge has passed it, and its glass would blur the circle's glyph if the circle stood under it. So the circle
-// stands over the main bar with its button drawn, the row's hidden, until the growing platter holds the whole circle
-// and the row's glyph, on the same spot, is whole; then the row's button takes over and the circle goes under the main
-// bar, which covers it to the end of the spring. Watched frame by frame, as nothing in the spring says when the
-// platter's edge passes the circle.
+// The share of the way at which the main bar's growing glass first touches the trailing circle's, each moving from its
+// `…From` frame to its `…To` frame in one spring, so in step: on the same share of its way at every moment. 0 when they
+// touch at the start, 1 when they never do.
+static CGFloat touchFraction(CGRect rowFrom, CGRect rowTo, CGRect circleFrom, CGRect circleTo) {
+    CGRect (^at)(CGRect, CGRect, CGFloat) = ^CGRect(CGRect from, CGRect to, CGFloat share) {
+        return CGRectMake(from.origin.x + (to.origin.x - from.origin.x) * share, from.origin.y + (to.origin.y - from.origin.y) * share,
+                          from.size.width + (to.size.width - from.size.width) * share, from.size.height + (to.size.height - from.size.height) * share);
+    };
+    if (platterGapPt(rowFrom, circleFrom) <= 0) return 0;
+    if (platterGapPt(rowTo, circleTo) > 0) return 1;
+    // The gap only closes as the row grows toward the circle and the circle goes into it. Halved this often, the share is
+    // known to far less than a point of the row's way.
+    const int halvings = 32;
+    CGFloat apart = 0, touching = 1;
+    for (int i = 0; i < halvings; i++) {
+        CGFloat middle = (apart + touching) / 2;
+        if (platterGapPt(at(rowFrom, rowTo, middle), at(circleFrom, circleTo, middle)) > 0) apart = middle;
+        else touching = middle;
+    }
+    return touching;
+}
+
+// How long `spring` takes to cover `share` of its way, by the physics it is given (mass, stiffness, damping, initial
+// velocity), stepped a tenth of a millisecond at a time; its whole duration when it does not get there.
+static CFTimeInterval springTimeTo(CASpringAnimation *spring, CGFloat share) {
+    const CFTimeInterval stepS = 1e-4;
+    double done = 0, speed = spring.initialVelocity;
+    for (CFTimeInterval t = 0; t < spring.duration; t += stepS) {
+        if (done >= share) return t;
+        speed += (-spring.stiffness * (done - 1) - spring.damping * speed) / spring.mass * stepS;
+        done += speed * stepS;
+    }
+    return spring.duration;
+}
+
+// The spring a view was last given (SGRMotionBar's, which UIKit makes a CASpringAnimation); nil for none.
+static CASpringAnimation *lastSpringOf(UIView *view) {
+    CASpringAnimation *spring = nil;
+    for (NSString *key in view.layer.animationKeys) {
+        CAAnimation *animation = [view.layer animationForKey:key];
+        if ([animation isKindOfClass:CASpringAnimation.class]) spring = (CASpringAnimation *)animation;
+    }
+    return spring;
+}
+
+// Expanding, the tab on the trailing circle goes back into the row (setMinimized), and the main bar's platter grows
+// from the leading circle under it. The row's button for the tab is clipped by that platter until its edge has passed
+// it, and a glyph drawn on the circle kept the circle's glass over the row as a darker disc (issue #35). So the glyph
+// travels as a view of its own over both bars, drawn as the row draws it, from the circle's glyph to the row's on the
+// bar's spring, the row's glyphs for the tab cleared and its name left to the row. The circle, its own button hidden,
+// goes under the main bar and along with the glyph, and is drawn until the spring reaches the share of its way at which
+// the growing platter touches it, so its glass is never over the row's nor under it: its layer's opacity is held at 1
+// that long over a model of 0, in the same transaction as the spring, so the render server takes it away in that very
+// frame however busy the main thread is. The view's alpha would not do: UIKit hands it to the glass, which went at
+// once. As the spring ends the row's glyph, which the spring has brought to the same place, takes over.
 @interface SGRHandOver : NSObject
-@property (nonatomic, weak) UIView *host, *rowBar, *circleBar;
-@property (nonatomic, copy) NSArray<UIView *> *rowButtons;   // the row's button and, for the selected tab, its lit copy
-@property (nonatomic, strong) CADisplayLink *link;
+@property (nonatomic, weak) UIView *rowBar, *circleBar;
+@property (nonatomic, strong) UIImageView *glyph;            // the travelling glyph
+// The glyphs of the row's button and, for the selected tab, its lit copy: cleared while the glyph travels, the buttons
+// and their names drawn as the row draws every other tab's. Cleared rather than hidden: a hidden glyph is no tab button
+// to tell the bar's buttons apart by (glyphView).
+@property (nonatomic, copy) NSArray<UIView *> *rowGlyphs;
+@property (nonatomic) CFTimeInterval circleGoneS;            // when the circle stops being drawn (CACurrentMediaTime)
+@end
+
+@implementation SGRHandOver
 @end
 
 static SGRHandOver *sg_handOver;
+static NSString *const kCircleHoldKey = @"sgr.circleHold";
 
-// The pending hand over made now: when the platter holds the circle, the spring ends or another change starts.
+// The pending hand over made now: as the spring ends, or as another change starts, which then takes the tab from the
+// row's button and the circle as it is shown, there or gone. The circle's own button stays hidden: the bar is hidden as
+// the expand settles, and a minimize gives it its item anew.
 static void handOver(void) {
     SGRHandOver *pending = sg_handOver;
     if (!pending) return;
     sg_handOver = nil;
-    [pending.link invalidate];
-    for (UIView *button in pending.rowButtons) button.hidden = NO;
-    // Hidden rather than cleared: an animation of UIKit's own on the button's opacity would keep it drawn.
-    SGForEachView(pending.circleBar, ^(UIView *v) {
-        if (isTabButton(v)) v.hidden = YES;
-    });
-    if (pending.rowBar && pending.circleBar) [pending.host insertSubview:pending.circleBar belowSubview:pending.rowBar];
-    pending.circleBar.userInteractionEnabled = YES;
+    [pending.glyph removeFromSuperview];
+    for (UIView *glyph in pending.rowGlyphs) glyph.alpha = 1;
+    UIView *circleBar = pending.circleBar;
+    [circleBar.layer removeAnimationForKey:kCircleHoldKey];
+    if (CACurrentMediaTime() >= pending.circleGoneS) circleBar.hidden = YES;
+    circleBar.layer.opacity = 1;
+    circleBar.userInteractionEnabled = YES;
 }
 
-@implementation SGRHandOver
-- (void)tick {
-    UIView *glyph = glyphView(self.rowButtons.firstObject);
-    UIView *rowPlatter = platterOf(self.rowBar), *circlePlatter = platterOf(self.circleBar);
-    if (!glyph.window || !self.host || !rowPlatter || !circlePlatter) {
-        handOver();
-        return;
-    }
-    CGRect row = CGRectInset(shownIn(rowPlatter, self.host), -0.5, -0.5), circle = shownIn(circlePlatter, self.host);
-    if (CGRectContainsRect(row, circle) && isUnclipped(glyph, self.host)) handOver();
-}
-@end
-
-// Starts the hand over of `source`, back from `circleBar` into `bar`'s row.
-static void beginHandOver(UIView *host, SGRSystemTabBar *bar, UIView *circleBar, UIView *source) {
-    UIView *rowButton = buttonOf(bar, source);
-    if (!rowButton) return;
-    NSMutableArray<UIView *> *rowButtons = [NSMutableArray arrayWithObject:rowButton];
+// Starts the hand over of the tab whose row button is `rowButton`, back from `circleBar` into `bar`'s row: the circle's
+// buttons hidden and it no longer taking touches, the travelling glyph drawn at `from` in `host`, over everything there,
+// as the row draws the tab. The caller moves the glyph, then clears the row's glyphs and times the circle (setMinimized).
+static SGRHandOver *beginHandOver(UIView *host, SGRSystemTabBar *bar, UIView *circleBar, UIView *rowButton, CGRect from) {
+    NSMutableArray<UIView *> *rowGlyphs = [NSMutableArray arrayWithObject:glyphView(rowButton)];
     // The lit copies are drawn only under the selection's bubble, which stands on the selected tab.
     if (((UIControl *)rowButton).selected) {
         SGForEachView(bar, ^(UIView *v) {
-            if (isTabButton(v) && isLitCopy(v, bar) && ((UIControl *)v).selected) [rowButtons addObject:v];
+            if (isTabButton(v) && isLitCopy(v, bar) && ((UIControl *)v).selected) [rowGlyphs addObject:glyphView(v)];
         });
     }
-    for (UIView *button in rowButtons) button.hidden = YES;
-    // Drawn in front only: a finger there is on the row's tab under it, its own tab already going back into the row.
+    // Hidden rather than cleared: an animation of UIKit's own on a button's opacity would keep it drawn.
+    SGForEachView(circleBar, ^(UIView *v) {
+        if (isTabButton(v)) v.hidden = YES;
+    });
+    // A finger there is on the row's tab under it, its own tab already going back into the row.
     circleBar.userInteractionEnabled = NO;
+    // The glyph the row shows for the tab: its lit copy's when it is the selected one.
+    UIImageView *shown = (UIImageView *)rowGlyphs.lastObject;
+    UIImageView *glyph = [[UIImageView alloc] initWithImage:shown.image];
+    glyph.preferredSymbolConfiguration = shown.preferredSymbolConfiguration;
+    glyph.contentMode = shown.contentMode;
+    // Resolved where the row draws it: the host keeps the system's appearance, the bars are dark (makeBar).
+    glyph.tintColor = [shown.tintColor resolvedColorWithTraitCollection:shown.traitCollection];
+    glyph.userInteractionEnabled = NO;
+    glyph.frame = from;
+    [host addSubview:glyph];
     SGRHandOver *pending = [SGRHandOver new];
-    pending.host = host;
     pending.rowBar = bar;
     pending.circleBar = circleBar;
-    pending.rowButtons = rowButtons;
-    pending.link = [CADisplayLink displayLinkWithTarget:pending selector:@selector(tick)];
-    [pending.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    pending.glyph = glyph;
+    pending.rowGlyphs = rowGlyphs;
+    pending.circleGoneS = INFINITY;
     sg_handOver = pending;
+    return pending;
 }
+
+// The circle of `pending` drawn until the main bar's spring, just begun, has covered `share` of its way.
+static void holdCircle(SGRHandOver *pending, CGFloat share) {
+    UIView *circleBar = pending.circleBar;
+    CASpringAnimation *spring = share > 0 ? lastSpringOf(pending.rowBar) : nil;
+    if (share > 0 && !spring) SGLog(@"tab bar: no spring on the expanding bar, so the trailing circle goes at once");
+    CFTimeInterval holdS = spring ? springTimeTo(spring, share) : 0;
+    pending.circleGoneS = CACurrentMediaTime() + holdS;
+    circleBar.layer.opacity = 0;
+    if (holdS <= 0) return;
+    CABasicAnimation *hold = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    hold.fromValue = hold.toValue = @1;
+    hold.duration = holdS;
+    [circleBar.layer addAnimation:hold forKey:kCircleHoldKey];
+}
+
+// Counts the bar's changes (setMinimized), so a change settles only while no later one has started.
+static NSUInteger sg_barChange;
 
 static void setMinimized(BOOL minimized, BOOL animated) {
     UIView *stockBar = sg_stockBar;
@@ -1153,14 +1221,17 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     if (minimized && (!stockBar.window || stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact)) return;
     sg_minimized = minimized;
     sg_keepApart = !minimized;
+    NSUInteger change = ++sg_barChange;
     SGLog(@"tab bar: %@", minimized ? @"minimized" : @"expanded");
     // An expand turned back hands its tab over to the row first, so the minimize takes it from the row's button.
     handOver();
     if (!stockBar) return;
     UIView *host = objc_getAssociatedObject(stockBar, &kHostKey);
     SGRSystemTabBar *bar = objc_getAssociatedObject(stockBar, &kBarKey);
+    // A spring a later change has turned back still ends on its own time, inside the later one's: an expand, a minimize
+    // and an expand again, the first expand's end would take the second one's hand over half way.
     void (^settle)(BOOL) = ^(BOOL finished) {
-        if (sg_minimized != minimized) return;
+        if (change != sg_barChange) return;
         handOver();
         sg_keepApart = NO;
         syncBar(stockBar);
@@ -1171,10 +1242,19 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     animated &= host.window != nil;
     SGRBarState before = animated ? barState(host) : (SGRBarState){0};
     // The trailing circle's tab, when it is one the expanded row holds (Search, with no split tabs), goes back into the
-    // row as the bar expands.
+    // row as the bar expands, its glyph and the two platters from where the screen shows them.
     SGRSystemTabBar *apartBar = objc_getAssociatedObject(stockBar, &kApartBarKey);
     BOOL apartShown = apartBar && !apartBar.hidden;
     UIView *returning = !minimized && apartShown && !sg_rowApartCount ? apartBar.sources.firstObject : nil;
+    __block UIView *circleButton = nil;
+    if (returning) {
+        SGForEachView(apartBar, ^(UIView *v) {
+            if (!circleButton && isTabButton(v) && !isLitCopy(v, apartBar)) circleButton = v;
+        });
+    }
+    UIView *mainPlatter = platterOf(bar), *circlePlatter = platterOf(apartBar);
+    CGRect circleGlyph = animated && circleButton && mainPlatter && circlePlatter ? shownIn(glyphView(circleButton), host) : CGRectNull;
+    CGRect rowGlassFrom = mainPlatter ? shownIn(mainPlatter, host) : CGRectNull, circleGlassFrom = circlePlatter ? shownIn(circlePlatter, host) : CGRectNull;
     // The items are made where the bars are going, before anything moves. UIKit sizes a tab's name by the platter
     // its item is made in and never again, and the first pass made the expanding row's items while the bar still
     // held the circle's one item, its platter a circle: "Your Library" stayed cut. So they are made a second time,
@@ -1194,28 +1274,27 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         settle(YES);
         return;
     }
-    // A tab moving between the row and the trailing circle rides on the bar that is on top, so the other bar's glass
-    // never covers its glyph. Minimizing, the circle comes out of the place the tab had in the row, over the main bar.
-    // Expanding, the circle goes, still over the main bar, to where its glyph lands on the row's, which travels from
-    // where the circle's glyph was (moveFrom) and takes over once the growing platter holds the circle (SGRHandOver),
-    // the circle then going under the main bar; it leaves as the spring ends (settle).
+    // A tab moving between the row and the trailing circle is never under another bar's glass. Minimizing, the circle
+    // comes out of the place the tab had in the row, over the main bar. Expanding, the main bar stands over the circle,
+    // and the tab's glyph travels over both to the row (SGRHandOver), the circle going along with it to where its glyph
+    // lands on the row's until the growing platter reaches it; the row's own glyph takes over as the spring ends (settle).
     apartBar = objc_getAssociatedObject(stockBar, &kApartBarKey);
-    __block BOOL handsOver = NO;
+    __block UIView *rowButton = nil;
+    __block CGRect glyphTo = CGRectNull;
+    __block CGFloat circleShare = 0;
     [UIView performWithoutAnimation:^{
         if (returning && !apartBar.hidden) {
-            UIView *rowButton = buttonOf(bar, returning);
-            __block UIView *circleButton = nil;
-            SGForEachView(apartBar, ^(UIView *v) {
-                if (!circleButton && isTabButton(v) && !isLitCopy(v, apartBar)) circleButton = v;
-            });
-            if (rowButton && circleButton) {
-                UIImageView *rowGlyph = glyphView(rowButton), *circleGlyph = glyphView(circleButton);
-                CGPoint to = [rowGlyph.superview convertPoint:rowGlyph.center toView:host];
-                CGPoint from = [circleGlyph.superview convertPoint:circleGlyph.center toView:host];
-                apartBar.frame = CGRectOffset(apartBar.frame, to.x - from.x, to.y - from.y);
-                handsOver = YES;
+            rowButton = CGRectIsNull(circleGlyph) ? nil : buttonOf(bar, returning);
+            if (rowButton) {
+                UIImageView *rowGlyph = glyphView(rowButton), *ownGlyph = glyphView(circleButton);
+                glyphTo = [host convertRect:rowGlyph.bounds fromView:rowGlyph];
+                CGRect from = [host convertRect:ownGlyph.bounds fromView:ownGlyph];
+                apartBar.frame = CGRectOffset(apartBar.frame, CGRectGetMidX(glyphTo) - CGRectGetMidX(from), CGRectGetMidY(glyphTo) - CGRectGetMidY(from));
+                UIView *rowGlass = platterOf(bar), *circleGlass = platterOf(apartBar);
+                circleShare = touchFraction(rowGlassFrom, [host convertRect:rowGlass.bounds fromView:rowGlass],
+                                            circleGlassFrom, [host convertRect:circleGlass.bounds fromView:circleGlass]);
             }
-            [host bringSubviewToFront:handsOver ? apartBar : bar];
+            [host bringSubviewToFront:bar];
             return;
         }
         if (!minimized || !apartBar || apartBar.hidden) return;
@@ -1227,8 +1306,18 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         }
         [host bringSubviewToFront:apartBar];
     }];
-    moveFrom(host, before, ^{ SGRNowPlayingBarFollowTabBar(); }, settle);
-    if (handsOver) beginHandOver(host, bar, apartBar, returning);
+    SGRHandOver *travel = rowButton ? beginHandOver(host, bar, apartBar, rowButton, circleGlyph) : nil;
+    moveFrom(host, before, ^{
+        SGRNowPlayingBarFollowTabBar();
+        travel.glyph.frame = glyphTo;
+    }, settle);
+    // The row's glyphs are cleared once moveFrom has had them travel with the glyph, so a change that turns the expand
+    // back finds the tab's glyph there, and the circle is timed by the spring moveFrom has begun. A spring done at once
+    // (Reduce Motion) has already settled.
+    if (travel && travel == sg_handOver) {
+        for (UIView *glyph in travel.rowGlyphs) glyph.alpha = 0;
+        holdCircle(travel, circleShare);
+    }
 }
 
 CGRect SGRTabBarInlineSlot(UIView *host, CGFloat height) {

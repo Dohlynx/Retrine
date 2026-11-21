@@ -207,6 +207,7 @@ by merely compiling them.
 | `speed/build.sh` | iOS simulator audio chain. |
 | `system-menu/build.sh` | iOS simulator UI. |
 | `tabbar/build.sh` | iOS simulator UI. |
+| `tabbar/capture.sh` | iOS simulator screen recording, for a visual review frame by frame. |
 | `tabbar/fade-check.sh` | iOS simulator UI. |
 | `update/build.sh` | iOS simulator and live GitHub requests. |
 

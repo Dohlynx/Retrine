@@ -6,7 +6,8 @@
 // glass partly faded. `splitcreate` makes Create a split tab, `nosearch` hides Search, and `own` hides it and adds a tab
 // of the mod's own named Search after it: the minimized bar as it was, the last split tab or nothing on the trailing
 // circle. `labels` shows the tabs' names; `middle` puts Search third, so it travels the row's width to the circle.
-// `leaves` takes Search out of Spotify's row and back while the bar is minimized.
+// `leaves` takes Search out of Spotify's row and back while the bar is minimized. `capture` holds one expand for
+// capture.sh to record.
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import "../harness-fail.h"
@@ -52,6 +53,14 @@ static NSUInteger sgFailures;
     fflush(stdout); \
     sgFailures++; \
     return; \
+} while (0)
+// The same in a check that answers whether it passed.
+#define CASE_FAIL_NO(...) do { \
+    if (!said(@"keepgoing")) HARNESS_FAIL(__VA_ARGS__); \
+    printf("FAIL %s\n", [NSString stringWithFormat:__VA_ARGS__].UTF8String); \
+    fflush(stdout); \
+    sgFailures++; \
+    return NO; \
 } while (0)
 
 #pragma mark - the glass bars
@@ -180,13 +189,18 @@ static const NSUInteger kShownSamples = 20;
 
 // How much of a view the screen shows clearly: the share of its shown frame left inside every view above it that clips
 // (its bounds, or its layer's mask) and under no other bar's glass (glassOver), times its opacity through the chain.
-// NAN for a view the screen has not drawn yet.
+// NAN for a view the screen has not drawn yet that it is to draw: its opacity is the one set, not the one the views above
+// it were last drawn with.
 static CGFloat shownFraction(UIView *view) {
     UIWindow *window = view.window;
-    CGFloat opacity = shownOpacity(view);
-    if (!window || opacity <= 0) return 0;
+    if (!window) return 0;
+    CGFloat opacitySet = 1;
+    for (UIView *up = view; up; up = up.superview) opacitySet *= up.hidden ? 0 : up.alpha;
+    if (opacitySet <= 0) return 0;
     CGRect whole = shownFrame(view, window);
     if (CGRectIsNull(whole)) return NAN;
+    CGFloat opacity = shownOpacity(view);
+    if (opacity <= 0) return 0;
     if (whole.size.width * whole.size.height <= 0) return 0;
     CALayer *windowLayer = window.layer.presentationLayer ?: window.layer;
     CGRect seen = whole;
@@ -221,14 +235,55 @@ static UIView *barHost(void) {
     return nil;
 }
 
+// The main bar on screen: the one holding Home, the row's first tab.
+static UITabBar *rowBar(void) {
+    for (UITabBar *bar in shownBars()) if ([namesOf(bar) containsObject:@"Home"]) return bar;
+    return nil;
+}
+
+// The gap between the outlines of two glass capsules lying along x, negative where they overlap.
+static CGFloat capsuleGap(CGRect a, CGRect b) {
+    CGFloat ra = MIN(a.size.width, a.size.height) / 2, rb = MIN(b.size.width, b.size.height) / 2;
+    CGFloat across = MAX(0, MAX((CGRectGetMinX(a) + ra) - (CGRectGetMaxX(b) - rb), (CGRectGetMinX(b) + rb) - (CGRectGetMaxX(a) - ra)));
+    return hypot(across, CGRectGetMidY(a) - CGRectGetMidY(b)) - ra - rb;
+}
+
+// How far off touching two capsules read off the screen's layers may be when they are taken to touch: the pixels they
+// are rounded to, and the tenth of a millisecond TabBar.x times the circle's glass in, with the row growing some 4 pt
+// in it.
+static const CGFloat kOverlapSlackPt = 1;
+
+static CGColorRef resolvedTint(UIView *view) {
+    return [view.tintColor resolvedColorWithTraitCollection:view.traitCollection].CGColor;
+}
+
+// Whether `glyph` is drawn as the row draws Search: its image and color, those of the lit copy when Search is selected.
+static BOOL looksLikeRowSearch(UIImageView *glyph) {
+    UITabBar *row = rowBar();
+    __block UIImageView *shown = nil;
+    SGForEachView(row, ^(UIView *v) {
+        if (!isButton(v) || isLitCopy(v, row) || ![itemOf(row, v).accessibilityLabel isEqualToString:@"Search"]) return;
+        shown = glyphIn(v);
+        if (!((UIControl *)v).selected) return;
+        SGForEachView(row, ^(UIView *lit) {
+            if (isButton(lit) && isLitCopy(lit, row) && ((UIControl *)lit).selected) shown = glyphIn(lit);
+        });
+    });
+    return shown && glyph.image == shown.image && CGColorEqualToColor(resolvedTint(glyph), resolvedTint(shown));
+}
+
 #pragma mark - every frame of a move
 
 @interface SGHarnessSearchSampler : NSObject
 @property (nonatomic, copy) NSString *moment;
 @property (nonatomic, strong) CADisplayLink *link;
 @property (nonatomic, copy) NSArray<NSValue *> *searchFrames;   // Search's buttons as the move began, in the bars' host
-@property (nonatomic) NSUInteger frames, fewest, most, faintFrames, fadedGlass, shownBarCount;
-@property (nonatomic) CGFloat largestStep, comesOutAt;
+@property (nonatomic) NSUInteger frames, fewest, most, faintFrames, fadedGlass, glassOnRow, goneEarly, unlikeRow;
+@property (nonatomic) NSUInteger shownBarCount;   // the bars whose glass the last frame drew
+// Whether an expand in the move starts from rest, so the circle's glass is to stay until the row reaches it: TabBar.x
+// times it by the expand's own spring, which an expand turning a minimize back shares with what is left of the minimize's.
+@property (nonatomic) BOOL expandsFromRest;
+@property (nonatomic) CGFloat largestStep, comesOutAt, deepestOnRow;
 @property (nonatomic) CGPoint lastGlyph;          // Search's glyph center the last frame it was known, in the window
 @property (nonatomic) NSTimeInterval lastTick;     // and when
 @end
@@ -252,10 +307,16 @@ static UIView *barHost(void) {
     self.most = 0;
     self.faintFrames = 0;
     self.fadedGlass = 0;
+    self.glassOnRow = 0;
+    self.goneEarly = 0;
+    self.expandsFromRest = YES;
+    self.deepestOnRow = 0;
+    self.unlikeRow = 0;
     self.largestStep = 0;
     self.comesOutAt = NAN;
     self.lastTick = CACurrentMediaTime();
-    self.shownBarCount = shownBars().count;
+    self.shownBarCount = 0;
+    for (UITabBar *bar in shownBars()) self.shownBarCount += shownOpacity(platterOf(bar)) > kDrawnFraction;
     self.link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick)];
     self.link.preferredFrameRateRange = CAFrameRateRangeMake(60, 60, 60);
     [self.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
@@ -289,6 +350,16 @@ static UIView *barHost(void) {
         CGFloat fraction = shownFraction(picture);
         if (isnan(fraction)) fraction = 1;
         if (fraction <= kDrawnFraction) continue;
+        // Search's glyph travelling on its own, back into the row: the only glyph drawn outside the bars, so it is
+        // drawn as the row draws Search, lit when Search is the tab selected.
+        if ([picture isKindOfClass:UIImageView.class]) {
+            count++;
+            clearest = MAX(clearest, fraction);
+            CGRect frame = shownFrame(picture, window);
+            glyph = CGRectIsNull(frame) ? CGPointMake(NAN, NAN) : CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
+            if (!looksLikeRowSearch((UIImageView *)picture)) self.unlikeRow++;
+            continue;
+        }
         for (NSValue *frame in self.searchFrames) {
             CGRect was = frame.CGRectValue;
             if (fabs(CGRectGetMidX(picture.frame) - CGRectGetMidX(was)) < 1 && fabs(CGRectGetMidY(picture.frame) - CGRectGetMidY(was)) < 1) {
@@ -316,30 +387,53 @@ static UIView *barHost(void) {
     // The glass: never partly faded. The trailing circle, the first frame it is drawn, centered on Search's glyph (the
     // circle is centered on its bar).
     NSArray<UITabBar *> *bars = shownBars();
+    NSMutableArray<UITabBar *> *drawn = [NSMutableArray array];
     for (UITabBar *bar in bars) {
         CGFloat opacity = shownOpacity(platterOf(bar));
         if (opacity > 0.02 && opacity < 0.98) self.fadedGlass++;
+        if (opacity > kDrawnFraction) [drawn addObject:bar];
     }
-    if (bars.count == 2 && self.shownBarCount == 1) {
-        CGRect circle = shownFrame(bars[1], window);
+    // Expanding, no other glass ever over or under the growing row's, and from rest the circle's glass drawn as long as
+    // the row's has not reached it.
+    UITabBar *row = rowBar();
+    CGRect rowGlass = row ? shownFrame(platterOf(row), window) : CGRectNull;
+    if (!SGRTabBarMinimized() && !CGRectIsNull(rowGlass)) {
+        for (UITabBar *bar in bars) {
+            CGRect glass = bar == row ? CGRectNull : shownFrame(platterOf(bar), window);
+            if (CGRectIsNull(glass)) continue;
+            CGFloat gap = capsuleGap(rowGlass, glass);
+            BOOL drawnGlass = shownOpacity(platterOf(bar)) > kDrawnFraction;
+            if (drawnGlass && gap < -kOverlapSlackPt) {
+                self.glassOnRow++;
+                self.deepestOnRow = MAX(self.deepestOnRow, -gap);
+            }
+            if (!drawnGlass && gap > kOverlapSlackPt && self.expandsFromRest) self.goneEarly++;
+        }
+    }
+    if (drawn.count == 2 && self.shownBarCount == 1) {
+        CGRect circle = shownFrame(drawn[1], window);
         if (CGRectIsNull(circle) || count != 1 || isnan(glyph.x)) return;   // measured once the screen has drawn both
         self.comesOutAt = fabs(CGRectGetMidX(circle) - glyph.x);
     }
-    self.shownBarCount = bars.count;
+    self.shownBarCount = drawn.count;
 }
 
 // The move's frames: Search drawn once in every one, moving as a spring does, the glass never partly faded, and with
 // `comesOut` the trailing circle first shown where Search's glyph was.
 - (void)endExpectingCircleToComeOut:(BOOL)comesOut {
     [self.link invalidate];
-    NSLog(@"[harness] %@: %lu frames, Search drawn %lu to %lu times, faint in %lu, largest step %.1f pt, glass partly faded in %lu, circle first shown %.1f pt from Search",
+    NSLog(@"[harness] %@: %lu frames, Search drawn %lu to %lu times, faint in %lu, unlike the row's in %lu, largest step %.1f pt, glass partly faded in %lu, "
+          @"other glass on the expanding row in %lu (%.1f pt deep at most), the circle gone before the row reached it in %lu, circle first shown %.1f pt from Search",
           self.moment, (unsigned long)self.frames, (unsigned long)self.fewest, (unsigned long)self.most, (unsigned long)self.faintFrames,
-          self.largestStep, (unsigned long)self.fadedGlass, self.comesOutAt);
+          (unsigned long)self.unlikeRow, self.largestStep, (unsigned long)self.fadedGlass, (unsigned long)self.glassOnRow, self.deepestOnRow, (unsigned long)self.goneEarly, self.comesOutAt);
     if (self.frames < 10) CASE_FAIL(@"%@: only %lu frames sampled", self.moment, (unsigned long)self.frames);
     if (self.fewest != 1 || self.most != 1) CASE_FAIL(@"%@: Search drawn %lu to %lu times in a frame, not once", self.moment, (unsigned long)self.fewest, (unsigned long)self.most);
     if (self.faintFrames) CASE_FAIL(@"%@: Search's glyph mostly clipped, under another bar's glass or clear in %lu frames", self.moment, (unsigned long)self.faintFrames);
     if (self.largestStep > kLargestStepPt) CASE_FAIL(@"%@: Search's glyph jumped %.1f pt in a frame", self.moment, self.largestStep);
+    if (self.unlikeRow) CASE_FAIL(@"%@: Search's travelling glyph unlike the row's in %lu frames", self.moment, (unsigned long)self.unlikeRow);
     if (self.fadedGlass) CASE_FAIL(@"%@: glass partly faded in %lu frames", self.moment, (unsigned long)self.fadedGlass);
+    if (self.glassOnRow) CASE_FAIL(@"%@: another bar's glass on the expanding row's in %lu frames", self.moment, (unsigned long)self.glassOnRow);
+    if (self.goneEarly) CASE_FAIL(@"%@: the circle's glass gone before the expanding row reached it in %lu frames", self.moment, (unsigned long)self.goneEarly);
     if (comesOut && !(self.comesOutAt <= kComesOutWithinPt)) CASE_FAIL(@"%@: the trailing circle was first shown %.1f pt from Search's glyph", self.moment, self.comesOutAt);
     printf("PASS %s: Search drawn once in each of %lu frames\n", self.moment.UTF8String, (unsigned long)self.frames);
     fflush(stdout);
@@ -367,9 +461,28 @@ static NSString *selectedName(void) {
     return nil;
 }
 
+// At rest, whatever move came before: nothing drawn among the bars but the bars, every tab's glyph and every glass of
+// the bars on screen drawn in full, and every bar on screen taking touches.
+static BOOL isClean(NSString *moment) {
+    for (UIView *view in barHost().subviews) {
+        if (![view isKindOfClass:UITabBar.class]) CASE_FAIL_NO(@"%@: a %@ left among the bars at %@", moment, NSStringFromClass(view.class), NSStringFromCGRect(view.frame));
+    }
+    for (UITabBar *bar in shownBars()) {
+        if (!bar.userInteractionEnabled) CASE_FAIL_NO(@"%@: the bar holding %@ takes no touches", moment, namesOf(bar));
+        if (shownOpacity(platterOf(bar)) < 0.99) CASE_FAIL_NO(@"%@: the glass of the bar holding %@ at %.2f", moment, namesOf(bar), shownOpacity(platterOf(bar)));
+        __block NSString *undrawn = nil;
+        SGForEachView(bar, ^(UIView *v) {
+            if (!undrawn && isButton(v) && !isLitCopy(v, bar) && shownOpacity(glyphIn(v)) < 0.99) undrawn = itemOf(bar, v).accessibilityLabel ?: @"?";
+        });
+        if (undrawn) CASE_FAIL_NO(@"%@: %@'s glyph not drawn", moment, undrawn);
+    }
+    return YES;
+}
+
 // Expanded: the row as the launch words make it, `selected` picked, Search's button drawn in it once and in full.
 static void expectExpanded(NSString *moment, NSString *selected) {
     if (SGRTabBarMinimized()) CASE_FAIL(@"%@: still minimized", moment);
+    if (!isClean(moment)) return;
     NSArray<UITabBar *> *bars = shownBars();
     NSMutableArray<NSArray<NSString *> *> *names = [NSMutableArray array];
     for (UITabBar *bar in bars) [names addObject:namesOf(bar)];
@@ -406,6 +519,7 @@ static void expectCardSlot(NSString *moment, BOOL trailing) {
 // `trailingSelected` (the leading one when not).
 static void expectCircles(NSString *moment, NSString *leading, NSString *trailing, BOOL trailingSelected) {
     if (!SGRTabBarMinimized()) CASE_FAIL(@"%@: not minimized", moment);
+    if (!isClean(moment)) return;
     UIWindow *window = sgStock.window;
     CGFloat width = window.bounds.size.width;
     NSArray<UITabBar *> *bars = shownBars();
@@ -456,6 +570,11 @@ static void expectMinimized(NSString *moment, NSString *leading, NSString *trail
 // `middle labels`: a finger on the row this far into an expand, on the circle carrying Search back across the row, picks
 // the tab the expanded row picks for the same point: the circle is drawn there, the row's tab is what is under it.
 static const double kTapIntoExpandS = 0.15;
+// An expand turned back this far in has had the growing row reach the trailing circle.
+static const double kLateTurnS = 0.25;
+// Expand, minimize and expand again: the minimize and the second expand this far into the first expand, and the second
+// expand looked at this long after the first one's spring has ended, well before its own ends.
+static const double kTurnS = 0.08, kAgainS = 0.16, kPastFirstSpringS = 0.05;
 static CGPoint sgTapMidExpand;
 static NSString *sgPickedMidExpand;
 
@@ -471,6 +590,36 @@ static void tapOnCircleMidExpand(void) {
     printf("tapping (%.0f, %.0f) on the circle drawn at x %.0f to %.0f\n", sgTapMidExpand.x, sgTapMidExpand.y, CGRectGetMinX(platter), CGRectGetMaxX(platter));
     fflush(stdout);
     SGHarnessTap(window, sgTapMidExpand);
+}
+
+// How long the spring UIKit gave `view` last runs; NAN for none.
+static CFTimeInterval springDuration(UIView *view) {
+    CFTimeInterval duration = NAN;
+    for (NSString *key in view.layer.animationKeys) {
+        CAAnimation *animation = [view.layer animationForKey:key];
+        if ([animation isKindOfClass:CASpringAnimation.class]) duration = animation.duration;
+    }
+    return duration;
+}
+
+// Once the first of two expands has settled, the second one still under way: Search's glyph travelling over the bars
+// and the trailing circle's glass drawn exactly while the growing row has not reached it.
+static void expectSecondExpandUnderWay(void) {
+    UIView *travelling = nil;
+    for (UIView *view in barHost().subviews) if ([view isKindOfClass:UIImageView.class]) travelling = view;
+    if (!travelling) CASE_FAIL(@"expand again inside an expand: no glyph travelling once the first expand settled");
+    UIWindow *window = sgStock.window;
+    UITabBar *row = rowBar();
+    for (UITabBar *bar in allBars()) {
+        if (bar == row || ![namesOf(bar) isEqualToArray:@[@"Search"]]) continue;
+        CGRect rowGlass = shownFrame(platterOf(row), window), glass = shownFrame(platterOf(bar), window);
+        CGFloat gap = capsuleGap(rowGlass, glass);
+        BOOL drawn = shownOpacity(platterOf(bar)) > kDrawnFraction;
+        if (drawn && gap < -kOverlapSlackPt) CASE_FAIL(@"expand again inside an expand: the circle's glass on the row's, %.1f pt deep", -gap);
+        if (!drawn && gap > kOverlapSlackPt) CASE_FAIL(@"expand again inside an expand: the circle gone %.1f pt before the row reached it", gap);
+    }
+    printf("PASS expand again inside an expand: under way once the first expand settled\n");
+    fflush(stdout);
 }
 
 static void runSteps(NSArray<NSArray *> *steps, NSUInteger index) {
@@ -525,6 +674,21 @@ void SGHarnessRunSearch(UIView *stockBar) {
     static SGHarnessSearchSampler *sampler;
     sampler = [SGHarnessSearchSampler new];
     const double settle = 0.9;
+
+    // `capture` (capture.sh): the bar minimized at once and, after a pause, one expand, for a screen recording to show
+    // frame by frame; `selected` with Search the tab selected. The recording's script ends the run.
+    if (said(@"capture")) {
+        if (said(@"selected")) pick(@"Search");
+        runSteps(@[
+            @[@(settle), ^{ SGRSetTabBarMinimized(YES, NO); }],
+            @[@(settle), ^{
+                printf("expanding\n");
+                fflush(stdout);
+                SGRSetTabBarMinimized(NO, YES);
+            }],
+        ], 0);
+        return;
+    }
 
     // The bar as it was: Create's split circle, or no trailing circle at all.
     if (said(@"splitcreate") || said(@"nosearch") || said(@"own")) {
@@ -622,6 +786,7 @@ void SGHarnessRunSearch(UIView *stockBar) {
             [sampler endExpectingCircleToComeOut:NO];
             expectExpanded(@"expanded from Home", @"Home");
             [sampler begin:@"minimize turned back"];
+            sampler.expandsFromRest = NO;
             SGRSetTabBarMinimized(YES, YES);
             after(0.12, ^{ SGRSetTabBarMinimized(NO, YES); });
         }],
@@ -635,10 +800,34 @@ void SGHarnessRunSearch(UIView *stockBar) {
             SGRSetTabBarMinimized(NO, YES);
             after(0.12, ^{ SGRSetTabBarMinimized(YES, YES); });
         }],
+        // Turned back once the growing row has reached the circle, which is gone by then: it comes out of the row again.
         @[@(settle), ^{
             [sampler endExpectingCircleToComeOut:NO];
             expectMinimized(@"after an expand turned back", @"Home", @"Search", NO);
-            SGRSetTabBarMinimized(NO, NO);
+            [sampler begin:@"expand turned back late"];
+            SGRSetTabBarMinimized(NO, YES);
+            after(kLateTurnS, ^{
+                NSUInteger glass = 0;
+                for (UITabBar *bar in shownBars()) glass += shownOpacity(platterOf(bar)) > kDrawnFraction;
+                SGRSetTabBarMinimized(YES, YES);
+                if (glass != 1) CASE_FAIL(@"expand turned back late: the circle still drawn %.2f s in", kLateTurnS);
+            });
+        }],
+        @[@(settle), ^{
+            [sampler endExpectingCircleToComeOut:YES];
+            expectMinimized(@"after an expand turned back late", @"Home", @"Search", NO);
+            [sampler begin:@"expand again inside an expand"];
+            sampler.expandsFromRest = NO;
+            SGRSetTabBarMinimized(NO, YES);
+            CFTimeInterval firstS = springDuration(rowBar());
+            if (isnan(firstS)) CASE_FAIL(@"expand again inside an expand: no spring on the expanding bar");
+            after(kTurnS, ^{ SGRSetTabBarMinimized(YES, YES); });
+            after(kAgainS, ^{ SGRSetTabBarMinimized(NO, YES); });
+            after(firstS + kPastFirstSpringS, ^{ expectSecondExpandUnderWay(); });
+        }],
+        @[@(settle + kAgainS), ^{
+            [sampler endExpectingCircleToComeOut:NO];
+            expectExpanded(@"after an expand again inside an expand", @"Home");
             pick(@"Search");
         }],
         @[@(settle), ^{
