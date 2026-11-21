@@ -10,6 +10,8 @@
 // button on, `plain` Plain checkmark alone. Reduce Motion and the accent are test
 // doubles (the system's setting cannot be set from here); everything else is the tweak's own code.
 #import <objc/runtime.h>
+#import <CoreText/CoreText.h>
+#import <CoreText/SFNTLayoutTypes.h>
 #import <UIKit/UIKit.h>
 #import "Redesigned/Kit/SGRRefinements.h"
 #import "Redesigned/Kit/SGRAccent.h"
@@ -94,7 +96,29 @@ static UIView *overlayOver(UILabel *label) {
 
 // The characters coming in (those ending visible) and going out.
 static void glyphsOf(UIView *overlay, NSMutableString *incoming, NSMutableString *outgoing) {
-    for (UILabel *glyph in overlay.subviews) [(glyph.alpha > 0.5 ? incoming : outgoing) appendString:glyph.text];
+    for (UIView *glyph in overlay.subviews) [(glyph.alpha > 0.5 ? incoming : outgoing) appendString:glyph.accessibilityLabel];
+}
+
+// Compare a warmed column to the original UILabel drawing at Core Text's actual
+// advance, not to another copy of the cached image.
+static void checkDigitPixels(UILabel *label, UIImage *cached) {
+    NSAttributedString *text = label.attributedText;
+    CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)text);
+    NSUInteger index = text.length - 1;
+    CGFloat width = CTLineGetOffsetForStringIndex(line, index + 1, NULL) - CTLineGetOffsetForStringIndex(line, index, NULL);
+    CFRelease(line);
+    UILabel *reference = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, width + 2, label.bounds.size.height)];
+    reference.font = label.font;
+    reference.textColor = label.textColor;
+    reference.attributedText = [text attributedSubstringFromRange:NSMakeRange(index, 1)];
+    reference.textAlignment = NSTextAlignmentLeft;
+    reference.lineBreakMode = NSLineBreakByClipping;
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+    format.scale = label.window.screen.scale;
+    reference.contentScaleFactor = format.scale;
+    UIImage *want = [[[UIGraphicsImageRenderer alloc] initWithSize:reference.bounds.size format:format]
+        imageWithActions:^(UIGraphicsImageRendererContext *ctx) { [reference.layer renderInContext:ctx.CGContext]; }];
+    CHECK(cached && [UIImagePNGRepresentation(cached) isEqual:UIImagePNGRepresentation(want)], @"digit pixels differ from UILabel");
 }
 
 // The label says what Spotify set, and accessibility reads it as from a label of UIKit's own given the same text.
@@ -120,10 +144,10 @@ static void expectRoll(UILabel *label, NSString *text, NSString *wantIn, NSStrin
     glyphsOf(overlay, incoming, outgoing);
     CHECK([incoming isEqualToString:wantIn], @"%@: rolls in \"%@\", want \"%@\"", what, incoming, wantIn);
     CHECK([outgoing isEqualToString:wantOut], @"%@: rolls out \"%@\", want \"%@\"", what, outgoing, wantOut);
-    for (UILabel *glyph in overlay.subviews) {
+    for (UIView *glyph in overlay.subviews) {
         BOOL moving = [glyph.layer animationForKey:@"transform"] != nil;
-        CHECK(moving == travels, @"%@: \"%@\" %@", what, glyph.text, travels ? @"does not travel" : @"travels under Reduce Motion");
-        CHECK([glyph.layer animationForKey:@"opacity"] != nil, @"%@: \"%@\" does not fade", what, glyph.text);
+        CHECK(moving == travels, @"%@: \"%@\" %@", what, glyph.accessibilityLabel, travels ? @"does not travel" : @"travels under Reduce Motion");
+        CHECK([glyph.layer animationForKey:@"opacity"] != nil, @"%@: \"%@\" does not fade", what, glyph.accessibilityLabel);
     }
     expectSpotifysText(label, text, what);
 }
@@ -137,12 +161,18 @@ static void expectJump(UILabel *label, NSString *text, NSString *what) {
 
 @interface TimeLabel : UILabel
 @property (nonatomic) NSUInteger writes;
+@property (nonatomic) NSUInteger attributedReads;
 - (void)replaceBehindSetter;
+- (void)recolorBehindSetter;
 @end
 @implementation TimeLabel
+- (NSAttributedString *)attributedText { self.attributedReads++; return super.attributedText; }
 - (void)setText:(NSString *)text { self.writes++; [super setText:text]; }
 - (void)setAttributedText:(NSAttributedString *)text { self.writes++; [super setAttributedText:text]; }
 - (void)replaceBehindSetter { [super setAttributedText:[[NSAttributedString alloc] initWithString:@"changed"]]; }
+- (void)recolorBehindSetter {
+    [super setAttributedText:[[NSAttributedString alloc] initWithString:self.text attributes:@{NSForegroundColorAttributeName:UIColor.orangeColor}]];
+}
 @end
 
 static void checkRollingLabel(UIWindow *window) {
@@ -163,8 +193,15 @@ static void checkRollingLabel(UIWindow *window) {
     expectJump(label, @"1:46", @"the scrub's next frame");
     settle(0.2);
     expectRoll(label, @"1:47", @"7", @"6", YES, @"1:46 -> 1:47");
+    UIView *first = overlayOver(label).subviews.firstObject;
+    UIImage *seven = [first isKindOfClass:UIImageView.class] ? [(UIImageView *)first image] : nil;
+    if (seven) checkDigitPixels(label, seven);
     settle(0.2);
+    extern NSUInteger harnessShapedLines;
+    NSUInteger shaped = harnessShapedLines;
     expectRoll(label, @"1:50", @"50", @"47", YES, @"1:47 -> 1:50");
+    CHECK(shaped == harnessShapedLines, @"unchanged tabular columns shaped again");
+    CHECK(seven && seven == [(UIImageView *)overlayOver(label).subviews.lastObject image], @"7 was rasterized twice");
     settle(0.2);
     // The roll before is still running: it is finished first, and this one stands alone.
     expectRoll(label, @"1:59", @"9", @"0", YES, @"1:50 -> 1:59");
@@ -175,7 +212,9 @@ static void checkRollingLabel(UIWindow *window) {
     // The same text again, while that roll runs: nothing new, and the roll goes on.
     UIView *running = overlayOver(label);
     NSUInteger writes = label.writes;
-    label.text = @"10:00";
+    label.attributedReads = 0;
+    for (NSUInteger i = 0; i < 24; i++) label.text = @"10:00";
+    CHECK(!label.attributedReads, @"repeat read synthesized attributed text");
     CHECK(writes == label.writes, @"repeat reached the plain text setter");
     CHECK(running && overlayOver(label) == running && label.layer.mask, @"the same text again cut the running roll short");
 
@@ -234,6 +273,35 @@ static void checkRollingLabel(UIWindow *window) {
     [label replaceBehindSetter];
     label.attributedText = given;
     CHECK([label.text isEqualToString:@"1:23"], @"repeat failed to repair an external edit");
+    [label recolorBehindSetter];
+    label.attributedText = given;
+    CHECK(![[label.attributedText attribute:NSForegroundColorAttributeName atIndex:0 effectiveRange:NULL] isEqual:UIColor.orangeColor],
+          @"external same-text attribute edit was not repaired");
+    label.font = [UIFont systemFontOfSize:18];
+    label.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+    settle(.3);
+    expectRoll(label, @"1:27", @"7", @"3", YES, @"font and appearance changed");
+    UIImage *resized = [(UIImageView *)overlayOver(label).subviews.firstObject image];
+    CHECK(resized != seven, @"old style's bitmap reused");
+    checkDigitPixels(label, resized);
+    // The request survives in the descriptor even though this face has no equal-width figures.
+    UIFont *face = [UIFont fontWithName:@"KohinoorDevanagari-Regular" size:22];
+    CHECK(face != nil, @"missing proportional-digit fixture");
+    UIFont *requested = [UIFont fontWithDescriptor:[face.fontDescriptor fontDescriptorByAddingAttributes:@{
+        UIFontDescriptorFeatureSettingsAttribute:@[@{UIFontFeatureTypeIdentifierKey:@(kNumberSpacingType),
+                                                      UIFontFeatureSelectorIdentifierKey:@(kMonospacedNumbersSelector)}]}] size:22];
+    NSDictionary *style = @{NSFontAttributeName:requested};
+    CHECK([@"8" sizeWithAttributes:style].width > [@"1" sizeWithAttributes:style].width, @"fixture digits are not proportional");
+    for (NSString *time in @[@"0:11", @"1:11", @"1:18"]) {
+        settle(.3);
+        label.attributedText = [[NSAttributedString alloc] initWithString:time attributes:style];
+    }
+    UIImageView *eight = (UIImageView *)overlayOver(label).subviews.firstObject;
+    NSDictionary *installed = [label.attributedText attributesAtIndex:3 effectiveRange:NULL];
+    CHECK([@"8" sizeWithAttributes:installed].width > [@"1" sizeWithAttributes:installed].width,
+          @"label lost the fixture's proportional digits: %@", installed);
+    CHECK([eight.accessibilityLabel isEqual:@"8"], @"proportional 8 did not roll");
+    checkDigitPixels(label, eight.image);
     [host removeFromSuperview];
 }
 
@@ -366,6 +434,27 @@ static void checkAddButtons(UIWindow *window) {
 
 static void run(UIWindow *window) {
     checkDigitRules();
+    // Hold the concrete weak-table method only for this check. After detachment
+    // alpha/hidden must not even snapshot an empty subscriber list.
+    UIView *branch = [UIView new], *child = [UIView new];
+    [branch addSubview:child];
+    __block NSUInteger calls = 0;
+    SGRObserveVisibility(child, ^{ calls++; });
+    NSHashTable *sample = [NSHashTable weakObjectsHashTable];
+    Method snapshot = class_getInstanceMethod(object_getClass(sample), @selector(allObjects));
+    IMP old = method_getImplementation(snapshot);
+    __block NSUInteger snapshots = 0;
+    method_setImplementation(snapshot, imp_implementationWithBlock(^NSArray *(id table) {
+        snapshots++;
+        return ((id (*)(id, SEL))old)(table, @selector(allObjects));
+    }));
+    branch.alpha = .9;
+    CHECK(calls && snapshots, @"observed ancestor not reported");
+    SGRObserveVisibility(child, nil);
+    snapshots = 0;
+    for (NSUInteger i = 0; i < 24; i++) branch.hidden = i % 2;
+    method_setImplementation(snapshot, old);
+    CHECK(!snapshots, @"detached branch enumerated weak tables");
     checkAddMapping();
     if ([sg_mode isEqualToString:@"both"]) checkRollingLabel(window);
     checkAddButtons(window);

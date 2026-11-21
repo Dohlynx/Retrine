@@ -327,10 +327,18 @@ void SGRPlayerMotionLyricsChanged(void);
 void SGRPlayerMotionFieldLaidOut(void);
 // The player's field is on screen and its controller has not disappeared. Main-thread changes only.
 BOOL SGRPlayerIsVisible(void);
-// The settled field in window coordinates, or CGRectNull. Coverage starts at didAppear and ends at
-// willDisappear; the notification also reports a settled field moving or resizing within its window.
+// The settled field in window coordinates, or CGRectNull. Coverage requires didAppear and a finished
+// opening morph, and ends at willDisappear. Moving or resizing a settled field also notifies.
 CGRect SGRSettledPlayerRect(UIWindow *window);
 FOUNDATION_EXPORT NSNotificationName const SGRPlayerVisibilityDidChangeNotification;
+@class SGRProgressClock;
+extern __thread __unsafe_unretained SGRProgressClock *SGRWritingProgress;
+void SGRProgressSliderWrote(UISlider *slider);
+void SGRProgressOutputMounted(UIView *view);
+void SGRProgressRailChanged(UISlider *slider, BOOL tracking);
+void SGRProgressPlaybackChanged(double seconds, double rate);
+void SGRProgressVisibilityChanged(void);
+void SGRProgressControlsFaded(BOOL finished);
 // A cover in the player laid out: hides it while a clip plays.
 void SGRPlayerMotionCoverLaidOut(void);
 // A clip is playing in place of the cover, which is then hidden: the lyrics' thumbnail and the open's

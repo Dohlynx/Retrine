@@ -41,6 +41,7 @@ static UIColor *sg_spotifyColor;
 NSNotificationName const SGRPlayerVisibilityDidChangeNotification = @"SGRPlayerVisibilityDidChangeNotification";
 static BOOL sg_disappeared, sg_wasVisible;
 static BOOL sg_appeared;
+static __weak id sg_followedMorph;
 static __weak UIWindow *sg_coveredWindow;
 static CGRect sg_coveredRect;
 
@@ -58,7 +59,7 @@ CGRect SGRSettledPlayerRect(UIWindow *window) {
 
 static void visibilityChanged(void) {
     BOOL visible = SGRPlayerIsVisible();
-    UIWindow *window = sg_appeared && visible ? sg_field.window : nil;
+    UIWindow *window = sg_appeared && visible && !sg_followedMorph ? sg_field.window : nil;
     CGRect rect = window ? SGRVisibleRectInWindow(sg_field) : CGRectNull;
     if (visible == sg_wasVisible && window == sg_coveredWindow &&
         (!window || CGRectEqualToRect(rect, sg_coveredRect))) return;
@@ -71,6 +72,26 @@ static void visibilityChanged(void) {
 SGRArtworkField *SGRPlayerField(void) {
     return sg_field;
 }
+
+// CompactOverlayTransition's follower can still transform the field after didAppear and
+// the coordinator's completion. Neither applying nor removing a sublayerTransform lays
+// the field out. Only publish coverage after the owner restores its geometry.
+%group SGRFieldMorphCoverage
+%hook SGRPlayerMorph
+- (void)follow {
+    sg_followedMorph = self;
+    visibilityChanged();
+    %orig;
+}
+- (void)tearDown {
+    %orig;
+    if (sg_followedMorph == self) {
+        sg_followedMorph = nil;
+        visibilityChanged();
+    }
+}
+%end
+%end
 
 SGRPlayerBackgroundKind SGRPlayerBackground(void) {
     NSInteger kind = SGInt(SGRKeyPlayerBackground, SGEnabled(SGRKeyPlayerMotion) ? SGRPlayerBackgroundColours : SGRPlayerBackgroundStill);
@@ -176,9 +197,9 @@ static SGRArtworkField *fieldIn(UIView *plane) {
     visibilityChanged();
 }
 - (void)viewWillDisappear:(BOOL)animated {
-    %orig;
     sg_appeared = NO;
     visibilityChanged();
+    %orig;
 }
 - (void)viewDidDisappear:(BOOL)animated {
     %orig;
@@ -328,6 +349,7 @@ static SGRPlayerCoverWatcher *sg_coverWatcher;
     SGRedesignForceFlags(@"player", flags);
     if (!SGRedesignedUI()) return;
     %init;
+    %init(SGRFieldMorphCoverage);
     sg_coverWatcher = [SGRPlayerCoverWatcher new];
     SGAddPlayerStateObserver(sg_coverWatcher);
     [NSNotificationCenter.defaultCenter addObserverForName:SGRNowPlayingArtworkDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {

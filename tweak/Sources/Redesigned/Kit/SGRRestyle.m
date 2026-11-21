@@ -132,10 +132,14 @@ static char kVisibilityObserverKey, kVisibilitySubscribersKey;
 
 @implementation SGRVisibilityObserver
 - (void)detach {
-    for (UIView *ancestor in self.ancestors)
-        [objc_getAssociatedObject(ancestor, &kVisibilitySubscribersKey) removeObject:self];
+    for (UIView *ancestor in self.ancestors) {
+        NSHashTable *subscribers = objc_getAssociatedObject(ancestor, &kVisibilitySubscribersKey);
+        [subscribers removeObject:self];
+        if (!subscribers.count) objc_setAssociatedObject(ancestor, &kVisibilitySubscribersKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     self.ancestors = nil;
 }
+- (void)dealloc { [self detach]; }
 - (void)attach {
     [self detach];
     self.ancestors = [NSHashTable weakObjectsHashTable];
@@ -153,6 +157,7 @@ static char kVisibilityObserverKey, kVisibilitySubscribersKey;
 
 static void reportVisibility(UIView *view, BOOL hierarchyChanged) {
     NSHashTable *subscribers = objc_getAssociatedObject(view, &kVisibilitySubscribersKey);
+    if (!subscribers) return;
     for (SGRVisibilityObserver *observer in subscribers.allObjects) {
         if (hierarchyChanged) [observer attach];
         if (observer.view && observer.changed) observer.changed();
@@ -359,12 +364,11 @@ static void keepMonospaced(UILabel *label, Class original) {
     sg_keepingMonospaced = NO;
 }
 
-// The input and the mapped output differ for attributed text. Snapshot both: callers can
-// reuse a mutable string, and UIKit can change the label without going through these setters.
+// Snapshot the input, not UIKit's synthesized attributedText. Edits through
+// UILabel's original class still invalidate its drawing even if they bypass our setters.
 @interface SGRDigitsWrite : NSObject
 @property (nonatomic) SEL setter;
 @property (nonatomic, copy) id input;
-@property (nonatomic, copy) NSAttributedString *output;
 @end
 @implementation SGRDigitsWrite
 @end
@@ -377,13 +381,20 @@ static BOOL equalValue(id a, id b) {
 void SGRMonospacedDigits(UILabel *label) {
     if (![label isKindOfClass:UILabel.class]) return;
     BOOL kept = adopt(label, "SGRMonospaced_", ^(Class subclass, Class original) {
+        for (NSString *name in @[@"setNeedsDisplay", @"invalidateIntrinsicContentSize"]) {
+            SEL selector = NSSelectorFromString(name);
+            addOverride(subclass, original, selector, ^(UILabel *self) {
+                ((SGRDigitsWrite *)objc_getAssociatedObject(self, &kDigitsWrite)).setter = NULL;
+                struct objc_super parent = {self, original};
+                ((void (*)(struct objc_super *, SEL))objc_msgSendSuper)(&parent, selector);
+            });
+        }
         for (NSString *name in @[@"setText:", @"setAttributedText:", @"setFont:"]) {
             SEL selector = NSSelectorFromString(name);
             addOverride(subclass, original, selector, ^(UILabel *self, id value) {
                 SGRDigitsWrite *last = objc_getAssociatedObject(self, &kDigitsWrite);
                 BOOL textSetter = selector != @selector(setFont:);
-                if (textSetter && last.setter == selector && equalValue(last.input, value)
-                    && equalValue(last.output, self.attributedText)) return;
+                if (textSetter && last.setter == selector && equalValue(last.input, value)) return;
                 last.setter = NULL; // Invalidate before UIKit can call another setter.
                 // A label SGRRollDigits marked shows the change by SGRRefinements.h's rules.
                 BOOL watched = SGRRollingDigitsWatched(self);
@@ -398,7 +409,6 @@ void SGRMonospacedDigits(UILabel *label) {
                         objc_setAssociatedObject(self, &kDigitsWrite, last, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                     }
                     last.input = value;
-                    last.output = self.attributedText;
                     last.setter = selector;
                 } else last.setter = NULL;
             });

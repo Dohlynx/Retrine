@@ -16,7 +16,7 @@ xcrun clang -target arm64-apple-ios17.0-macabi -fobjc-arc -g -O0 -isysroot "$SDK
     -iframework "$SDK/System/iOSSupport/System/Library/Frameworks" \
     -I"$SRC" -I"$SRC/Redesigned/Kit" -Wall -Werror -Wno-unused-parameter -Wno-deprecated-declarations \
     "$OUT/SGRPlainCheck.m" "$HERE/check.m" "$HERE/../scene.m" \
-    "$SRC/Redesigned/Kit/SGRRefinements.m" "$SRC/Redesigned/Kit/SGRRollingDigits.m" "$SRC/Redesigned/Kit/SGRRestyle.m" \
+    "$SRC/Redesigned/Kit/SGRRefinements.m" "$HERE/rolling-under-check.m" "$SRC/Redesigned/Kit/SGRRestyle.m" \
     "$SRC/Core/SGLog.m" "$SRC/Core/SGViewTree.m" "$SRC/Core/SGPrefs.m" \
     -framework UIKit -framework QuartzCore -framework CoreGraphics -framework CoreText -framework Foundation \
     -o "$APP/Contents/MacOS/player-refinements-check"

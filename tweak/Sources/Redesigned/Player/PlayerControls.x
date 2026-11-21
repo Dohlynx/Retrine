@@ -29,6 +29,7 @@
 #import "Shared/Player/AudioQuality.h"
 #import "Player.h"
 #import "PlayerMix.h"
+#import "Shared/AutoMix/AutoMixPreview.h"
 
 static const CGFloat kSkipGlyphSize = 32, kPlayGlyphSize = 44;
 // The platter the Music app fades in behind a pressed transport glyph (SGRPress.h), about twice the glyph.
@@ -387,6 +388,7 @@ static void updateSeek(SPTPlayerState *state);
 
 - (void)playerStateDidReport:(SPTPlayerState *)state {
     updateSeek(state);
+    SGRProgressPlaybackChanged(state.duration, state.playbackSpeed);
 }
 
 - (void)playerStateDidChange:(SPTPlayerState *)state {
@@ -457,7 +459,9 @@ static atomic_uint_fast64_t sg_seekGeneration;
 static void cancelSeek(void) {
     atomic_fetch_add(&sg_seekGeneration, 1);
     sg_seekHeldUntil = 0;
+    UISlider *slider = sg_seekSlider;
     sg_seekSlider = nil;
+    if (slider) SGRProgressRailChanged(slider, slider.isTracking);
     sg_seekTrack = nil;
 }
 
@@ -548,6 +552,7 @@ static void seekTo(UISlider *slider, CGFloat share) {
     sg_seekTrack = track;
     sg_seekHeldUntil = CACurrentMediaTime() + kSeekHold;
     sg_seekBeganAt = CFAbsoluteTimeGetCurrent();
+    SGRProgressRailChanged(slider, YES);
     uint64_t generation = atomic_load(&sg_seekGeneration);
     sg_sendingSeekEvents = YES;
     [slider sendActionsForControlEvents:UIControlEventTouchDown];
@@ -722,6 +727,25 @@ CGFloat SGRPlayerBarDragHeight(CGFloat height) {
 }
 
 static char kBarKey, kBarMinKey, kBarMaxKey, kHeldKey;
+static char kLayoutKey;
+static BOOL sg_mixProgress;
+static NSUInteger sg_mixRevision = 1;
+@interface SGRSliderLayout : NSObject {
+@public
+    BOOL colored, contrast;
+    NSUInteger mixRevision, idleRevision;
+}
+@end
+@implementation SGRSliderLayout
+@end
+
+static void invalidateColor(UISlider *slider) {
+    SGRSliderLayout *layout = objc_getAssociatedObject(slider, &kLayoutKey);
+    if (layout) {
+        layout->colored = NO;
+        layout->idleRevision = 0;
+    }
+}
 static CGFloat sg_scrubHeight;
 
 // The sibling escapes the slider's highlighted opacity. Only the two native track images give
@@ -875,6 +899,7 @@ static void scrubLook(UISlider *slider, BOOL on) {
         sg_scrubSlider = nil;
     }
     if (!on || objc_getAssociatedObject(slider, &kBarKey)) setHeldBar(slider, on);
+    invalidateColor(slider);
     SGRAnimateLayout(slider, ^{
         [slider setNeedsLayout];
         [slider layoutIfNeeded];
@@ -943,7 +968,29 @@ static BOOL sameBarPixel(UISlider *slider, float value) {
 }
 
 %hook _TtCO17NowPlaying_ECMKit11ProgressBar6Slider
+- (void)setMinimumTrackImage:(UIImage *)image forState:(UIControlState)state {
+    %orig;
+    invalidateColor((UISlider *)self);
+}
+- (void)setMaximumTrackImage:(UIImage *)image forState:(UIControlState)state {
+    %orig;
+    invalidateColor((UISlider *)self);
+}
+- (void)setMinimumTrackTintColor:(UIColor *)color {
+    %orig;
+    invalidateColor((UISlider *)self);
+}
+- (void)setMaximumTrackTintColor:(UIColor *)color {
+    %orig;
+    invalidateColor((UISlider *)self);
+}
+- (void)setAccessibilityIdentifier:(NSString *)identifier {
+    %orig;
+    SGRSliderLayout *layout = objc_getAssociatedObject(self, &kLayoutKey);
+    if (layout) layout->idleRevision = layout->mixRevision = 0;
+}
 - (void)setValue:(float)value animated:(BOOL)animated {
+    if (SGRWritingProgress) SGRProgressSliderWrote((UISlider *)self);
     UISlider *slider = (UISlider *)self;
     if (animated || slider.isTracking) {
         SGRBarStep *step = objc_getAssociatedObject(slider, &kStepKey);
@@ -972,6 +1019,7 @@ static BOOL sameBarPixel(UISlider *slider, float value) {
     BOOL tracking = %orig;
     if (tracking) {
         sg_scrubHeight = SGRPlayerBarDragHeight(rest);
+        SGRProgressRailChanged(slider, YES);
         scrubLook(slider, YES);
     }
     return tracking;
@@ -990,16 +1038,19 @@ static BOOL sameBarPixel(UISlider *slider, float value) {
     objc_setAssociatedObject(self, &kStepKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     scrubLook((UISlider *)self, NO);
+    SGRProgressRailChanged((UISlider *)self, NO);
 }
 
 - (void)cancelTrackingWithEvent:(UIEvent *)event {
     objc_setAssociatedObject(self, &kStepKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     scrubLook((UISlider *)self, NO);
+    SGRProgressRailChanged((UISlider *)self, NO);
 }
 
 - (void)didMoveToWindow {
     %orig;
+    SGRProgressOutputMounted((UIView *)self);
     objc_setAssociatedObject(self, &kStepKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (!((UIView *)self).window) {
         scrubLook((UISlider *)self, NO);
@@ -1018,14 +1069,37 @@ static BOOL sameBarPixel(UISlider *slider, float value) {
 // The player's bar in its translucent colors, before it lays its tracks out; AutoMix's transition bands behind the knob
 // (PlayerMix.x), on the player's own bar only.
 - (void)layoutSubviews {
-    colorBar((UISlider *)self);
-    %orig;
     UISlider *slider = (UISlider *)self;
-    if ([slider.accessibilityIdentifier isEqualToString:kSliderID]) SGRPlayerMixSliderLaidOut(slider);
+    SGRSliderLayout *layout = objc_getAssociatedObject(self, &kLayoutKey);
+    if (!layout) {
+        layout = [SGRSliderLayout new];
+        objc_setAssociatedObject(self, &kLayoutKey, layout, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (layout->idleRevision != sg_mixRevision) {
+        BOOL contrast = SGRIncreaseContrast();
+        if (!layout->colored || layout->contrast != contrast) {
+            colorBar(slider);
+            layout->contrast = contrast;
+            layout->colored = slider != sg_scrubSlider;
+        }
+    }
+    %orig;
+    SGRProgressRailChanged(slider, slider.isTracking || slider == sg_scrubSlider);
+    // At rest neither track color nor a disabled band depends on the value
+    // or bounds. UIKit and the tracker still get every layout, including resizes.
+    if (layout->idleRevision == sg_mixRevision) return;
+    // Register once even when off. When enabled the band's owner also reads its
+    // private transition generation, which can change without the slider moving.
+    if (sg_mixProgress || layout->mixRevision != sg_mixRevision) {
+        if ([slider.accessibilityIdentifier isEqualToString:kSliderID]) SGRPlayerMixSliderLaidOut(slider);
+        layout->mixRevision = sg_mixRevision;
+    }
     SGRHeldBar *bar = objc_getAssociatedObject(slider, &kHeldKey);
     if (bar) {
         updateHeldBar(slider);
         hideTrackImages(slider, bar);
+    } else if (layout->colored && !sg_mixProgress) {
+        layout->idleRevision = sg_mixRevision;
     }
 }
 %end
@@ -1042,6 +1116,7 @@ static void durationLaidOut(UIViewController *unit) {
     // The bar the player shows (the mini player's has the same identifier and no times), drawn translucent.
     if ([bar isKindOfClass:UISlider.class] && !objc_getAssociatedObject(bar, &kBarKey)) {
         objc_setAssociatedObject(bar, &kBarKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        invalidateColor((UISlider *)bar);
         [bar setNeedsLayout];
     }
     while (bar && bar.superview != host) bar = bar.superview;
@@ -1098,6 +1173,14 @@ static void durationLaidOut(UIViewController *unit) {
 
 %ctor {
     if (!SGRedesignedUI()) return;
+    sg_mixProgress = SGFlag(SGKeyAutoMixShowProgress, NO);
+    [NSNotificationCenter.defaultCenter addObserverForName:UIAccessibilityDarkerSystemColorsStatusDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        sg_mixRevision++;
+    }];
+    [NSNotificationCenter.defaultCenter addObserverForName:SGAutoMixPlayerOptionsDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        sg_mixProgress = SGFlag(SGKeyAutoMixShowProgress, NO);
+        sg_mixRevision++;
+    }];
     %init;
     sg_hideShuffle = SGHidden(SGRKeyPlayerHideShuffle);
     sg_hideRepeat = SGHidden(SGRKeyPlayerHideRepeat);

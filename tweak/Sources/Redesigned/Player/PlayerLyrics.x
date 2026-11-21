@@ -711,6 +711,7 @@ static void restartRest(void) {
 }
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     sg_touching = YES;
+    SGRProgressVisibilityChanged();
     [sg_rest invalidate];
     sg_rest = nil;
 }
@@ -774,7 +775,10 @@ static void setAlone(BOOL alone, BOOL animated) {
     // Going alone needs somewhere to put the lines. Coming back never waits for it: the controls and the
     // lines' tap are given back even when the player can no longer be measured.
     if (alone && !l.ok) return;
+    static NSUInteger fadeGeneration;
+    NSUInteger generation = ++fadeGeneration;
     sg_alone = alone;
+    if (!alone) SGRProgressControlsFaded(NO);
     if (alone) {
         [sg_rest invalidate];
         sg_rest = nil;
@@ -800,10 +804,13 @@ static void setAlone(BOOL alone, BOOL animated) {
         SGRAnimateLayout(host, move, nil);
         // Going, the controls take their time, since nobody waits on them; coming back at a touch, they answer at
         // once, from wherever the fade out has got to.
-        SGRAnimate(alone ? SGRMotionFade : SGRMotionRespond, fade, nil);
+        SGRAnimate(alone ? SGRMotionFade : SGRMotionRespond, fade, ^(BOOL finished) {
+            if (alone && finished && generation == fadeGeneration) SGRProgressControlsFaded(YES);
+        });
     } else {
         move();
         fade();
+        if (alone) SGRProgressControlsFaded(YES);
     }
     SGLog(@"redesign player: the lines %@", alone ? @"on their own" : @"with the controls");
 }
@@ -1149,6 +1156,7 @@ static void replace(void) {
         SGLog(@"redesign player: the lyrics have the player's view %.0fx%.0f", host.bounds.size.width, host.bounds.size.height);
     }
     replace();
+    SGRProgressVisibilityChanged();
 }
 
 // The bar morphs back out of a full size cover as the player closes, so the thumbnail is put away first. The two
