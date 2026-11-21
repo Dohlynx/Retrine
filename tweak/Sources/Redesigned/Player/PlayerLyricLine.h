@@ -35,6 +35,12 @@ static inline NSInteger SGRPlayerCompactRows(CGFloat available, CGFloat row, CGF
 // Geometry owned by the portrait cover layout; CGRectNull for unknown cover hierarchies.
 CGRect SGRPlayerNormalCover(UIView *host, UIView *tilt, CGFloat maxSide);
 void SGRPlayerReserveCover(UIView *tilt, CGFloat side);
+// A retained, empty floating strip applies to the player's pages, not just
+// whichever page is crossing the middle of the pager during a skip.
+void SGRPlayerEmptyStripIn(UIView *host);
+// All native preview layers beside this page's tilt, including an empty or
+// transparent preview that can start showing without another tilt layout.
+NSArray<CALayer *> *SGRPlayerPreviewLayers(UIView *column, BOOL *showing);
 
 // The previews to give back: none while the line takes their place (`takes`); else every one it hid (`hidden`, a
 // weak table), whether or not it is still under the covers (one a list keeps for reuse included), and the table is

@@ -523,14 +523,36 @@ static CGFloat insetSign(NSLayoutConstraint *constraint, UIView *view) {
 
 // The inset goes into the constants of Spotify's constraints that hold the view's sides in its superview, so the
 // constraints inside it lay its content out for the new width. Each constraint's own constant is kept to add to, and a
-// constraint Spotify makes anew is taken up on the next pass. The inset is measured once, from Spotify's own layout,
-// before any constant is changed.
+// constraint Spotify makes anew is taken up on the next pass. For a row pinned to the unit, its native margin is
+// in the pin, not in the frame (which can still be the reused row's last adjusted frame).
 void SGRPlayerHoldMargin(UIView *view, CGFloat contentX) {
     UIView *unit = view.superview;
     if (!unit) return;
-    NSNumber *inset = objc_getAssociatedObject(view, &kMarginInsetKey);
+    NSMapTable<NSLayoutConstraint *, NSNumber *> *originals = objc_getAssociatedObject(view, &kMarginOriginalsKey);
+    BOOL rtl = unit.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    NSNumber *inset = nil;
+    for (NSLayoutConstraint *pin in unit.constraints) {
+        if (!pin.active || pin.relation != NSLayoutRelationEqual || pin.multiplier != 1 ||
+            pin.firstAttribute != pin.secondAttribute ||
+            (pin.firstAttribute != NSLayoutAttributeLeading && pin.firstAttribute != (rtl ? NSLayoutAttributeRight : NSLayoutAttributeLeft))) continue;
+        id edge = pin.firstItem == view ? pin.secondItem : pin.secondItem == view ? pin.firstItem : nil;
+        CGRect anchor = unit.bounds;
+        if ([edge isKindOfClass:UILayoutGuide.class] && [(UILayoutGuide *)edge owningView] == unit)
+            anchor = [(UILayoutGuide *)edge layoutFrame];
+        else if (edge != unit) continue;
+        NSNumber *original = [originals objectForKey:pin] ?: @(pin.constant);
+        CGFloat from = original.doubleValue * insetSign(pin, view)
+            + (rtl ? CGRectGetMaxX(unit.bounds) - CGRectGetMaxX(anchor) : CGRectGetMinX(anchor) - CGRectGetMinX(unit.bounds));
+        CGFloat wanted = SGRPlayerSideMargin - from - contentX;
+        inset = @(wanted > 0 && view.bounds.size.width > 2 * wanted ? round(wanted) : 0);
+        break;
+    }
+    // Unknown pin arrangements keep the previously measured native margin.
+    NSNumber *lastInset = objc_getAssociatedObject(view, &kMarginInsetKey);
+    if (!inset) inset = lastInset;
+    else if (![inset isEqual:lastInset])
+        objc_setAssociatedObject(view, &kMarginInsetKey, inset, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (!inset) {
-        BOOL rtl = unit.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
         CGRect frame = view.frame;
         CGFloat from = rtl ? CGRectGetMaxX(unit.bounds) - CGRectGetMaxX(frame) : CGRectGetMinX(frame) - CGRectGetMinX(unit.bounds);
         CGFloat wanted = SGRPlayerSideMargin - (from + contentX);
@@ -540,7 +562,6 @@ void SGRPlayerHoldMargin(UIView *view, CGFloat contentX) {
         for (NSLayoutConstraint *constraint in unit.constraints) sides += insetSign(constraint, view) != 0;
         SGLog(@"redesign player: %@ inset %@ pt to the player's margin through %lu constraints", NSStringFromClass(view.class), inset, (unsigned long)sides);
     }
-    NSMapTable<NSLayoutConstraint *, NSNumber *> *originals = objc_getAssociatedObject(view, &kMarginOriginalsKey);
     if (!originals) {
         originals = [NSMapTable weakToStrongObjectsMapTable];
         objc_setAssociatedObject(view, &kMarginOriginalsKey, originals, OBJC_ASSOCIATION_RETAIN_NONATOMIC);

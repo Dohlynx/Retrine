@@ -775,7 +775,9 @@ static void loadLyrics(void) {
     }
     UIViewController *root = self.window.rootViewController;
     CGFloat W = root.view.bounds.size.width, H = root.view.bounds.size.height;
-    BOOL ownerChip = [scenario() isEqual:@"lyric-line-owner"] || [scenario() isEqual:@"lyric-line-owner-clip"];
+    BOOL stripPreview = [scenario() isEqual:@"cover-strip-preview"];
+    BOOL stripCheck = stripPreview || [scenario() isEqual:@"cover-empty-strip"];
+    BOOL ownerChip = stripCheck || [scenario() isEqual:@"lyric-line-owner"] || [scenario() isEqual:@"lyric-line-owner-clip"];
     if (ownerChip || [scenario() isEqual:@"lyric-line-compact"]) { W = 393; H = 852; }
     if ([scenario() isEqualToString:@"adaptive"]) {
         if (getenv("HARNESS_COMPACT")) {
@@ -845,7 +847,7 @@ static void loadLyrics(void) {
     cover.image = picture;
     _cover = cover;
     cover.contentMode = UIViewContentModeScaleAspectFill;
-    if ([@[@"lyric-line-compact", @"lyric-line-ownership", @"artwork-unowned"] containsObject:scenario()]) {
+    if (stripCheck || [@[@"lyric-line-compact", @"lyric-line-ownership", @"artwork-unowned"] containsObject:scenario()]) {
         UIView *proxy = box(coverElement, NSClassFromString(@"_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy"), coverElement.bounds, nil);
         UIView *image = box(proxy, NSClassFromString(@"_TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView"), proxy.bounds, @"Encore.ImageView");
         [image addSubview:cover];
@@ -1092,13 +1094,74 @@ static void loadLyrics(void) {
         unitSpace(YES);
         tilt.frame = CGRectMake(13,CGRectGetMinY(nativeTilt),319,319);
         chip.hidden = NO; [self layOut];
+        if (!stripCheck) return;
+        [tilt layoutIfNeeded];
+        CGRect small = SGRPlayerCoverFrameIn(host);
+        HARNESS_CHECK(!SGRPlayerLyricLineOn() && chip.superview && beforeSwitch.size.width == 345 && small.size.width == 319);
+        NSArray *(^rows)(void) = ^{
+            NSMutableArray *frames = [NSMutableArray array];
+            for (UIView *v in @[bottom, floatingView, titleElement, track, controls, footerView])
+                [frames addObject:[NSValue valueWithCGRect:[host convertRect:v.bounds fromView:v]]];
+            return frames;
+        };
+        NSArray *baseline = rows();
+        UIVisualEffectView *material = (id)box(parent, UIVisualEffectView.class, CGRectMake(0,0,96,32), nil);
+        material.effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+        material.alpha = 0;
+        SGSetEnabled(SGKeyHideVideoSwitch, YES);
+        [floating viewDidLayoutSubviews];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [tilt layoutIfNeeded];
+            CGRect full = SGRPlayerCoverFrameIn(host);
+            HARNESS_CHECK(!chip.superview && floatingView.bounds.size.height == 32 && tilt.bounds.size.width == 319);
+            HARNESS_CHECK(full.size.width == 345 && full.origin.x == 24 && fabs(full.origin.y-small.origin.y) < .01 &&
+                          [baseline isEqual:rows()]);
+            cover.frame = CGRectMake(0,0,319,319);
+            HARNESS_CHECK(cover.bounds.size.width == 345);
+            if (stripPreview) {
+                // Spotify's other reason for narrowing the square: its own
+                // preview, in this page's column, 8 pt below a 273 pt tilt.
+                tilt.frame = CGRectMake(36,0,273,273);
+                previewShell.frame = CGRectMake(0,281,345,64);
+                [tilt layoutIfNeeded];
+                CGRect art = SGRPlayerCoverFrameIn(host);
+                HARNESS_CHECK(art.size.width == 273 && CGRectGetMaxY(art) <= CGRectGetMinY([host convertRect:previewShell.bounds fromView:previewShell]));
+                previewShell.hidden = YES;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [tilt layoutIfNeeded];
+                    HARNESS_CHECK(SGRPlayerCoverFrameIn(host).size.width == 345);
+                    previewShell.hidden = NO;
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [tilt layoutIfNeeded]; HARNESS_CHECK(SGRPlayerCoverFrameIn(host).size.width == 273);
+                        NSLog(@"[harness] cover-strip-preview passed"); exit(0);
+                    });
+                });
+                return;
+            }
+            // No player or floating-unit layout between changes. The cover
+            // consumes an invalidation; the test never dirties it itself.
+            material.alpha = 1;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [tilt layoutIfNeeded];
+                HARNESS_CHECK(CGRectEqualToRect(SGRPlayerCoverFrameIn(host),small) && [baseline isEqual:rows()]);
+                [material removeFromSuperview];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [tilt layoutIfNeeded]; HARNESS_CHECK(CGRectEqualToRect(SGRPlayerCoverFrameIn(host),full));
+                    [parent addSubview:material];
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [tilt layoutIfNeeded]; HARNESS_CHECK(CGRectEqualToRect(SGRPlayerCoverFrameIn(host),small));
+                        NSLog(@"[harness] cover-empty-strip passed"); exit(0);
+                    });
+                });
+            });
+        });
     });
     // Spotify lays its units out again as a track's elements arrive, which is what the redesign's
     // transforms and narrowed labels have to survive. The options scenario leaves layout to UIKit, so a switch
     // on the Player page is seen to reach the open player by itself; the header scenarios too, so the grabber is
     // seen to need no layout of the header.
     if (![scenario() isEqualToString:@"options"] && ![scenario() isEqualToString:@"renderer"] && ![scenario() hasPrefix:@"header"]
-        && ![scenario() isEqual:@"lyric-line-chip-live"] && !getenv("HARNESS_OPENING")) {
+        && !stripCheck && ![scenario() isEqual:@"lyric-line-chip-live"] && !getenv("HARNESS_OPENING")) {
         [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t) { [self layOut]; }];
     }
 
@@ -1624,7 +1687,7 @@ static void loadLyrics(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ SGRHarnessRunBackground(self.window, _background, _tilt); });
     }
     // Opened, closed and opened again, so a screenshot can be taken of each state and of the move itself.
-    else for (NSNumber *at in @[@2, @6, @10]) {
+    else if (!stripCheck) for (NSNumber *at in @[@2, @6, @10]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(at.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             NSLog(@"[harness] %@ the lyrics", SGRPlayerLyricsOpen() ? @"closing" : @"opening");
             SGRPlayerToggleLyrics();
@@ -3964,6 +4027,18 @@ static UIView *controlSlot(UIStackView *row, CGFloat side, Class cls, NSString *
                   && fabs(activation.y - CGRectGetMidY(screen)) <= 0.5,
               [NSString stringWithFormat:@"frame %@ at %@, want %@", NSStringFromCGRect(focus), NSStringFromCGPoint(activation), NSStringFromCGRect(screen)]);
         NSLog(@"[harness] cover: screenshot without lyrics now");
+        // A page laid out before its artwork band reaches its final origin. Only
+        // the ancestor moves back; resizing/re-laying the tilt would mask the bug.
+        UIView *band = room.superview;
+        CGPoint rest = band.center;
+        band.center = CGPointMake(rest.x, rest.y + 135);
+        [tilt setNeedsLayout];
+        [window layoutIfNeeded];
+        band.center = rest;
+        [window layoutIfNeeded];
+        CGRect returned = SGRPlayerCoverFrameIn(window);
+        check(@"same-sized page after its band moves back", CGRectEqualToRect(CGRectIntegral(returned), musicCover()),
+              NSStringFromCGRect(returned));
     });
     // Where it plays from shown (Hide where it plays from switched off on the Player page, the switch's own path): the
     // row takes its touches again and the cover stays under it; switched on again, the cover is back at the Music app's
@@ -4160,6 +4235,7 @@ static UIView *controlSlot(UIStackView *row, CGFloat side, Class cls, NSString *
                   [NSString stringWithFormat:@"released %d, the DJ's row takes %@, its button %@; the row back %d, nothing switched off %d",
                    released, NSStringFromClass(rowHit.class), NSStringFromClass(buttonHit.class), again, untouched]);
             NSLog(@"[harness] cover checks: %lu of %lu right -- %@", (unsigned long)right, (unsigned long)checks, right == checks ? @"PASS" : @"FAIL");
+            exit(right == checks ? 0 : 1);
         });
     });
 }
@@ -5816,7 +5892,8 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyStock];
         [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyHideVideoSwitch];
     }
-    if ([scenario() hasPrefix:@"lyric-line"]) [NSUserDefaults.standardUserDefaults setBool:NO forKey:SGKeyHideVideoSwitch];
+    if ([scenario() hasPrefix:@"lyric-line"] || [scenario() isEqual:@"cover-empty-strip"] || [scenario() isEqual:@"cover-strip-preview"])
+        [NSUserDefaults.standardUserDefaults setBool:NO forKey:SGKeyHideVideoSwitch];
     if ([scenario() hasPrefix:@"video-"] && ![scenario() isEqual:@"video-relaunch"])
         [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyHideVideoSwitch];
     if ([scenario() isEqualToString:@"background"])

@@ -299,6 +299,10 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     }
     if (!volume) {
         volume = [SGRVolumeRow new];
+        // The floating unit grows the bottom-pinned stack at its top. Like
+        // play and the footer, stay with the bottom during that resize, even
+        // when neither unit changes size or receives another layout pass.
+        volume.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
         objc_setAssociatedObject(stack, &kVolumeKey, volume, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (volume.superview != stack) [stack addSubview:volume];

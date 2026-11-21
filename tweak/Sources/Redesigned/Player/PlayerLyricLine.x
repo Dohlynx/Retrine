@@ -34,6 +34,7 @@
 #import "Redesigned/Lyrics/AutoTranslation.h"
 #import "Redesigned/Lyrics/LyricsText.h"
 #import <math.h>
+#import <stdatomic.h>
 #import "Player.h"
 #import "PlayerLyricLine.h"
 #import "PlayerLyricFit.h"
@@ -684,28 +685,32 @@ static void reportChip(UIView *host, CGRect area, CGFloat top, CGFloat titleTop,
     sg_pending = [record dataUsingEncoding:NSUTF8StringEncoding];
     flushChip(NO);
 }
-static CGFloat chipTopInBranch(UIView *view, UIView *host, CGRect clip, UIView **winner) {
+static CGFloat chipTopInBranch(UIView *view, UIView *host, CGRect clip, UIView **winner, BOOL record) {
     // Parent-local geometry preserves hierarchy and ignores a translation of the whole unit.
-    fingerprintLayer(view.layer, view == sg_floating.viewIfLoaded ? view.bounds : view.frame);
     BOOL identified = [view.accessibilityIdentifier isEqualToString:SGVideoSwitchIdentifier];
-    chipMix(view.subviews.count); chipMix(view.layer.sublayers.count);
-    chipMix((uintptr_t)(__bridge void *)view.class);
-    chipMix(view.clipsToBounds | (view.hidden << 1) | (identified << 2) | ((view.accessibilityIdentifier.length != 0) << 3));
-    chipNumbers((CGFloat[]){view.alpha}, 1);
+    if (record) {
+        fingerprintLayer(view.layer, view == sg_floating.viewIfLoaded ? view.bounds : view.frame);
+        chipMix(view.subviews.count); chipMix(view.layer.sublayers.count);
+        chipMix((uintptr_t)(__bridge void *)view.class);
+        chipMix(view.clipsToBounds | (view.hidden << 1) | (identified << 2) | ((view.accessibilityIdentifier.length != 0) << 3));
+        chipNumbers((CGFloat[]){view.alpha}, 1);
+    }
     if (!CGRectIsEmpty(clip) && !chipVisibleThrough(view, host, &clip)) clip = CGRectNull;
     CGRect visible = CGRectIsEmpty(clip) ? CGRectNull : CGRectIntersection(clip, [host convertRect:view.bounds fromView:view]);
-    BOOL owns = !CGRectIsEmpty(visible) && (identified || layerOwnPaint(view.layer));
+    if (!record && CGRectIsEmpty(clip)) return CGFLOAT_MAX;
+    BOOL control = !record && ([view isKindOfClass:UIControl.class] || [view isKindOfClass:UIVisualEffectView.class]);
+    BOOL owns = !CGRectIsEmpty(visible) && (identified || control || layerOwnPaint(view.layer));
     CGFloat top = CGFLOAT_MAX;
     for (CALayer *layer in view.layer.sublayers) {
         if ([layer.delegate isKindOfClass:UIView.class] && ((UIView *)layer.delegate).layer == layer) continue;
-        fingerprintLayer(layer, layer.frame);
+        if (record) fingerprintLayer(layer, layer.frame);
         if (owns || CGRectIsEmpty(clip) || !layerPaints(layer)) continue;
         CGRect rect = CGRectIntersection(clip, [host convertRect:layer.frame fromView:view]);
         if (!CGRectIsEmpty(rect) && CGRectGetMinY(rect) < top) { *winner = view; top = CGRectGetMinY(rect); }
     }
     for (UIView *child in view.subviews) {
         UIView *candidate = nil;
-        CGFloat other = chipTopInBranch(child, host, clip, &candidate);
+        CGFloat other = chipTopInBranch(child, host, clip, &candidate, record);
         if (other < top) { top = other; *winner = candidate; }
     }
     if (owns) { *winner = view; return CGRectGetMinY(visible); }
@@ -725,9 +730,81 @@ static CGFloat visibleChipTop(UIView *host, CGRect area) {
             if (!chipVisibleThrough(v, host, &clip)) { clip = CGRectNull; break; }
     }
     UIView *winner = nil;
-    CGFloat top = chipTopInBranch(floating, host, clip, &winner);
+    CGFloat top = chipTopInBranch(floating, host, clip, &winner, YES);
     sg_chip = winner;
     return top;
+}
+
+static void refreshEmptyStrip(void);
+
+// With the lyric clock off, follow the inputs to the same chip measurement.
+// Watch only the floating unit (including its masks); sublayers changes catch
+// insertions/removals even when neither controller is laid out again.
+@interface SGRFloatingStripWatch : NSObject
+- (void)follow:(CALayer *)root;
+@end
+
+@implementation SGRFloatingStripWatch {
+    NSSet<CALayer *> *_layers;
+    atomic_bool _pending;
+}
+static void collectStripLayers(CALayer *layer, NSMutableSet *layers) {
+    if (!layer || [layers containsObject:layer]) return;
+    [layers addObject:layer];
+    collectStripLayers(layer.mask, layers);
+    for (CALayer *child in layer.sublayers) collectStripLayers(child, layers);
+}
+static NSArray<NSString *> *stripKeys(CALayer *layer) {
+    static NSArray *keys, *shape, *gradient;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        keys = @[@"sublayers", @"mask", @"hidden", @"opacity", @"bounds", @"position", @"anchorPoint",
+                 @"transform", @"sublayerTransform", @"masksToBounds", @"contents", @"backgroundColor", @"borderColor", @"borderWidth"];
+        shape = [keys arrayByAddingObjectsFromArray:@[@"path", @"fillColor", @"strokeColor", @"lineWidth"]];
+        gradient = [keys arrayByAddingObject:@"colors"];
+    });
+    return [layer isKindOfClass:CAShapeLayer.class] ? shape : [layer isKindOfClass:CAGradientLayer.class] ? gradient : keys;
+}
+- (void)follow:(CALayer *)root {
+    NSMutableSet *next = [NSMutableSet set];
+    collectStripLayers(root, next);
+    for (CALayer *layer in _layers) if (![next containsObject:layer])
+        for (NSString *key in stripKeys(layer)) [layer removeObserver:self forKeyPath:key];
+    for (CALayer *layer in next) if (![_layers containsObject:layer])
+        for (NSString *key in stripKeys(layer)) [layer addObserver:self forKeyPath:key options:0 context:NULL];
+    _layers = next;
+}
+- (void)observeValueForKeyPath:(NSString *)key ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (atomic_exchange(&_pending, true)) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        atomic_store(&self->_pending, false);
+        refreshEmptyStrip();
+    });
+}
+@end
+
+// The shared switch hook removes the button, not its allocated unit. Do
+// not change the stack: give just the artwork its ordinary square back.
+static void refreshEmptyStrip(void) {
+    UIView *host = sg_host, *unit = sg_floating.viewIfLoaded;
+    static SGRFloatingStripWatch *watch;
+    CALayer *root = nil;
+    BOOL empty = NO;
+    if (host.window && unit.window == host.window && SGVideoSwitchHidden() &&
+        host.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPhone && host.bounds.size.height > host.bounds.size.width) {
+        UIView *stack = SGRFindByIdentifier(host, @"npv.bottomStackView", &kStackKey);
+        if (stack && [unit isDescendantOfView:stack]) {
+            root = unit.layer;
+            CGRect strip = [host convertRect:unit.bounds fromView:unit];
+            UIView *winner = nil;
+            empty = !CGRectIsEmpty(strip) && CGRectContainsRect([host convertRect:stack.bounds fromView:stack], strip) &&
+                chipTopInBranch(unit, unit, unit.bounds, &winner, NO) == CGFLOAT_MAX;
+        }
+    }
+    if (root && !watch) watch = [SGRFloatingStripWatch new];
+    [watch follow:root];
+    if (!root) watch = nil; // Unregistered on main, before releasing the layers.
+    SGRPlayerEmptyStripIn(empty ? host : nil);
 }
 
 // Spotify's own lyric preview under the cover, beside the tilt view, shown when Spotify's lyrics setting has it:
@@ -742,9 +819,25 @@ static BOOL isPreview(UIView *view) {
     return (preview && [view isKindOfClass:preview]) || (wrapper && [view isKindOfClass:wrapper]);
 }
 
+static BOOL previewOccupies(UIView *preview, UIView *root) {
+    return preview.bounds.size.height > 1 && showsIn(preview, root);
+}
+
+NSArray<CALayer *> *SGRPlayerPreviewLayers(UIView *column, BOOL *showing) {
+    NSMutableArray *layers = [NSMutableArray array];
+    *showing = NO;
+    for (UIView *sibling in column.subviews) if (isPreview(sibling)) {
+        [layers addObject:sibling.layer];
+        // Both pictures move/hide with the column; only the preview's own
+        // visibility decides their relative sizes when the page returns.
+        if (previewOccupies(sibling, sibling)) *showing = YES;
+    }
+    return layers;
+}
+
 static BOOL previewShowing(UIView *tilt, UIView *host) {
     for (UIView *sub in tilt.superview.subviews) {
-        if (isPreview(sub) && sub.bounds.size.height > 1 && showsIn(sub, host)) return YES;
+        if (isPreview(sub) && previewOccupies(sub, host)) return YES;
     }
     return NO;
 }
@@ -907,6 +1000,7 @@ CGRect SGRPlayerLyricLineIn(UIView *view) {
 
 // The cover's own layout (PlayerArtwork.x sizes it there): the line follows where the cover now is. Only the
 // player's covers, not the now playing bar's.
+%group SGRLyricPreviewLayout
 %hook _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
 - (void)layoutSubviews {
     %orig;
@@ -933,19 +1027,23 @@ CGRect SGRPlayerLyricLineIn(UIView *view) {
     if (host && [(UIView *)self isDescendantOfView:host]) placeLine();
 }
 %end
+%end
 
 %hook _TtC19NowPlaying_ViewImpl24NowPlayingViewController
 - (void)viewDidDisappear:(BOOL)animated {
-    if (((UIViewController *)self).viewIfLoaded == sg_host) flushChip(YES);
+    if (((UIViewController *)self).viewIfLoaded == sg_host) {
+        if (SGRPlayerLyricLineOn()) flushChip(YES);
+        else { sg_host = nil; refreshEmptyStrip(); }
+    }
     %orig;
 }
 - (void)viewDidLayoutSubviews {
     %orig;
     UIView *host = ((UIViewController *)self).viewIfLoaded;
     if (!host.window) return;
-    if (sg_host != host) flushChip(YES);
+    if (sg_host != host && SGRPlayerLyricLineOn()) flushChip(YES);
     sg_host = host;
-    placeLine();
+    if (SGRPlayerLyricLineOn()) placeLine(); else refreshEmptyStrip();
 }
 %end
 
@@ -953,15 +1051,18 @@ CGRect SGRPlayerLyricLineIn(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     sg_floating = (UIViewController *)self;
-    placeLine();
+    if (SGRPlayerLyricLineOn()) { placeLine(); return; }
+    refreshEmptyStrip();
 }
 %end
 
 %ctor {
     if (!SGRedesignedUI()) return;
-    if (!SGRPlayerLyricLineOn()) return;
-    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
-        usingBlock:^(NSNotification *note) { flushChip(YES); }];
+    if (SGRPlayerLyricLineOn()) {
+        %init(SGRLyricPreviewLayout);
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
+            usingBlock:^(NSNotification *note) { flushChip(YES); }];
+    }
     %init;
     SGRequireClasses(@[
         @"_TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView",

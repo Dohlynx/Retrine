@@ -43,6 +43,7 @@
 #import "Shared/LocalFiles/LocalFiles.h"
 #import "Shared/Player/PlayerEvents.h"
 #import "Player.h"
+#import "PlayerLyricLine.h"
 #import "PlayerQueue.h"
 
 static const CGFloat kThumbSide = 72;          // the cover once the lyrics are up
@@ -92,6 +93,55 @@ static SGRSidePick sg_sidePick;
 static CFTimeInterval sg_lyricsOnOpenUntil;
 static BOOL sg_orderedForVoiceOver;         // the player's accessibilityElements are this file's
 static __weak UIView *sg_replacedCoverList;
+
+// Issue #33: the pixels alone can't distinguish a narrower native tilt from
+// a smaller image inside it. Capture the still-open page on app resign, not
+// on the playback clock (and not after reopening, which restores the layout).
+static NSString *geometryIn(UIView *host, UIView *view) {
+    return [view isDescendantOfView:host] ? NSStringFromCGRect([host convertRect:view.bounds fromView:view]) : @"-";
+}
+
+static BOOL geometryVisible(UIView *view, UIView *root) {
+    if (!view) return NO;
+    for (UIView *v = view; v && v != root; v = v.superview)
+        if (v.hidden || v.alpha < 0.01) return NO;
+    return YES;
+}
+
+static void reportPlayerGeometry(void) {
+    UIView *host = sg_host, *art = SGRPlayerShowingCover(), *tilt = art.superview;
+    if (!host.window || sg_open || ![tilt isDescendantOfView:host]) return;
+    UIView *cell = tilt;
+    while (cell && ![cell isKindOfClass:UICollectionViewCell.class]) cell = cell.superview;
+    __block UIView *preview = nil, *bitmap = nil;
+    SGForEachView(cell, ^(UIView *v) {
+        if ([v isKindOfClass:UIImageView.class] && !bitmap && [v isDescendantOfView:art] && geometryVisible(v, art)) bitmap = v;
+        if ((SGClassNamed(v.class, @"LyricsElementWrapperView") || SGClassNamed(v.class, @"LyricsContainerView"))
+            && v.bounds.size.height > preview.bounds.size.height) preview = v;
+    });
+    CGRect normal = SGRPlayerNormalCover(host, tilt, CGRectGetWidth(tilt.superview.bounds));
+    SGLog(@"redesign player geometry: safe=%.1f column=%@ tilt=%@ normal=%@ art=%@ bitmap=%@ preview=%@ shown=%d masked=%d strip=%@",
+          host.window.safeAreaInsets.top, geometryIn(host, tilt.superview), geometryIn(host, tilt), NSStringFromCGRect(normal),
+          geometryIn(host, art), geometryIn(host, bitmap), geometryIn(host, preview), geometryVisible(preview, cell),
+          preview.layer.mask != nil, geometryIn(host, sg_floating.viewIfLoaded));
+
+    UIView *stack = SGRFindByIdentifier(host, @"npv.bottomStackView", &kStackKey);
+    static char barKey, playKey, queueKey;
+    UIView *bar = SGRFindByIdentifier(stack, @"SPTNowPlayingSliderV2", &barKey);
+    UIView *play = SGRFindByIdentifier(stack, @"SPTNowPlayingPlayButton", &playKey);
+    UIView *queue = SGRFindByIdentifier(stack, @"QueueButtonNowPlaying", &queueKey);
+    UIView *volume = nil;
+    for (UIView *v in stack.subviews) if ([v isKindOfClass:NSClassFromString(@"SGRVolumeRow")]) volume = v;
+    __block UIView *slider = nil;
+    SGForEachView(volume, ^(UIView *v) {
+        if ([v isKindOfClass:UISlider.class] && geometryVisible(v, volume)) slider = v;
+    });
+    UIView *info = sg_info.viewIfLoaded, *row = sg_titleElement;
+    while (row && row.superview != info) row = row.superview;
+    SGLog(@"redesign player rows: stack=%@ row=%@ title=%@ bar=%@ play=%@ footerQueue=%@ volume=%@ slider=%@",
+          geometryIn(host, stack), geometryIn(host, row), geometryIn(host, sg_titleElement), geometryIn(host, bar),
+          geometryIn(host, play), geometryIn(host, queue), geometryIn(host, volume), geometryIn(host, slider));
+}
 
 // Restore the actual list we faded to full visibility, not a transient alpha captured during presentation.
 static void replaceCoverList(BOOL replaced) {
@@ -1339,6 +1389,7 @@ BOOL SGRPlayerLyricsNone(void) {
     }];
     // In the background the controls stay up; back in front the clock starts again.
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        reportPlayerGeometry();
         setAlone(NO, NO);
         [sg_rest invalidate];
         sg_rest = nil;

@@ -34,6 +34,8 @@ static const CGFloat kCoverTopUnderSafeArea = 33;
 static char kPlateKey;
 static __weak UIView *sg_reservedTilt;
 static CGFloat sg_reservedSide;
+static __weak UIView *sg_emptyStripHost;
+static char kStripFillKey;
 static NSHashTable<UIView *> *sg_tilts;
 // The cover of each tilt view once found. A frame Spotify sets on a scaled view becomes its scaled
 // size, leaving bounds that no longer match the tilt view's, so the cover is not looked for by size again.
@@ -114,6 +116,16 @@ CGRect SGRPlayerNormalCover(UIView *host, UIView *tilt, CGFloat maxSide) {
     return CGRectMake(top.x - side / 2, top.y, side, side);
 }
 
+void SGRPlayerEmptyStripIn(UIView *host) {
+    UIView *prior = sg_emptyStripHost;
+    if (prior == host) return;
+    sg_emptyStripHost = host;
+    for (UIView *tilt in sg_tilts.allObjects) {
+        if ((prior && [tilt isDescendantOfView:prior]) || (host && [tilt isDescendantOfView:host]))
+            [tilt setNeedsLayout];
+    }
+}
+
 void SGRPlayerReserveCover(UIView *tilt, CGFloat side) {
     static NSString *track;
     NSString *playing = SGKaraokePlayingTrack();
@@ -174,6 +186,99 @@ void SGRPlayerReserveCover(UIView *tilt, CGFloat side) {
     });
 }
 @end
+
+// Moving a page's artwork band does not lay out a same-sized tilt. Observe
+// the model geometry coverLift reads, not the pager, presentation animations
+// or the tilt transform. The observation belongs to the reusable tilt.
+@interface SGRCoverLiftWatch : NSObject
+@property (nonatomic, weak) UIView *tilt;
+@property (nonatomic, copy) NSArray<CALayer *> *layers;
+- (BOOL)stripOnlyIn:(UIView *)column;
+- (void)stop;
+@end
+
+@implementation SGRCoverLiftWatch {
+    CALayer *_column;
+    NSArray<CALayer *> *_previews;
+}
+static char kPreviewChange;
+- (BOOL)stripOnlyIn:(UIView *)column {
+    if (!_column && !column) return NO;
+    if (_column != column.layer) {
+        [_column removeObserver:self forKeyPath:@"sublayers" context:&kPreviewChange];
+        _column = column.layer;
+        [_column addObserver:self forKeyPath:@"sublayers" options:0 context:&kPreviewChange];
+    }
+    BOOL showing = NO;
+    NSArray *layers = column ? SGRPlayerPreviewLayers(column, &showing) : nil;
+    for (CALayer *layer in _previews) if (![layers containsObject:layer])
+        for (NSString *key in @[@"bounds", @"hidden", @"opacity"]) [layer removeObserver:self forKeyPath:key context:&kPreviewChange];
+    for (CALayer *layer in layers) if (![_previews containsObject:layer])
+        for (NSString *key in @[@"bounds", @"hidden", @"opacity"]) [layer addObserver:self forKeyPath:key options:0 context:&kPreviewChange];
+    _previews = layers;
+    return column && !showing;
+}
+- (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context != &kPreviewChange) {
+        NSValue *old = change[NSKeyValueChangeOldKey], *now = change[NSKeyValueChangeNewKey];
+        BOOL moved = [path isEqualToString:@"position"] ? old.CGPointValue.y != now.CGPointValue.y :
+            old.CGRectValue.origin.y != now.CGRectValue.origin.y || old.CGRectValue.size.height != now.CGRectValue.size.height;
+        if (!moved) return;
+    }
+    if (NSThread.isMainThread) [self.tilt setNeedsLayout];
+    else dispatch_async(dispatch_get_main_queue(), ^{ [self.tilt setNeedsLayout]; });
+}
+- (void)stop {
+    self.tilt = nil;
+    [self stripOnlyIn:nil];
+    for (CALayer *layer in _layers) {
+        [layer removeObserver:self forKeyPath:@"position"];
+        [layer removeObserver:self forKeyPath:@"bounds"];
+    }
+    _layers = nil;
+}
+@end
+
+// Association destruction follows the thread of the last release. Keep both
+// ends of each registration alive through removal, without retaining a view.
+@interface SGRCoverLiftBinding : NSObject
+@property (nonatomic, strong) SGRCoverLiftWatch *watch;
+@end
+@implementation SGRCoverLiftBinding
+- (void)dealloc {
+    SGRCoverLiftWatch *watch = _watch;
+    if (NSThread.isMainThread) [watch stop];
+    else dispatch_async(dispatch_get_main_queue(), ^{ [watch stop]; });
+}
+@end
+
+static SGRCoverLiftWatch *followTilt(UIView *tilt, UIView *cell) {
+    static char key;
+    SGRCoverLiftBinding *binding = objc_getAssociatedObject(tilt, &key);
+    if (!cell) {
+        if (binding) objc_setAssociatedObject(tilt, &key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return nil;
+    }
+    NSArray<CALayer *> *layers = binding.watch.layers;
+    NSUInteger count = 0;
+    for (UIView *v = tilt; v && v != cell; v = v.superview) {
+        if (count == layers.count || layers[count++] != v.layer) break;
+        if (v.superview == cell && count == layers.count) return binding.watch;
+    }
+    SGRCoverLiftWatch *watch = [SGRCoverLiftWatch new];
+    watch.tilt = tilt;
+    NSMutableArray *chain = [NSMutableArray array];
+    for (UIView *v = tilt; v && v != cell; v = v.superview) {
+        [chain addObject:v.layer];
+        for (NSString *path in @[@"position", @"bounds"])
+            [v.layer addObserver:watch forKeyPath:path options:NSKeyValueObservingOptionOld|NSKeyValueObservingOptionNew context:NULL];
+    }
+    watch.layers = chain;
+    binding = [SGRCoverLiftBinding new];
+    binding.watch = watch;
+    objc_setAssociatedObject(tilt, &key, binding, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return watch;
+}
 
 void SGRPlayerCoverUnderRow(UIView *row, BOOL live, UIView *player) {
     if (!sg_liveRows) sg_liveRows = [NSHashTable weakObjectsHashTable];
@@ -500,6 +605,7 @@ static void fillParts(UIView *holder) {
 - (void)didMoveToWindow {
     %orig;
     if (((UIView *)self).window) [(UIView *)self setNeedsLayout];
+    else followTilt((UIView *)self, nil);
 }
 
 // The cover's touches (the hold, Spotify's own) are where it is drawn, lifted above the tilt view's top, not under it.
@@ -528,6 +634,8 @@ static void fillParts(UIView *holder) {
     if (!cover) return;
     [sg_tilts addObject:tilt];
     watchInsets(tilt.window);
+    SGRCoverLiftWatch *watch = followTilt(tilt, cell.window && cell.traitCollection.userInterfaceIdiom == UIUserInterfaceIdiomPhone
+                                               && cell.bounds.size.height > cell.bounds.size.width ? cell : nil);
     // Kept hidden, it is whichever cover is showing: the first open can lay out a second cell in its place. Not animated,
     // though this pass may run inside Spotify's transition.
     if (sg_coverKeptHidden && cover != sg_hiddenCover && showingTilt() == tilt) {
@@ -539,16 +647,28 @@ static void fillParts(UIView *holder) {
     // under the scale.
     CGRect bounds = CGRectMake(0, 0, tilt.bounds.size.width, tilt.bounds.size.height);
     CGPoint middle = CGPointMake(CGRectGetMidX(tilt.bounds), CGRectGetMidY(tilt.bounds) - coverLift(tilt, cell));
-    if (sg_reservedTilt == tilt && sg_reservedSide > 0) {
-        middle.y += (sg_reservedSide - bounds.size.height) / 2;
-        bounds.size = CGSizeMake(sg_reservedSide, sg_reservedSide);
+    CGFloat side = sg_reservedTilt == tilt ? sg_reservedSide : 0;
+    UIView *host = sg_emptyStripHost;
+    BOOL stripFill = NO;
+    CGRect normal = CGRectNull;
+    if (!side && host && tilt.bounds.size.width < tilt.superview.bounds.size.width)
+        normal = SGRPlayerNormalCover(host, tilt, host.bounds.size.width - 6 * SGRGrid);
+    if ([watch stripOnlyIn:CGRectIsNull(normal) ? nil : tilt.superview]) {
+        side = normal.size.width;
+        stripFill = YES;
+    }
+    if (!!objc_getAssociatedObject(tilt, &kStripFillKey) != stripFill)
+        objc_setAssociatedObject(tilt, &kStripFillKey, stripFill ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (side > 0) {
+        middle.y += (side - bounds.size.height) / 2;
+        bounds.size = CGSizeMake(side, side);
     }
     if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
     if (!CGPointEqualToPoint(cover.center, middle)) cover.center = middle;
     // A cell pass can reset just the bitmap. Matching outer frames do not
     // imply its descendants were laid out. Size all three in this transaction.
     for (UIView *proxy in cover.subviews) {
-        if (tilt != sg_reservedTilt) {
+        if (!side) {
             // The ordinary issue #21 layout: only re-place a proxy whose own frame is stale.
             if (!CGRectEqualToRect(proxy.frame, cover.bounds)) { proxy.bounds = proxy.bounds; proxy.center = proxy.center; }
             continue;
@@ -651,7 +771,8 @@ static UIView *playerImageHolder(UIView *part) {
     if (!encore) encore = NSClassFromString(@"_TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView");
     if (![holder isKindOfClass:encore]) return nil;
     UIView *proxy = holder.superview;
-    return sg_reservedTilt && proxy.superview.superview == sg_reservedTilt &&
+    UIView *tilt = proxy.superview.superview;
+    return tilt && (tilt == sg_reservedTilt || objc_getAssociatedObject(tilt, &kStripFillKey)) &&
            [proxy isKindOfClass:imageProxyClass()] && coverOfImage(proxy) ? holder : nil;
 }
 

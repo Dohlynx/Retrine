@@ -169,7 +169,8 @@ come late, out of order, or not at all.
   of it leaves the stacks it left taking the strip as before, and back it lets the strip through again; another
   ordinary header put in its stack, beside the old one and after it, lets the strip through; that one released and
   the AI DJ's header put in the same stack, its row and button take their touches; the row put back, the strip is the
-  cover's. The log ends with `cover checks: n of 14 right -- PASS` or `FAIL`.
+  cover's. Moving the artwork band back up 135 pt without resizing the tilt must leave the cover at its original
+  window position. The log ends with `cover checks: n of 15 right -- PASS` or `FAIL`.
 - `immersive` opens the lyrics and waits past the rest: only the bottom stack under the title row
   (progress bar, buttons, volume row, footer) fades, the lines grow down only, a touch where the buttons
   were lands on the lines, the thumbnail takes its own, and the lines' tap is off. Then the tap that
@@ -184,6 +185,10 @@ come late, out of order, or not at all.
   one sung line and no chip over the title. Both check the compact slot above the title,
   the live change from the preview font to 17 pt and back, with and without a translation.
   `lyric-line-switch` uses the same clip fixture and checks clip → cover → clip without changing the words.
+  `cover-empty-strip` uses the same retained strip with the line off. The shown switch keeps the native
+  319 pt tilt; hiding it fills the 345 pt column at the same top without moving the rows; other material
+  fading in or reattached in the strip restores 319 without laying out the floating unit. `cover-strip-preview`
+  keeps Spotify's native 273 pt square while its lyric preview shows below it, including when the preview returns.
   `lyric-line-owner` and `lyric-line-owner-clip` reproduce the 393×852 Spotify 9.2.0 field trace:
   two seconds after opening, the bottom stack grows 40 pt around a 32 pt floating unit and the native
   345 pt square becomes a top-aligned 319 pt square. The identified button has a clear child drawing

@@ -1538,12 +1538,18 @@ Redesigned:
                   from the views as they are, with nothing switched off on Spotify's (PlayerHeader.x passesTouches); the
                   row's controls and its parts off the cover stay Spotify's; it takes
                   touches, and VoiceOver's frame and activation point, where it is drawn; laid out again when the
-                  window's safe area changes; checked by harness/player/ `cover`), and the gaps from the artist to the bar, the bar
+                  window's safe area or the vertical geometry inside its cell changes, even if the tilt's size does not;
+                  checked by harness/player/ `cover`), and the gaps from the artist to the bar, the bar
                   to play's middle and play's middle to the footer's middle are taken to 38, 91 and 91 pt (plus 48 pt for
                   the volume row, which stands that far over the footer's middle); where the room is shorter Spotify's
                   gaps stay and the earlier shared-move layout applies. A spacing change moves Spotify's views only on
                   the player's next layout, so the player is laid out once more on the next turn of the run loop and the
-                  volume row placed against the controls there; in landscape and the two columns the volume row keeps
+                  volume row placed against the controls there. When the bottom-pinned stack grows around a floating unit,
+                  the non-arranged volume row keeps its distance from the bottom, not from the stack's old top.
+                  To record an intermittent narrow cover, leave the player open and enter the app switcher while it
+                  is wrong, then return and share diagnostics without restarting: `redesign player geometry:` and
+                  `redesign player rows:` record frames in player coordinates, without track or lyric text.
+                  In landscape and the two columns the volume row keeps
                   the halfway place between play and the footer. The title is 20 pt semibold over the artist 20 pt
                   regular in the secondary color (Title 3, capped at XXXL), 17 over 17 beside the lyrics' thumbnail
                   (PlayerTitle.x), in the app's chosen font (Spotify's own family when Spotify Mix is chosen), Spotify's
@@ -1680,7 +1686,12 @@ Redesigned:
                   on Spotify 9.2.0 the floating unit is inside the bottom stack. If Spotify retains a nonempty
                   strip above the title after the button is removed, it still explains a smaller centered
                   native square. The natural side is the column width; the top stays at the native lifted,
-                  header-safe edge. Only visible chip content requires clearance. An empty strip leaves
+                  header-safe edge. With Lyrics Line off and the video switch hidden, an allocated but empty unit
+                  costs the artwork no width: the picture fills the normal column without moving the stack,
+                  unless Spotify's own lyric preview is showing beside that tilt. Showing the switch or
+                  another visible element keeps Spotify's square; changes in the floating unit, including
+                  fades and reinsertions, update the cover without a player layout or lyric clock. With the line on,
+                  only visible chip content requires clearance. An empty strip leaves
                   the line directly above the title, with the same row budget and cover floor.
                   The identified switch need not expose painted pixels; anonymous views still do. A changed
                   floating-unit snapshot logs `lyrics unit:` even when nothing wins. The numbered parts
