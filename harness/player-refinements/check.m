@@ -135,10 +135,20 @@ static void expectJump(UILabel *label, NSString *text, NSString *what) {
     expectSpotifysText(label, text, what);
 }
 
+@interface TimeLabel : UILabel
+@property (nonatomic) NSUInteger writes;
+- (void)replaceBehindSetter;
+@end
+@implementation TimeLabel
+- (void)setText:(NSString *)text { self.writes++; [super setText:text]; }
+- (void)setAttributedText:(NSAttributedString *)text { self.writes++; [super setAttributedText:text]; }
+- (void)replaceBehindSetter { [super setAttributedText:[[NSAttributedString alloc] initWithString:@"changed"]]; }
+@end
+
 static void checkRollingLabel(UIWindow *window) {
     UIView *host = [[UIView alloc] initWithFrame:CGRectMake(20, 100, 200, 40)];
     [window addSubview:host];
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0, 10, 80, 20)];
+    TimeLabel *label = [[TimeLabel alloc] initWithFrame:CGRectMake(0, 10, 80, 20)];
     label.font = [UIFont systemFontOfSize:12];
     label.accessibilityIdentifier = @"now-playing-time-take-label-internal";
     [host addSubview:label];
@@ -164,7 +174,9 @@ static void checkRollingLabel(UIWindow *window) {
     expectRoll(label, @"10:00", @"10:00", @"2:00", YES, @"2:00 -> 10:00 (length changes)");
     // The same text again, while that roll runs: nothing new, and the roll goes on.
     UIView *running = overlayOver(label);
+    NSUInteger writes = label.writes;
     label.text = @"10:00";
+    CHECK(writes == label.writes, @"repeat reached the plain text setter");
     CHECK(running && overlayOver(label) == running && label.layer.mask, @"the same text again cut the running roll short");
 
     // Out of the window and back: the next value shows at once, the one after rolls.
@@ -214,6 +226,14 @@ static void checkRollingLabel(UIWindow *window) {
     SGRMonospacedDigits(plain);
     settle(0.2);
     expectJump(plain, @"0:02", @"an unmarked label");
+    NSAttributedString *given = [[NSAttributedString alloc] initWithString:@"1:23" attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:13]}];
+    label.attributedText = given;
+    writes = label.writes;
+    label.attributedText = given;
+    CHECK(writes == label.writes, @"repeat reached the attributed setter");
+    [label replaceBehindSetter];
+    label.attributedText = given;
+    CHECK([label.text isEqualToString:@"1:23"], @"repeat failed to repair an external edit");
     [host removeFromSuperview];
 }
 

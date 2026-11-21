@@ -54,6 +54,7 @@ static __weak UIView *sg_host;              // SPTNowPlayingView
 static __weak UIViewController *sg_floating; // the chips over the title (FloatingElementsUnit)
 static void flushChip(BOOL leaving);
 static CGFloat visibleChipTop(UIView *host, CGRect area);
+static void watchLineChip(CALayer *root);
 
 BOOL SGRPlayerLyricLineOn(void) {
     static BOOL on;
@@ -63,6 +64,8 @@ BOOL SGRPlayerLyricLineOn(void) {
 }
 
 @interface SGRLyricLineView : UIView
+@property (nonatomic, readonly) BOOL running;
+@property (nonatomic) BOOL obscured;
 @property (nonatomic) BOOL fits;   // set by the layout: there is room for it
 @property (nonatomic) BOOL overClip;
 @property (nonatomic) CGRect slot;
@@ -73,6 +76,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 - (void)setRightToLeft:(BOOL)rtl;
 @property (nonatomic) CGRect room; // set by the layout: the gap under the cover, CGRectNull without one
 - (void)tick;
+- (void)setPlayerCovered:(BOOL)covered;
 - (BOOL)place;
 - (BOOL)placeWithChipTop:(CGFloat)top;
 @end
@@ -84,6 +88,8 @@ BOOL SGRPlayerLyricLineOn(void) {
     UILabel *_label;
     NSTimer *_timer;   // one-shot, armed again after every update
     BOOL _running;     // in a window and Spotify in front: the timer runs
+    BOOL _inactive, _covered;
+    UIView *_covers;
     NSArray<SGKaraokeLine *> *_source, *_ordered;
     BOOL _timed;
     NSInteger _index;
@@ -130,8 +136,8 @@ BOOL SGRPlayerLyricLineOn(void) {
     [self addSubview:_translationLabel];
     [self addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapped)]];
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    [center addObserver:self selector:@selector(clock) name:UIApplicationDidBecomeActiveNotification object:nil];
-    [center addObserver:self selector:@selector(clock) name:UIApplicationDidEnterBackgroundNotification object:nil];
+    [center addObserver:self selector:@selector(activity:) name:UIApplicationDidBecomeActiveNotification object:nil];
+    [center addObserver:self selector:@selector(activity:) name:UIApplicationWillResignActiveNotification object:nil];
     // Lyrics kept for the track, or the Lyrics page's Delay changed: the line and its portions are read again.
     [center addObserver:self selector:@selector(linesChanged) name:SGKaraokeLinesKeptNotification object:nil];
     [center addObserver:self selector:@selector(linesChanged) name:SGLyricsOffsetsDidChangeNotification object:nil];
@@ -326,19 +332,45 @@ BOOL SGRPlayerLyricLineOn(void) {
 
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
+    [_covers removeObserver:self forKeyPath:@"alpha"];
     [_timer invalidate];
+}
+
+- (void)watchCovers:(UIView *)covers {
+    if (_covers == covers) return;
+    [_covers removeObserver:self forKeyPath:@"alpha"];
+    _covers = covers;
+    [_covers addObserver:self forKeyPath:@"alpha" options:0 context:NULL];
+}
+
+// Full lyrics take the covers away and give them back by setting alpha, even at the same slot width.
+- (void)observeValueForKeyPath:(NSString *)key ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (object == _covers) [self tick];
+    else [super observeValueForKeyPath:key ofObject:object change:change context:context];
+}
+
+- (void)activity:(NSNotification *)note {
+    _inactive = [note.name isEqual:UIApplicationWillResignActiveNotification];
+    [self clock];
+}
+
+- (void)setPlayerCovered:(BOOL)covered {
+    _covered = covered;
+    [self clock];
 }
 
 // Runs while the line is in a window and Spotify is in front; stopped otherwise. Coming back starts it over, which
 // catches up with where the song went while it was away.
 - (void)clock {
-    BOOL run = self.window && UIApplication.sharedApplication.applicationState != UIApplicationStateBackground;
+    BOOL run = self.window && !_inactive && !_covered && UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
     if (run == _running) return;
     _running = run;
     if (!run) {
         [_timer invalidate];
         _timer = nil;
         _armed = NO;
+        [self watchCovers:nil];
+        if (self.superview == sg_host) watchLineChip(nil);
         return;
     }
     [self tick];
@@ -369,7 +401,7 @@ BOOL SGRPlayerLyricLineOn(void) {
 // A report from the player: a seek re-aims the timer, and so does a speed change. A paused report carries the exact
 // place the song was put, so any move of it while paused is a seek, however small: it can cross a portion's boundary.
 - (void)playerStateDidChange:(SPTPlayerState *)state {
-    [self rearmForState:state];
+    if (_running) [self tick];  // a new track can start at exactly the last one's reported position
 }
 
 - (void)playerStateDidReport:(SPTPlayerState *)state {
@@ -377,8 +409,8 @@ BOOL SGRPlayerLyricLineOn(void) {
 }
 
 - (void)rearmForState:(SPTPlayerState *)state {
-    if (!_running) return;
-    if (!_armed || !_timer) {
+    if (!_running || !_fits || !_timed || SGRPlayerLyricsOpen() || (_covers && _covers.alpha <= 0.01)) return;
+    if (!_armed) {
         [self tick];
         return;
     }
@@ -415,7 +447,26 @@ BOOL SGRPlayerLyricLineOn(void) {
     return CGRectGetWidth(self.slot);
 }
 
+- (void)showLine:(BOOL)shown {
+    if (shown == _shown) return;
+    _shown = shown;
+    self.userInteractionEnabled = shown;
+    self.accessibilityElementsHidden = !shown;
+    if (_overClip) SGRPlayerMotionLineMoved();
+    SGRAnimate(shown ? SGRMotionFade : SGRMotionRespond, ^{ self.alpha = shown ? 1 : 0; }, nil);
+}
+
 - (void)tick {
+    if (!_running) return;
+    [self watchCovers:SGRPlayerCoverList()];
+    _obscured = SGRPlayerLyricsOpen() || (_covers && _covers.alpha <= 0.01);
+    if (_obscured) {
+        [_timer invalidate];
+        _timer = nil;
+        _armed = NO;
+        [self showLine:NO];
+        return;
+    }
     NSArray<SGKaraokeLine *> *before = _source;
     NSInteger index = [self currentIndex];
     if (index != _index || _source != before) {
@@ -432,9 +483,12 @@ BOOL SGRPlayerLyricLineOn(void) {
         _portionWidth = [self textWidth];
         _portions = SGRLyricPortionsInRows(line, _portionWidth, [self font], _label.numberOfLines);
     }
+    SGRLyricPortion *following = nil;
     if (_portions.count) {
         // The portion holding the position, which is the first for a line just begun and after a seek back into it.
-        SGRLyricPortion *shown = _portions[(NSUInteger)SGRLyricPortionAt(_portions, SGKaraokePositionMs() - SGKaraokeDelayMs())];
+        NSUInteger at = (NSUInteger)SGRLyricPortionAt(_portions, SGKaraokePositionMs() - SGKaraokeDelayMs());
+        SGRLyricPortion *shown = _portions[at];
+        if (at + 1 < _portions.count) following = _portions[at + 1];
         [self showText:shown.text scale:shown.scale];
     } else if (line && _text) [self showText:_text scale:1];
     // Its translation, read again every update, so one that arrives mid-line shows at once. With no line the last one
@@ -448,21 +502,24 @@ BOOL SGRPlayerLyricLineOn(void) {
     // Spotify's own preview can come up with no pass of a view this file hooks (its cover cell unhidden as the song
     // changes), so every update looks again: while the line takes its place it is hidden again, else the line stands
     // down by its next portion at the latest. The layout gives the room back once the preview goes.
-    // Spotify can fade or move the chip without laying out the player. Reuse the existing lyric clock.
     if (objc_getAssociatedObject(self.superview, &kLineKey) == self) placeLine();
-    UIView *covers = SGRPlayerCoverList();
-    BOOL shown = _fits && _text && !SGRPlayerLyricsOpen() && (!covers || covers.alpha > 0.01);
-    if (shown != _shown) {
-        _shown = shown;
-        self.userInteractionEnabled = shown;
-        self.accessibilityElementsHidden = !shown;
-        if (_overClip) SGRPlayerMotionLineMoved();
-        SGRAnimate(shown ? SGRMotionFade : SGRMotionRespond, ^{ self.alpha = shown ? 1 : 0; }, nil);
-    }
-    // Armed again from every update, whether or not the line changed: the clock is the only thing that moves it.
-    if (_running) {
-        [self armTimer:SGRLyricLineWaitInRows(_ordered, SGKaraokePositionMs(), SGKaraokeDelayMs(),
-                                        [self textWidth], [self font], [self rate], _label.numberOfLines)];
+    [self showLine:_fits && _text];
+    NSInteger position = SGKaraokePositionMs(), delay = SGKaraokeDelayMs();
+    double rate = [self rate];
+    // A hidden slot has no deadline. A visible slot before the first line does, even though its label is clear.
+    BOOL future = _index == NSNotFound || _index + 1 < (NSInteger)_ordered.count || following != nil;
+    if (_fits && _timed && position >= 0 && rate > 0 && future) {
+        // Placement can straddle the boundary. Catch up to words not yet drawn instead of waiting past them.
+        SGRLyricWait next = following && following.start <= position - delay ? (SGRLyricWait){SGRLyricMinWait, 0}
+            : SGRLyricLineWaitInRows(_ordered, position, delay, [self textWidth], [self font], rate, _label.numberOfLines);
+        [self armTimer:next];
+    } else {
+        [_timer invalidate];
+        _timer = nil;
+        _armedMs = position;
+        _armedAt = CFAbsoluteTimeGetCurrent();
+        _armedRate = rate;
+        _armed = position >= 0;
     }
 }
 
@@ -746,6 +803,8 @@ static void refreshEmptyStrip(void);
 
 @implementation SGRFloatingStripWatch {
     NSSet<CALayer *> *_layers;
+    __weak CALayer *_root;
+    BOOL _rescan;
     atomic_bool _pending;
 }
 static void collectStripLayers(CALayer *layer, NSMutableSet *layers) {
@@ -766,6 +825,9 @@ static NSArray<NSString *> *stripKeys(CALayer *layer) {
     return [layer isKindOfClass:CAShapeLayer.class] ? shape : [layer isKindOfClass:CAGradientLayer.class] ? gradient : keys;
 }
 - (void)follow:(CALayer *)root {
+    if (root == _root && !_rescan) return;
+    _root = root;
+    _rescan = NO;
     NSMutableSet *next = [NSMutableSet set];
     collectStripLayers(root, next);
     for (CALayer *layer in _layers) if (![next containsObject:layer])
@@ -778,10 +840,19 @@ static NSArray<NSString *> *stripKeys(CALayer *layer) {
     if (atomic_exchange(&_pending, true)) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         atomic_store(&self->_pending, false);
-        refreshEmptyStrip();
+        self->_rescan = YES;
+        if (SGRPlayerLyricLineOn()) placeLine();
+        else refreshEmptyStrip();
     });
 }
 @end
+
+static void watchLineChip(CALayer *root) {
+    static SGRFloatingStripWatch *watch;
+    if (root && !watch) watch = [SGRFloatingStripWatch new];
+    [watch follow:root];
+    if (!root) watch = nil;
+}
 
 // The shared switch hook removes the button, not its allocated unit. Do
 // not change the stack: give just the artwork its ordinary square back.
@@ -914,6 +985,9 @@ static void placeLine(void) {
         SGLog(@"redesign player: the line under the cover goes into %@", NSStringFromClass(host.class));
     }
     if (line.superview != host) [host addSubview:line];
+    UIView *unitView = sg_floating.viewIfLoaded;
+    if (line.running)
+        watchLineChip(unitView.window == host.window ? unitView.layer : nil);
 
     UIView *art = SGRPlayerShowingCover();
     UIView *tilt = art.superview;
@@ -976,7 +1050,10 @@ static void placeLine(void) {
     if (!wants && previewShowing(tilt, host)) fits = NO;
     // Both slots can fit and have the same width. Their ownership still changes
     // which source the clock must show (or clear) on this layout pass.
-    if (fits != line.fits || changed || wasCompact != (line.normalSide > 0) ||
+    UIView *covers = SGRPlayerCoverList();
+    if (line.running) [line watchCovers:covers];
+    BOOL obscured = SGRPlayerLyricsOpen() || (covers && covers.alpha <= 0.01);
+    if (fits != line.fits || changed || obscured != line.obscured || wasCompact != (line.normalSide > 0) ||
         priorWidth != line.slot.size.width || priorRows != [line lyricRows]) {
         line.fits = fits;
         [line tick];
@@ -1088,9 +1165,16 @@ static void watchPreviewTaps(UIView *preview) {
 %end
 
 %hook _TtC19NowPlaying_ViewImpl24NowPlayingViewController
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    [objc_getAssociatedObject(((UIViewController *)self).viewIfLoaded, &kLineKey) setPlayerCovered:NO];
+}
 - (void)viewDidDisappear:(BOOL)animated {
     if (((UIViewController *)self).viewIfLoaded == sg_host) {
-        if (SGRPlayerLyricLineOn()) flushChip(YES);
+        if (SGRPlayerLyricLineOn()) {
+            [objc_getAssociatedObject(sg_host, &kLineKey) setPlayerCovered:YES];
+            flushChip(YES);
+        }
         else { sg_host = nil; refreshEmptyStrip(); }
     }
     %orig;

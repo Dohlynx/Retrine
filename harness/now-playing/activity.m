@@ -50,7 +50,8 @@ BOOL SGLiveActivityAllowedByInstall(void) { return YES; }
 // No string tables here: English, as SGL gives without one.
 NSString *SGL(NSString *key, NSString *english) { return english; }
 BOOL SGKaraokeLooking(NSString *track) { return NO; }
-NSArray *SGPlayerUpcomingTracks(SPTPlayerState *state, NSUInteger limit) { return @[]; }
+static NSUInteger queueLimit;
+NSArray *SGPlayerUpcomingTracks(SPTPlayerState *state, NSUInteger limit) { queueLimit = limit; return @[]; }
 id SGPlayerAdvanceRepeat(id player, id options) { return nil; }
 SGSleepTimerMode SGSleepTimerCurrentMode(void) { return SGSleepTimerOff; }
 NSDate *SGSleepTimerEnd(void) { return nil; }
@@ -180,4 +181,10 @@ void activityChecks(void) {
     [NSUserDefaults.standardUserDefaults setVolatileDomain:@{} forName:NSArgumentDomain];
     lockedLyrics();
     lyricDeadlines();
+    [NSUserDefaults.standardUserDefaults setVolatileDomain:@{SGKeyLiveActivityView: @(SGLiveActivityQueue)} forName:NSArgumentDomain];
+    SGSetLiveActivityEnabled(YES);
+    refresh();
+    check(queueLimit == 3, @"queue view requests only the three qualifying tracks it displays");
+    SGSetLiveActivityEnabled(NO);
+    [NSUserDefaults.standardUserDefaults setVolatileDomain:@{} forName:NSArgumentDomain];
 }

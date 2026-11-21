@@ -234,6 +234,12 @@ static IMP sg_tick;
 static NSString *sg_perfLabel;
 static double sg_samples[240];
 static NSUInteger sg_sampleCount;
+static NSUInteger sg_idleTicks;
+
+static void countTick(id self, SEL cmd) {
+    sg_idleTicks++;
+    ((void (*)(id, SEL))sg_tick)(self, cmd);
+}
 
 static int compareDoubles(const void *a, const void *b) {
     double x = *(const double *)a, y = *(const double *)b;
@@ -637,9 +643,9 @@ static void checkFailureUI(SGRKaraokeView *view) {
     }
     SGHarnessStartClock([args doubleForKey:@"at"], [args objectForKey:@"rate"] ? [args doubleForKey:@"rate"] : 1,
                         [args objectForKey:@"pauseAt"] ? [args doubleForKey:@"pauseAt"] : -1, [args doubleForKey:@"holdFor"]);
-    if ((sg_perfLabel = [args stringForKey:@"perf"])) {
+    if ((sg_perfLabel = [args stringForKey:@"perf"]) || [args boolForKey:@"plainIdle"]) {
         Method tick = class_getInstanceMethod(SGRKaraokeView.class, NSSelectorFromString(@"tick"));
-        sg_tick = method_setImplementation(tick, (IMP)timedTick);
+        sg_tick = method_setImplementation(tick, sg_perfLabel ? (IMP)timedTick : (IMP)countTick);
     }
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
@@ -671,6 +677,58 @@ static void checkFailureUI(SGRKaraokeView *view) {
     }];
     self.window.rootViewController = root;
     [self.window makeKeyAndVisible];
+    if ([args boolForKey:@"plainIdle"]) {
+        extern BOOL SGHarnessAwake;
+        extern void SGHarnessPause(BOOL);
+        extern void SGHarnessStall(BOOL);
+        after(1, ^{
+            CADisplayLink *link = [karaoke valueForKey:@"link"];
+            HARNESS_CHECK(shownLines(karaoke).count && SGHarnessAwake && link.paused);
+            HARNESS_CHECK(![[karaoke valueForKey:@"poll"] isValid]);
+            NSUInteger idle = sg_idleTicks;
+            after(.3, ^{
+                HARNESS_CHECK(sg_idleTicks == idle);
+                UIScrollView *scroll = [karaoke valueForKey:@"scroll"];
+                NSDictionary *before = [[karaoke valueForKey:@"shown"] copy];
+                [scroll.delegate scrollViewWillBeginDragging:scroll];
+                scroll.contentOffset = CGPointMake(0, 1100);
+                [scroll.delegate scrollViewDidEndDragging:scroll willDecelerate:NO];
+                after(.3, ^{
+                    HARNESS_CHECK(link.paused && scroll.contentOffset.y == 1100 &&
+                        ![before isEqualToDictionary:[karaoke valueForKey:@"shown"]]);
+                    SGHarnessPause(YES);
+                });
+            });
+            after(1, ^{ HARNESS_CHECK(SGHarnessAwake && link.paused); });
+            after(6.1, ^{
+                HARNESS_CHECK(!SGHarnessAwake && link.paused && ![[karaoke valueForKey:@"poll"] isValid]);
+                SGHarnessPause(NO);
+                after(.1, ^{
+                    HARNESS_CHECK(SGHarnessAwake && link.paused);
+                    SGHarnessStall(YES);   // rate-only reports: playing, not paused
+                    after(2, ^{
+                        HARNESS_CHECK(SGHarnessAwake && link.paused);
+                        SGHarnessStall(YES);   // the unmoved report must not extend the deadline
+                    });
+                    after(5.3, ^{
+                        HARNESS_CHECK(!SGHarnessAwake && link.paused);
+                        SGHarnessStall(NO);
+                        after(.1, ^{
+                            HARNESS_CHECK(SGHarnessAwake && link.paused);
+                            SGKaraokeKeepLines(@"harness", songNamed(@"duet", nil));
+                            [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLinesKeptNotification object:@"harness"];
+                            after(.3, ^{
+                                HARNESS_CHECK(!link.paused && link.preferredFrameRateRange.maximum == 120 &&
+                                              ![[karaoke valueForKey:@"plain"] boolValue]);
+                                NSLog(@"[harness] PASS plain idle, pause and zero-speed holds, timed replacement");
+                                exit(0);
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
     if ([args boolForKey:@"failureCheck"]) { checkFailureUI(karaoke); return YES; }
     if ([args boolForKey:@"check"]) after(2, ^{ runChecks(karaoke, host); });
     if ([args objectForKey:@"translateIn"]) {

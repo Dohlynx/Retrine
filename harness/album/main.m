@@ -9,6 +9,7 @@
 #import "Redesigned/Kit/SGRField.h"
 #import <mach/mach.h>
 #import "../harness-fail.h"
+#import "motion-visibility.h"
 #import "hero-veil-check.h"
 #import "cover-fixtures.h"
 #import "faces-check.h"
@@ -933,6 +934,7 @@ static NSString *trailingLabel(UIView *root) {
         at(7, ^{ [trailingButton(rootView) sendActionsForControlEvents:UIControlEventTouchUpInside]; });
     }
 
+    motionVisibilityCheck(root.view, NO);
     // `motion`: Apple Music's animated cover, HARNESS_CANVAS_FILE (any mp4), handed to the hero at 2 s as the
     // catalog would hand it. The clip stays transparent until its first frame is decoded and then fades in;
     // it plays in a window and stops out of one.

@@ -245,7 +245,10 @@ Shared:
                   are left alone. It is read at every use, so a change applies at once (checked by harness/lyrics' -check).
                   The redesign's lyrics view asks its display link for 80 to 120 Hz, and drops it to 10 to 15 Hz once a
                   paused song has been still for a second, while the page is not scrolled by hand and no tapped line is
-                  gliding, logging each change as “karaoke: frame rate idle (paused)” and “frame rate full”. With EeveeSpotify injected (SGEeveeSpotifyInjected), its lyrics
+                  gliding, logging each change as “karaoke: frame rate idle (paused)” and “frame rate full”. Plain
+                  (untimed) lyrics pause the link as soon as the rows in sight are filled, with no repeating poll: scroll,
+                  layout, player and keeper events wake it. Keep screen on releases five seconds after playback stops
+                  advancing, including a zero-speed stall, and is held again when playback advances. With EeveeSpotify injected (SGEeveeSpotifyInjected), its lyrics
                   answer Spotify's requests and the mod's sources and its own requests stand aside. On top of the Delay, an
                   offset per song (SGLyricsTrackOffsetMs, the newest 500) and one per output (SGLyricsRouteOffsetMs, by the
                   port's UID, none for the iPhone's own speaker), each -5000 to 5000 ms and set from the redesign's Sync
@@ -672,7 +675,13 @@ Shared:
                   under it, in the regular weight at 0.62 of its size, a word joiner between Hangul letters so Korean
                   breaks at its spaces; the ID carries t and an FNV-1a hash of it, so a translation coming in re-offers
                   the line. The artist row's Lyrics line (spotifyglass.lockScreenLyrics.line: Original, or Translation
-                  where the line has one) splits a long translation into even pieces over the line's time. Either one
+                  where the line has one) splits a long translation into even pieces over the line's time. The row
+                  wakes for a displayed piece, lead or rest, not each source word. Both row and artwork re-arm on
+                  player reports and effective speed changes, without waiting for a Now Playing setter. A metadata
+                  resend carries the current position and rate together, so a late cover cannot slow the clock. Missing lyrics normally wait for
+                  delivery; a failed lookup still retries because renewed authorization is not announced. With artwork
+                  Off, unrelated defaults changes neither queue artwork work on main nor read the artwork style. Main compares the current mode
+                  with the mode it last applied, so a background defaults write cannot skip cleanup. Either one
                   asks SGRAutoTranslateWithoutView (declared in LockScreenLyrics.h, defined in Redesigned/Lyrics/
                   AutoTranslation.m) once a track and language: the saved translation is synced onto the lines, then
                   automatic translation runs on the lyrics view's terms and job ledger, without a view or the app in
@@ -829,7 +838,8 @@ Shared:
                   pages' previews to show when nothing plays (SGLastTrack.m), the lock screen widget's flags, and in the
                   more button's menu Speed and pitch: both done to Spotify's audio by Apple's time and pitch unit, put
                   between its mixer and its RemoteIO unit by taking over the connection Spotify makes between them
-                  (SpeedPitchMenu.x, SpeedPitch.x, SGTimePitch.m). Spotify runs a chain per sample rate, so a local
+                  (SpeedPitchMenu.x, SpeedPitch.x, SGTimePitch.m). Position reports still detect remote seeks,
+                  but only an active or armed speed clock reads the state's track. Spotify runs a chain per sample rate, so a local
                   file at another rate can have two RemoteIO units running at once: SpeedPitch.x keeps a record
                   per unit (its own mixer, sample time, largest slice and formats; AudioOutputUnitStop and
                   AudioComponentInstanceDispose rebound too, a disposed unit forgotten after its render in progress)
@@ -916,7 +926,10 @@ Shared:
                   having played already when it repeats. Over the last seconds (the Player page's Fade-out duration: Off,
                   10 s, 30 s, 1 minute or 2 minutes, 30 s unless picked; at the end of a track, over the whole track
                   when it is shorter) it fades the sound 60 dB through a gain of the mod's own, applied by SpeedPitch.x's notify on the music's RemoteIO unit (never the system
-                  volume), and puts the gain back a second after the pause. Spotify's own timer, from the player's
+                  volume), and puts the gain back a second after the pause. A wall-clock timer sleeps until the fade
+                  starts, or until expiry with Fade out off; only the fade needs quarter-second samples. Player reports,
+                  app activation and time changes reconcile the deadline against the date after sleep. Track and album
+                  timers still follow the player clock four times a second. Spotify's own timer, from the player's
                   ⋯ menu, fades by the same choice and gain (SpotifySleepTimer.m): the core reports it in the player's
                   state (SPTPlayerState's sleepTimer: type 1 at a timestamp, 2 at the end of the track), checked four
                   times a second while Spotify plays; Spotify pauses, the gain is held down from its end until that
@@ -1110,8 +1123,9 @@ Shared:
                   switched off, "sing: rests" in the log) unless the Karaoke page's card is on screen with Spotify in
                   front: its reads of its two lines (SGSingReadLevels; the card's traces, not the lyrics, which are no
                   viewer) keep Karaoke separating the playing song, so the lines move and the slider is heard at once
-                  ("sing: separates again"), and a second after the page is popped, covered or in the background it
-                  rests again. From the
+                  ("sing: separates again"), and a second after the graph scrolls out of sight, its page leaves the
+                  window or Spotify resigns active, it rests again. The card's status and VoiceOver text follow player
+                  reports (a late title or artist too), Sing and level changes rather than a poll. From the
                   thermal state Serious up Karaoke is held and lets the model go,
                   unless Ignore heat warnings is on, and runs again at Fair. Spatial
                   voice holds the separated vocals in front as the head turns: HeadGestures' motion gives the yaw off a
@@ -1153,7 +1167,8 @@ Shared:
                   switches, the stand-down and the move from the old choice in the simulator against its sim/, the
                   settings against harness/haptics-page/
     HeadGestures/ AirPods gestures (HeadGestures.h lists its files): CMHeadphoneMotionManager's attitudes, while the
-                  switch is on and Spotify plays, read for a double nod and a shake, each doing what its pull-down
+                  switch is on, Spotify plays and at least one action is assigned, read for a double nod and a shake,
+                  each doing what its pull-down
                   says: Nothing, back or forward 15 s, play or pause (which listens with the song paused too), next or
                   previous track, shuffle, repeat, or Like, which adds the track to Liked Songs through Spotify's
                   collection platform (addURL:showUIConfirmation:completion:); Like and Next track until changed. A
@@ -1209,8 +1224,8 @@ Shared:
                   the sound out and pauses Spotify, and stays set when the card is switched off (LiveActivity.h lists its files): a timer polls the player and
                   sends a new state only when what the view shows changes, local updates only, no push, and asks ActivityKit
                   only then. A strict main-queue dispatch timer, not a run-loop timer that iOS can defer with the screen
-                  off, ticks four times a second in the lyrics view and once a second while paused or in the others.
-                  These are polls, not four ActivityKit updates a second: unchanged states are coalesced. The lyrics
+                  off, polls once a second, or sooner for a playing lyric boundary. Unchanged states are coalesced;
+                  queue and panel rebuilds stop after three qualifying upcoming tracks. The lyrics
                   reader requests missing lines independently of artwork or an open player, and a lines-kept notification
                   sends the current line at once, including in the background. The card
                   is tinted with the cover's color and shows the cover itself, a JPEG of a few dozen pixels inside
@@ -1301,7 +1316,9 @@ Native:
                   links to (LyricsPage.x)
     LocalFiles/   a lyrics button on the player's footer for a local file with an imported lyrics file linked to
                   it, a fifth of the
-                  way in from the leading edge, which opens a page of the lines on black that follows the song
+                  way in from the leading edge, which opens a page of lines on black. Player reports update the page
+                  on track changes, seeks and resume; only advancing timed lyrics arm a line deadline, capped at a
+                  quarter second because speed can change between reports
                   (LocalLyrics.h lists its files); the file's metadata says has_lyrics. Checked in the simulator
                   against harness/local-files/lyrics/. And the file's own cover where the player shows
                   Spotify's placeholder (LocalCover.x)
@@ -1315,7 +1332,10 @@ Redesigned:
                   Spotify's own glass design), its repaint hook (SGRRepaint.x), soft top edge (hard where a page asks for
                   it, SGRHardTopEdge), AMOLED black (always on, SGRAmoled.x) and its own accent color (SGRAccent.x, stored
                   apart from the native look's, with Automatic following the page in front and then the cover, SGRAccentContext.m, and the
-                  explicit badge's mask, SGRExplicitBadge.x). The playlist, album and artist pages take their field's color from the
+                  explicit badge's mask, SGRExplicitBadge.x). In both looks, enabling the badge switch scans scene
+                  windows once. A badge detached during that scan is masked when it enters a window. Disabling restores
+                  each masked view, including detached ones. The off path does not classify views.
+                  The playlist, album and artist pages take their field's color from the
                   cover's main color (checked on the Mac by harness/palette/), and come in whole: a black veil over the
                   page until the cover has been read, at most SGRFieldHoldLimit (1 s), then faded away (SGRField.h). The album and playlist covers are laid out per page
                   (Cover layout on the Albums and Playlists pages, Card or Full screen; spotifyglass.redesign.album.fullCover
@@ -1353,7 +1373,8 @@ Redesigned:
                   accessibility sees, so Spotify's text, its accessibility and its drawing stay Spotify's; the first
                   value, a label just moved into its window, a change within 0.15 s of the last (a seek or a scrub) and
                   a text with a right-to-left run are shown at once, Reduce Motion crossfades in place, and nothing runs
-                  between changes (SGRRollingDigits.m; SGRRestyle.m's monospaced label reports each text setter and each
+                  between changes (SGRRollingDigits.m; SGRRestyle.m skips repeat writes from the same text setter
+                  if the label still holds the mapped output; it reports other writes and each
                   move to or out of a window), checked on the Mac by harness/player-refinements/. And a live preview
                   card that leads the redesign's Playlists, Home, Search, Albums, Artists and Library pages (SGRPagePreview.h):
                   a plain-view mock of the page those settings change, drawn over local placeholder art, that follows
@@ -1522,7 +1543,9 @@ Redesigned:
                   and the volume row are drawn the one way, the Music app's, on every iOS: default-style sliders with an
                   empty thumb whose tracks are 7 pt capsule images (SGRPlayerBarImage, Spotify's track height), so the
                   fill ends square inside the round track. They are translucent: the fill a light white the background
-                  shows through, the track dimmer, both more opaque under Increase Contrast (SGRPlayerBarFill,
+                  shows through, the track dimmer. Both progress sliders skip playback updates within the same
+                  device pixel, never rounding Spotify's value or filtering tap-to-seek, animated, tracking or off-window sets.
+                  Both track colors are more opaque under Increase Contrast (SGRPlayerBarFill,
                   SGRPlayerBarTrack). A finger dragging either thickens its track 1.75 times, to 12 pt, about its middle
                   (SGRPlayerBarDragHeight) and lights the fill whole white: the progress bar's as a rail of the mod's own
                   drawn over the slider while it is held — one capsule clipping a rectangular fill to the value, Spotify's
@@ -1704,8 +1727,8 @@ Redesigned:
                   A field clip or full-screen still keeps the same text rectangle, with the clip's dim behind it.
                   A visible chip lifts the rows only enough to leave one grid gap above it. If that would
                   crowd the cover, it tries the sung line alone before hiding it. The same lift over a clip
-                  or full-screen still carries the dim with it. The line rechecks visible chips on its lyric
-                  clock as well as on layout: a late switch or a fade needs no player layout pass. The video
+                  or full-screen still carries the dim with it. The line observes changes to the floating unit
+                  as well as player layout, so a late switch, move or fade is followed even while paused. The video
                   switch is measured from the outer pill, not its inset text. The search reaches the title:
                   on Spotify 9.2.0 the floating unit is inside the bottom stack. If Spotify retains a nonempty
                   strip above the title after the button is removed, it still explains a smaller centered
@@ -1721,8 +1744,8 @@ Redesigned:
                   floating-unit snapshot logs `lyrics unit:` even when nothing wins. The numbered parts
                   show the title top, stack frame, reserved natural side (zero if none), search area,
                   chosen top and view (`*`), and a bounded view/layer tree with default attributes omitted, never
-                  identifiers other than the switch classification, label text or image data. The lyric clock
-                  checks the structure even between layouts. A shape mask reports its path bounds in player
+                  identifiers other than the switch classification, label text or image data. Changes to the
+                  observed floating-unit layers trigger a check between layouts. A shape mask reports its path bounds in player
                   coordinates; a path outside the pill cannot lift the rows. Translation alone is recorded
                   once it settles. During playback snapshots are at least one second apart and use at most four
                   unified-log entries each (at most 240 per minute; oversized trees are marked `[capped]`).
@@ -1741,7 +1764,8 @@ Redesigned:
                   or a text-size change measures again), the newest 32. It reads the line on a one-shot timer armed
                   again from every update at the next thing that can change what it draws — the next portion, the next
                   line's start, or any later line's sung end — never nearer than 20 ms and never aimed further than
-                  0.5 s (a look twice a second with 0.1 s tolerance when nothing is near, or while the song is paused),
+                  0.5 s (with 0.1 s tolerance for a distant boundary because speed can change between reports; no timer
+                  while paused, hidden, without synced lines, or after the final portion is drawn),
                   with song time turned to wall time by the playback rate; no display link, which at 60 Hz would drag the
                   player's 120 Hz transitions down. A player report re-aims it when the rate changed (a pause or a
                   resume), and, paused, on any move of the place, else only when the position is more than 500 ms off
@@ -1990,8 +2014,9 @@ Redesigned:
                   by harness/album-credits/; a switch on the Albums page). Under the tracks
                   everything the server sends is dropped -- more by the artist, videos, concerts, merch, you might also
                   like, and whatever it adds next -- but the album's own line and its copyright, each section back
-                  once its switch on the Albums page is off (told apart by its English heading; in another
-                  language Everything else covers them all; Album.h lists its files). Album notes, from Apple Music's catalog, have a
+                  once its switch on the Albums page is off. Both looks recognize the English headings and three
+                  Korean ones: “<artist>의 곡 더 보기”, “굿즈” and “이건 어떠세요”. Unrecognized headings follow
+                  Everything else in the redesign and are left alone in the native look. Album notes, from Apple Music's catalog, have a
                   place of their own on the Albums page (Under Play, Under tracks — the default — or Off; AlbumNotes.m):
                   Under Play an arranged sibling after the header in the page's own scrolling stack, Under tracks the
                   footer under the copyright cell, whose lead grows by the note's height, and Off asks for nothing. The
@@ -2053,7 +2078,10 @@ Redesigned:
                   header's width and the motion is motionArtistSquare1x1's video, else motionSquareVideo1x1's, cut to
                   the header's shape and looped in an AVQueuePlayer that plays only while the header is on screen, the
                   app is in front, Reduce Motion and Low Power are off and Auto-Play Video Previews is on
-                  (SGMotionHeaderMayPlay, shared with the album's cover), fading in once its first frame is ready. One
+                  (SGMotionHeaderMayPlay, shared with the album's cover), fading in once its first frame is ready. In
+                  both headers the clip also pauses while the settled player's field covers every visible part of the
+                  header or the header is clipped out of sight, and resumes when the player starts to leave or any part
+                  returns; a side panel beside the header does not pause it (harness/album/motion-visibility.sh). One
                   attempt is made per page: evidence arriving later, from release rows laid out after the header's last
                   pass, never retries it, and the delivered answer is dropped unless the page's identity — the ⋯
                   button's own identifier, never a generic one — is still the one it was asked for

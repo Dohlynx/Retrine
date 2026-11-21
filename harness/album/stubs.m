@@ -1,5 +1,7 @@
 #import "../shared/redesigned-page-stubs.m"
 
+#import "motion-player-double.h"
+
 // Shared/Fonts/FontImport.m: no font of the user's own in the harness.
 NSString *SGRegisterCustomFont(void) { return nil; }
 

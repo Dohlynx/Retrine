@@ -40,6 +40,9 @@ static UIColor *sg_spotifyColor;
 
 NSNotificationName const SGRPlayerVisibilityDidChangeNotification = @"SGRPlayerVisibilityDidChangeNotification";
 static BOOL sg_disappeared, sg_wasVisible;
+static BOOL sg_appeared;
+static __weak UIWindow *sg_coveredWindow;
+static CGRect sg_coveredRect;
 
 BOOL SGRPlayerIsVisible(void) {
     UIWindow *window = sg_field.window;
@@ -49,10 +52,19 @@ BOOL SGRPlayerIsVisible(void) {
     return CGRectIntersectsRect(window.bounds, [sg_field convertRect:sg_field.bounds toView:window]);
 }
 
+CGRect SGRSettledPlayerRect(UIWindow *window) {
+    return window && window == sg_coveredWindow ? sg_coveredRect : CGRectNull;
+}
+
 static void visibilityChanged(void) {
     BOOL visible = SGRPlayerIsVisible();
-    if (visible == sg_wasVisible) return;
+    UIWindow *window = sg_appeared && visible ? sg_field.window : nil;
+    CGRect rect = window ? SGRVisibleRectInWindow(sg_field) : CGRectNull;
+    if (visible == sg_wasVisible && window == sg_coveredWindow &&
+        (!window || CGRectEqualToRect(rect, sg_coveredRect))) return;
     sg_wasVisible = visible;
+    sg_coveredWindow = window;
+    sg_coveredRect = rect;
     [NSNotificationCenter.defaultCenter postNotificationName:SGRPlayerVisibilityDidChangeNotification object:nil];
 }
 
@@ -160,6 +172,12 @@ static SGRArtworkField *fieldIn(UIView *plane) {
 }
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
+    sg_appeared = YES;
+    visibilityChanged();
+}
+- (void)viewWillDisappear:(BOOL)animated {
+    %orig;
+    sg_appeared = NO;
     visibilityChanged();
 }
 - (void)viewDidDisappear:(BOOL)animated {

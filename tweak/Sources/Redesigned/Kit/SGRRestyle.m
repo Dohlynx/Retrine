@@ -359,12 +359,32 @@ static void keepMonospaced(UILabel *label, Class original) {
     sg_keepingMonospaced = NO;
 }
 
+// The input and the mapped output differ for attributed text. Snapshot both: callers can
+// reuse a mutable string, and UIKit can change the label without going through these setters.
+@interface SGRDigitsWrite : NSObject
+@property (nonatomic) SEL setter;
+@property (nonatomic, copy) id input;
+@property (nonatomic, copy) NSAttributedString *output;
+@end
+@implementation SGRDigitsWrite
+@end
+static char kDigitsWrite;
+
+static BOOL equalValue(id a, id b) {
+    return a == b || [a isEqual:b];
+}
+
 void SGRMonospacedDigits(UILabel *label) {
     if (![label isKindOfClass:UILabel.class]) return;
     BOOL kept = adopt(label, "SGRMonospaced_", ^(Class subclass, Class original) {
         for (NSString *name in @[@"setText:", @"setAttributedText:", @"setFont:"]) {
             SEL selector = NSSelectorFromString(name);
             addOverride(subclass, original, selector, ^(UILabel *self, id value) {
+                SGRDigitsWrite *last = objc_getAssociatedObject(self, &kDigitsWrite);
+                BOOL textSetter = selector != @selector(setFont:);
+                if (textSetter && last.setter == selector && equalValue(last.input, value)
+                    && equalValue(last.output, self.attributedText)) return;
+                last.setter = NULL; // Invalidate before UIKit can call another setter.
                 // A label SGRRollDigits marked shows the change by SGRRefinements.h's rules.
                 BOOL watched = SGRRollingDigitsWatched(self);
                 NSAttributedString *before = watched ? self.attributedText : nil;
@@ -372,6 +392,15 @@ void SGRMonospacedDigits(UILabel *label) {
                 ((void (*)(struct objc_super *, SEL, id))objc_msgSendSuper)(&parent, selector, value);
                 keepMonospaced(self, original);
                 if (watched) SGRRollingDigitsTextChanged(self, before);
+                if (textSetter && !sg_keepingMonospaced) {
+                    if (!last) {
+                        last = [SGRDigitsWrite new];
+                        objc_setAssociatedObject(self, &kDigitsWrite, last, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    }
+                    last.input = value;
+                    last.output = self.attributedText;
+                    last.setter = selector;
+                } else last.setter = NULL;
             });
         }
         addOverride(subclass, original, @selector(didMoveToWindow), ^(UILabel *self) {

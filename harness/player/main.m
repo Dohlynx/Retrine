@@ -69,6 +69,7 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Redesigned/Player/Player.h"
 #import "Redesigned/Player/PlayerLyricLine.h"
+#import "Redesigned/Player/PlayerLyricFit.h"
 #import "Redesigned/Player/PlayerConnectVolume.h"
 #import "Redesigned/Kit/SGRGlyph.h"
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
@@ -99,6 +100,14 @@
 @property (nonatomic) long long bitrateLevel, strategy;
 @end
 @implementation SGRHarnessQuality
+@end
+
+// Inspect the first display frame for which the real close animation has returned the covers.
+@interface SGRHarnessFrameCheck : NSObject
+@property(nonatomic, copy) BOOL (^check)(void);
+@end
+@implementation SGRHarnessFrameCheck
+- (void)frame:(CADisplayLink *)link { if (self.check()) [link invalidate]; }
 @end
 
 void SGRHarnessPlayFrom(NSInteger ms);
@@ -602,6 +611,7 @@ static void loadLyrics(void) {
     if ([scenario() isEqual:@"lyric-line-ownership"])
         texts = @[@"Short", @"A longer phrase that cannot possibly fit onto one row of the available width"];
     if ([scenario() hasPrefix:@"lyric-line-chip"]) texts = @[@"Now I don't want you calling me baby now"];
+    if ([scenario() isEqual:@"lyric-line-chip-live"]) texts = [texts arrayByAddingObject:@"Second verse"];
     BOOL longFirst = [scenario() isEqual:@"lyric-line-long"];
     if (longFirst) texts = @[@"First we find the words and then we sing the words together before another phrase begins and carries on until the final note"];
     NSInteger at = 0;
@@ -1234,7 +1244,27 @@ static void loadLyrics(void) {
                 HARNESS_CHECK(line.userInteractionEnabled && words.text.length && words.text.length < line.accessibilityLabel.length);
                 HARNESS_CHECK(fabs(words.font.pointSize - native) < .05 &&
                     [words textRectForBounds:words.bounds limitedToNumberOfLines:2].size.height > words.font.lineHeight * 1.5);
-                NSLog(@"[harness] lyric-line passed (first long lyric)");
+                NSArray<SGRLyricPortion *> *parts = [line valueForKey:@"portions"];
+                HARNESS_CHECK(parts.count >= 2);
+                SGRLyricPortion *penultimate = parts[parts.count - 2], *last = parts.lastObject;
+                SGRHarnessPlayFrom(last.start);
+                [line performSelector:@selector(tick)];
+                HARNESS_CHECK([words.text isEqual:last.text]);
+                // Jump back before the last boundary; cross it exactly when the label gets the preceding words.
+                extern NSInteger (^SGRHarnessPositionDuringPlacement)(void);
+                __block BOOL crossed = NO;
+                SGRHarnessPositionDuringPlacement = ^NSInteger{
+                    if ([words.text isEqual:penultimate.text]) crossed = YES;
+                    return crossed ? last.start : last.start - 1;
+                };
+                [line performSelector:@selector(tick)];
+                HARNESS_CHECK([words.text isEqual:penultimate.text]);
+                NSTimer *next = [line valueForKey:@"timer"];
+                HARNESS_CHECK(next.valid);
+                [next fire];
+                HARNESS_CHECK([words.text isEqual:last.text] && ![[line valueForKey:@"timer"] isValid]);
+                SGRHarnessPositionDuringPlacement = nil;
+                NSLog(@"[harness] lyric-line passed (first long lyric, final portion crossed during placement)");
                 exit(0);
             }
             if ([scenario() isEqual:@"lyric-line-vo"]) {
@@ -1523,6 +1553,13 @@ static void loadLyrics(void) {
             }
             if ([scenario() isEqual:@"lyric-line-chip-live"]) {
                 HARNESS_CHECK(CGRectEqualToRect(text, preview));
+                SGRHarnessSetTrack(@"spotify:track:harness", nil, YES);
+                HARNESS_CHECK(![[line valueForKey:@"timer"] isValid]);
+                SGRHarnessPlayFrom(61000);
+                SPTPlayerState *paused = SGPlayerState();
+                [paused setValue:@61 forKey:@"positionAsOfTimestamp"];
+                [(id<SGPlayerStateObserver>)line playerStateDidReport:paused];
+                HARNESS_CHECK([words.text isEqual:@"Second verse"]);
                 chip.alpha = 1;
                 after(1, ^{
                     CGRect pill = [host convertRect:chip.bounds fromView:chip];
@@ -1534,8 +1571,33 @@ static void loadLyrics(void) {
                         chip.hidden = YES;
                         after(1, ^{
                             HARNESS_CHECK(CGRectEqualToRect([host convertRect:words.bounds fromView:words], preview));
-                            NSLog(@"[harness] lyric-line passed (live chip)");
-                            exit(0);
+                            SGRHarnessPlayFrom(1000);
+                            SGRHarnessSetTrack(@"spotify:track:harness", nil, NO);
+                            HARNESS_CHECK([[line valueForKey:@"timer"] isValid]);
+                            SGRPlayerToggleLyrics();
+                            after(1, ^{
+                                HARNESS_CHECK(SGRPlayerLyricsOpen() && ![[line valueForKey:@"timer"] isValid]);
+                                SGRHarnessPlayFrom(61000);
+                                __block BOOL sawReturn = NO;
+                                SGRHarnessFrameCheck *first = [SGRHarnessFrameCheck new];
+                                first.check = ^BOOL{
+                                    if (SGRPlayerLyricsOpen() || covers.alpha <= .01) return NO;
+                                    HARNESS_CHECK(line.userInteractionEnabled && [words.text isEqual:@"Second verse"]);
+                                    sawReturn = YES;
+                                    return YES;
+                                };
+                                CADisplayLink *frame = [CADisplayLink displayLinkWithTarget:first selector:@selector(frame:)];
+                                [frame addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+                                SGRPlayerToggleLyrics();
+                                after(1, ^{
+                                    HARNESS_CHECK(sawReturn);
+                                    SGKaraokeKeepLines(@"harness", nil);
+                                    [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLinesKeptNotification object:@"harness"];
+                                    HARNESS_CHECK(!line.userInteractionEnabled && ![[line valueForKey:@"timer"] isValid]);
+                                    NSLog(@"[harness] lyric-line passed (idle clock, seek, live chip, lyrics handover)");
+                                    exit(0);
+                                });
+                            });
                         });
                     });
                 });
@@ -5009,9 +5071,11 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
     // A tap at three quarters of the thumb's travel, played to the slider as a drag.
     NSMutableArray<NSNumber *> *events = [NSMutableArray array];
     __block BOOL answers = NO;
+    __block float delivered = NAN;
     for (NSNumber *event in @[@(UIControlEventTouchDown), @(UIControlEventValueChanged), @(UIControlEventTouchUpInside)]) {
         [slider addAction:[UIAction actionWithHandler:^(UIAction *action) {
             [events addObject:event];
+            if (event.unsignedIntegerValue == UIControlEventValueChanged) delivered = slider.value;
             if (answers && event.unsignedIntegerValue == UIControlEventTouchUpInside) {
                 SGKaraokeSeek((NSInteger)(slider.value * 200000));
                 // Arrival is a fresh player report, not merely the karaoke clock moving.
@@ -5030,7 +5094,11 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
         [tap setValue:[NSValue valueWithCGPoint:point] forKey:@"start"];
         ((void (*)(id, SEL))objc_msgSend)(tap, NSSelectorFromString(@"sgr_seek"));
     };
+    // A distinct playback value in the same device pixel as the tap.
+    [slider setValue:nextafterf(0.75f, 1) animated:NO];
     tapAt(0.75);
+    check(@"same-pixel seek delivers the tapped value", delivered == 0.75f,
+          [NSString stringWithFormat:@"value-changed received %.9g", delivered]);
     NSArray *drag = @[@(UIControlEventTouchDown), @(UIControlEventValueChanged), @(UIControlEventTouchUpInside)];
     check(@"played as a drag", [events isEqualToArray:drag] && fabs(slider.value - 0.75) < 0.001 && slider.isTracking,
           [NSString stringWithFormat:@"%lu events, value %.3f, tracking %d", (unsigned long)events.count, slider.value, slider.isTracking]);

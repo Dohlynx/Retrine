@@ -87,6 +87,7 @@ enum { kMaxOutputs = 8, kMaxWatchers = 4 };
 #pragma mark - shared between the threads
 
 static float sg_speed = 1, sg_semitones;     // main thread
+NSNotificationName const SGPlayerSpeedDidChangeNotification = @"spotifyglass.player.speedChanged";
 static atomic_uint sg_speedBits;             // sg_speed for SPTPlayerState, read on any thread
 
 typedef struct {
@@ -1260,12 +1261,14 @@ void SGSetPlayerSpeed(double speed) {
         sg_clock = (typeof(sg_clock)){.on = YES, .position = position - lead, .played = playedSeconds(), .lead = held};
         sg_clockTrack = trackOf(state);
     }
-    if ((float)speed != sg_speed) sg_speedChangedAt = CFAbsoluteTimeGetCurrent();
+    BOOL changed = (float)speed != sg_speed;
+    if (changed) sg_speedChangedAt = CFAbsoluteTimeGetCurrent();
     os_unfair_lock_unlock(&sg_clockLock);
     sg_speed = (float)speed;
     storeFloat(&sg_speedBits, sg_speed);
     apply();
     SGSpeedPitchSongValuesChanged(@"speed");
+    if (changed) [NSNotificationCenter.defaultCenter postNotificationName:SGPlayerSpeedDidChangeNotification object:nil];
 }
 
 float SGPlayerPitch(void) {
@@ -1439,16 +1442,23 @@ BOOL SGPlayerWatchMusicOutput(SGPlayerOutputWatcher watcher) {
     sg_correcting = NO;
     sg_spotifyPosition = position;
     if (position < 0) return position;
-    NSString *track = trackOf(self);
     double played = playedSeconds();
     CFAbsoluteTime stamp = self.timestamp.timeIntervalSinceReferenceDate;
     // Spotify's own, from the position it counted: Sing's positionAsOfTimestamp has its lead taken off, which
     // turning Sing on or off would show as a seek.
     double speed = self.isPaused ? 0 : self.playbackSpeed, asOf = position - (CFAbsoluteTimeGetCurrent() - stamp) * speed;
-    // Read before the lock, as Sing's readers may come back through this hook.
-    BOOL counting = sg_clock.on || sg_clock.armed;
-    double lead = counting ? leadOfState(self) : 0, held = counting ? heldLeadNow() : 0;
+    NSString *track = nil;
+    double lead = 0, held = 0;
     os_unfair_lock_lock(&sg_clockLock);
+    // Keep the lock on the idle path: a newly started clock must never see an unread track.
+    // Only the active path needs Spotify and Sing's readers, which may reenter this hook.
+    if (sg_clock.on || sg_clock.armed) {
+        os_unfair_lock_unlock(&sg_clockLock);
+        track = trackOf(self);
+        lead = leadOfState(self);
+        held = heldLeadNow();
+        os_unfair_lock_lock(&sg_clockLock);
+    }
     BOOL seeked = NO;
     if (stamp > sg_lastReport.stamp) {
         if (sg_lastReport.stamp > sg_speedChangedAt) seeked = fabs(asOf - (sg_lastReport.asOf + (stamp - sg_lastReport.stamp) * sg_lastReport.speed)) > kSeekGap;

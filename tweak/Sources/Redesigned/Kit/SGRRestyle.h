@@ -76,6 +76,37 @@ BOOL SGRObserveLayout(UIView *view, void (^laidOut)(UIView *view));
 // reparented within the same window. One callback per target; nil removes it. Main thread only.
 void SGRObserveVisibility(UIView *view, dispatch_block_t changed);
 
+static inline CGRect SGRVisibleRectInWindow(UIView *view) {
+    UIWindow *window = view.window;
+    if (!window) return CGRectNull;
+    CGRect remaining = CGRectIntersection(window.bounds, [view convertRect:view.bounds toView:window]);
+    for (UIView *v = view; v; v = v.superview) {
+        if (v.hidden || v.alpha <= 0 || CGRectIsEmpty(remaining)) return CGRectNull;
+        if (v != view && v != window && v.clipsToBounds)
+            remaining = CGRectIntersection(remaining, [v convertRect:v.bounds toView:window]);
+    }
+    return remaining;
+}
+
+static inline BOOL SGRViewInViewport(UIView *view, CGRect covered) {
+    CGRect visible = SGRVisibleRectInWindow(view);
+    return !CGRectIsEmpty(visible) && !CGRectContainsRect(covered, visible);
+}
+
+// Observe only scroll views above a live clip. Weak membership does not keep a former page alive.
+static inline void SGRBindViewportScrolls(UIView *view, NSHashTable *bound, id observer, void *context) {
+    for (UIView *scroll in bound.allObjects) {
+        if (view.window && [view isDescendantOfView:scroll]) continue;
+        [scroll removeObserver:observer forKeyPath:@"contentOffset" context:context];
+        [bound removeObject:scroll];
+    }
+    for (UIView *v = view.window ? view.superview : nil; v; v = v.superview) {
+        if (![v isKindOfClass:UIScrollView.class] || [bound containsObject:v]) continue;
+        [bound addObject:v];
+        [v addObserver:observer forKeyPath:@"contentOffset" options:0 context:context];
+    }
+}
+
 // The first view under `root` (itself included) with the accessibility identifier, depth first. The
 // answer is kept weakly on `root` under `cacheKey` and searched for again only when it is gone, has
 // left `root` or changed its identifier. nil when there is none; a miss is not cached.

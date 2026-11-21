@@ -5,7 +5,7 @@
 // label, clipped to it and hidden from accessibility, carries the old characters up and out and the new ones up
 // and in, each a label of its own placed where Core Text laid the character's glyphs. Under Reduce Motion they
 // crossfade in place. A text with a run laid out right to left shows its change at once. Nothing runs between
-// Spotify's changes: no timer, no display link.
+// Spotify's changes: no timer, no display link. Repeated, unchanged writes are filtered by SGRMonospacedDigits.
 //
 // Threading: main thread only.
 #import <objc/runtime.h>

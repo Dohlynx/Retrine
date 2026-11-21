@@ -415,6 +415,20 @@ static Step waitFor(double seconds) {
     ]];
     // Every action, through the nod's pull-down.
     [steps addObjectsFromArray:[self action:SGHeadActionNothing makes:@[] named:@"Nothing"]];
+    [steps addObject:^BOOL {
+        [self rowAt:1 section:1].chosen(SGHeadActionNothing);
+        check(!sg_active, @"both Nothing: no motion stream while playing");
+        SGHeadMotionListen(@"fixture", ^(CMDeviceMotion *motion) {});
+        check(sg_active, @"a separate listener owns the stream with no actions");
+        SGHeadMotionListen(@"fixture", nil);
+        check(!sg_active, @"removing the last listener stops the stream");
+        SGHeadGesturesHold(YES);
+        check(sg_active, @"the teaching hold still owns the stream with no actions");
+        SGHeadGesturesHold(NO);
+        check(!sg_active, @"ending teaching releases the stream");
+        [self rowAt:1 section:1].chosen(SGHeadActionNext);
+        return YES;
+    }];
     [steps addObjectsFromArray:[self action:SGHeadActionSeekBack makes:@[@"seek 85"] named:@"Back 15 seconds"]];
     [steps addObjectsFromArray:[self action:SGHeadActionSeekForward makes:@[@"seek 110"] named:@"Forward 15 seconds, at most to the end"]];
     [steps addObjectsFromArray:[self action:SGHeadActionPlayPause makes:@[@"pause"] named:@"Play or pause, playing"]];

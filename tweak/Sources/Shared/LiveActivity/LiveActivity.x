@@ -371,8 +371,7 @@ static void tick(void) API_AVAILABLE(ios(17.0)) {
     NSMutableArray<NSString *> *titles = [NSMutableArray array], *artists = [NSMutableArray array], *uris = [NSMutableArray array];
     if (view != SGLiveActivityLyrics) {
         NSUInteger limit = view == SGLiveActivityQueue ? kUpNextQueue : kUpNextPanel;
-        for (SPTPlayerTrack *upcoming in SGPlayerUpcomingTracks(state, NSUIntegerMax)) {
-            if (titles.count == limit) break;
+        for (SPTPlayerTrack *upcoming in SGPlayerUpcomingTracks(state, limit)) {
             [titles addObject:upcoming.trackTitle];
             [artists addObject:upcoming.artistName ?: @""];
             [uris addObject:SGURIString(upcoming.URI)];

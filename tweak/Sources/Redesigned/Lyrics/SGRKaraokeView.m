@@ -1815,6 +1815,8 @@ typedef struct {
     NSInteger _browseBreak;
     CADisplayLink *_link;
     NSTimer *_poll;              // looking a few times a second while the link is paused, nothing on the page moving
+    NSTimer *_plainRelease;      // the one screen-awake deadline of a paused plain sheet
+    BOOL _plainAwakeEnabled;
     CFTimeInterval _stirredAt;   // when something last set the page moving
     NSString *_track;
     NSArray<SGKaraokeLine *> *_lines;
@@ -1896,6 +1898,8 @@ typedef struct {
     _shown = [NSMutableDictionary dictionary];
     _sightArrangement = NSUIntegerMax;
     SGAddPlayerStateObserver(self);
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(plainSheetChanged:) name:SGKaraokeLinesKeptNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(awakeSettingChanged) name:NSUserDefaultsDidChangeNotification object:nil];
     _fade = [CAGradientLayer layer];
     _fade.colors = @[(id)UIColor.clearColor.CGColor, (id)UIColor.whiteColor.CGColor,
                      (id)UIColor.whiteColor.CGColor, (id)UIColor.clearColor.CGColor, (id)UIColor.clearColor.CGColor];
@@ -2348,6 +2352,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    if (_plain) [self stir];    // follow the presentation-layer offset and finish any budgeted rows
     [self showLinesInSight];
 }
 
@@ -2417,6 +2422,8 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 // scripts/battery-probe.sh. Nothing of the card is seen from the background, so nothing is drawn.
 - (void)scheduleLink {
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(startLink) object:nil];
+    [_plainRelease invalidate];
+    _plainRelease = nil;
     [_poll invalidate];
     _poll = nil;
     [_link invalidate];
@@ -2478,10 +2485,33 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
     [self stir];
 }
 
+- (void)plainSheetChanged:(NSNotification *)note {
+    if (_plain && [_track isEqual:note.object]) [self stir];
+}
+
+- (void)awakeSettingChanged {
+    // Defaults can post off-main and before the row has applied its cached value.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_plain && self->_link && self->_plainAwakeEnabled != SGRLyricsKeepAwakeOn()) [self plainAwake];
+    });
+}
+
+// A rate-only report can stop the clock without pausing Spotify (SpeedProbe.x).
+static NSInteger plainRestPosition(SPTPlayerState *state) {
+    if (state.isPaused) return (NSInteger)(state.positionAsOfTimestamp * 1000);
+    if (!state.isPlaying || state.playbackSpeed == 0) return (NSInteger)(state.position * 1000);
+    return NSNotFound;
+}
+
 // A seek while paused, from Spotify's own scrubber: a report that moves the position. A report that
 // leaves it where it was lets the link stay calm.
 - (void)playerStateDidReport:(SPTPlayerState *)state {
-    if (_plain) return;
+    if (_plain) {
+        if (_sample || !_link) return;
+        NSInteger rest = plainRestPosition(state);
+        if (rest == NSNotFound ? _stillSince != 0 : !_stillSince || rest != _reported) [self plainAwake];
+        return;
+    }
     // The player's position less the Delay, as positionMs reads it, from the state reported.
     NSInteger ms = _sample ? [self positionMs]
                            : (NSInteger)((state.isPaused ? state.positionAsOfTimestamp : state.position) * 1000) - SGKaraokeDelayMs();
@@ -2637,7 +2667,13 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
     _breaks = calloc(count + 1, sizeof(SGRKaraokeBreak));
     _breakCount = 0;
     _hasSpoken = _hasTranslation = _untranslated = _hasNotes = NO;
-    _plain = SGKaraokeLinesTiming(_lines) == SGKaraokeTimingNone;
+    BOOL plain = _lines.count && SGKaraokeLinesTiming(_lines) == SGKaraokeTimingNone;
+    if (_plain && !plain) {
+        [_plainRelease invalidate];
+        _plainRelease = nil;
+        [self stir];
+    }
+    _plain = plain;
     if (!_sample) [self loadSavedTranslationThen:^{
         [self countTranslations];
         [self restyle];
@@ -3338,6 +3374,12 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
 }
 
 - (void)dropLines {
+    if (_plain) {
+        [_plainRelease invalidate];
+        _plainRelease = nil;
+        _plain = NO;
+        [self stir];
+    }
     _lines = nil;
     _builtWidth = 0;
     [self creditTo:nil];
@@ -3684,11 +3726,42 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     return _clock;
 }
 
+- (void)plainAwake {
+    if (_sample || !_link) return;
+    SPTPlayerState *state = SGPlayerState();
+    if (!state) {
+        id player = SGKaraokePlayer();
+        if ([player respondsToSelector:@selector(state)]) state = [(id<SPTPlayer>)player state];
+    }
+    CFTimeInterval now = CACurrentMediaTime();
+    CFTimeInterval previousPause = _stillSince;
+    NSInteger rest = plainRestPosition(state);
+    if (rest != NSNotFound) {
+        if (!_stillSince || rest != _reported) _stillSince = now;
+        _reported = rest;
+    } else _stillSince = 0;
+    double left = _stillSince ? _stillSince + kAwakeAfterPause - now : kAwakeAfterPause;
+    _plainAwakeEnabled = SGRLyricsKeepAwakeOn();
+    BOOL hold = _plainAwakeEnabled && _showing && left > 0;
+    SGRLyricsHoldAwake(self, hold);
+    if (hold && _stillSince == previousPause && _plainRelease.valid) return;
+    // A seek, resume, or a change of visibility replaces the pending release, not the pause epoch.
+    [_plainRelease invalidate];
+    _plainRelease = nil;
+    if (hold && _stillSince) {
+        __weak typeof(self) weakSelf = self;
+        _plainRelease = [NSTimer timerWithTimeInterval:left repeats:NO block:^(NSTimer *timer) {
+            [weakSelf plainAwake];
+        }];
+        [NSRunLoop.mainRunLoop addTimer:_plainRelease forMode:NSRunLoopCommonModes];
+    }
+}
+
 - (void)tick {
     // A paused clock and a page at rest draw nothing new: once what was last set moving has finished, a few
     // frames a second still watch the track, its lines and the clock, and whatever moves stirs it back.
     if (_seekAt || _scroll.isTracking || _scroll.isDecelerating) [self stir];
-    else if (_link && !_link.paused && [self frameTime] - _stirredAt > kCalmAfter) [self calmDown];
+    else if (!_plain && _link && !_link.paused && [self frameTime] - _stirredAt > kCalmAfter) [self calmDown];
     NSString *track = _sample ? @"sample" : SGKaraokePlayingTrack();
     if (!(track == _track || [track isEqualToString:_track])) {
         SGLog(@"karaoke: page shows track %@, lyrics %@", track, [self linesFor:track] ? @"captured" : @"not captured yet");
@@ -3740,18 +3813,23 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     _loadFailure.enabled = failed && !SGKaraokeLooking(track);
     [self setShowing:_tops != nil || failed];
     // Keep screen on: held while lines are shown and the song moves, let go a few seconds into a pause.
-    if (!_sample && SGRLyricsKeepAwakeOn())
+    if (_plain && _lines.count) [self plainAwake];
+    else if (!_sample && SGRLyricsKeepAwakeOn())
         SGRLyricsHoldAwake(self, !failed && _showing && !(_stillSince && [self frameTime] - _stillSince > kAwakeAfterPause));
     // The source is settled a moment after the lines are, so it is asked for until it answers.
     if (!_sample && _lines && !_creditSource) [self creditTo:SGLyricsCreditFor(track)];
-    if (!_tops) return;
-    [self alignFade];
-    if (_plain) {
-        // Nothing follows the clock, but it is read so a pause is seen (_stillSince), which Keep screen on goes by.
-        [self clockMs];
-        [self showLinesInSight];   // it moves only when scrolled by hand
+    if (_plain && _lines.count) {
+        [self alignFade];
+        [self showLinesInSight];
+        if (!_tops || _sightOffset == _scroll.contentOffset.y) {
+            [_poll invalidate];
+            _poll = nil;
+            _link.paused = YES;
+        }
         return;
     }
+    if (!_tops) return;
+    [self alignFade];
 
     double now = [self clockMs];
     [self arrangeAt:now glide:_sample != nil];   // the preview coming round glides back to its first line

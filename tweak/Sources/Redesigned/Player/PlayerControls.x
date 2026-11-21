@@ -444,7 +444,7 @@ static const NSTimeInterval kSeekLongest = 0.5;
 static const NSInteger kSeekNear = 1500;
 static const NSTimeInterval kSeekHold = 2, kSeekCheck = 1;
 
-static char kSliderKey, kSeekTapKey, kTakeTimeKey, kRemainingTimeKey;
+static char kSliderKey, kSeekTapKey, kTakeTimeKey, kRemainingTimeKey, kStepKey;
 static __weak UISlider *sg_seekSlider;
 static NSInteger sg_seekTarget;
 static CFTimeInterval sg_seekHeldUntil;
@@ -539,6 +539,8 @@ static void seekTo(UISlider *slider, CGFloat share) {
         SGKaraokeSeek(ms);
         return;
     }
+    // The value-changed target reads this exact seek, even within the last playback pixel.
+    objc_setAssociatedObject(slider, &kStepKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [slider setValue:slider.minimumValue + share * (slider.maximumValue - slider.minimumValue) animated:NO];
     sg_seekSlider = slider;
     sg_seekTarget = ms;
@@ -900,7 +902,56 @@ static void keepScrubLook(UIView *host) {
     if (unit) brightenTimes(unit, YES, NO);
 }
 
+// Spotify sets its progress bars on every frame it plays, the player's and the bar's over the tabs alike. A bar
+// moves a pixel in about a fifth of a second, so nearly all of those set a place that draws the same pixels, and
+// each one still lays the slider out and commits, which redraws the glass around it at the display's rate for as
+// long as music plays. A set that lands on the pixel the bar is drawn at is dropped; the next pixel is taken.
+@interface SGRBarStep : NSObject {
+@public
+    float minimum, maximum;
+    CGFloat width, scale;
+}
+@end
+@implementation SGRBarStep
+@end
+
+static BOOL sameBarPixel(UISlider *slider, float value) {
+    CGFloat width = slider.bounds.size.width;
+    float minimum = slider.minimumValue, maximum = slider.maximumValue;
+    CGFloat scale = slider.window.screen.scale;
+    SGRBarStep *step = objc_getAssociatedObject(slider, &kStepKey);
+    if (!(scale > 0 && width > 0 && maximum > minimum && isfinite(value))) {
+        if (step) step->width = 0;
+        return NO;
+    }
+    if (step && step->width == width && step->scale == scale && step->minimum == minimum && step->maximum == maximum) {
+        // Compare with the actual control, not a cached request: UIKit can move it during a scrub.
+        double drawn = slider.value;
+        if (value <= minimum || value >= maximum) return drawn == value;
+        double pixels = width * scale / ((double)maximum - minimum);
+        return lround((drawn - minimum) * pixels) == lround(((double)value - minimum) * pixels);
+    }
+    if (!step) {
+        step = [SGRBarStep new];
+        objc_setAssociatedObject(slider, &kStepKey, step, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    step->scale = scale;
+    step->minimum = minimum;
+    step->maximum = maximum;
+    step->width = width;
+    return NO;
+}
+
 %hook _TtCO17NowPlaying_ECMKit11ProgressBar6Slider
+- (void)setValue:(float)value animated:(BOOL)animated {
+    UISlider *slider = (UISlider *)self;
+    if (animated || slider.isTracking) {
+        SGRBarStep *step = objc_getAssociatedObject(slider, &kStepKey);
+        if (step) step->width = 0;
+    } else if (sameBarPixel(slider, value)) return;
+    %orig;
+}
+
 - (BOOL)isTracking {
     return ((UISlider *)self == sg_seekSlider && seekHeld()) || %orig;
 }
@@ -936,17 +987,20 @@ static void keepScrubLook(UIView *host) {
 }
 
 - (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    objc_setAssociatedObject(self, &kStepKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     scrubLook((UISlider *)self, NO);
 }
 
 - (void)cancelTrackingWithEvent:(UIEvent *)event {
+    objc_setAssociatedObject(self, &kStepKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     %orig;
     scrubLook((UISlider *)self, NO);
 }
 
 - (void)didMoveToWindow {
     %orig;
+    objc_setAssociatedObject(self, &kStepKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (!((UIView *)self).window) {
         scrubLook((UISlider *)self, NO);
         removeHeldBar((UISlider *)self);

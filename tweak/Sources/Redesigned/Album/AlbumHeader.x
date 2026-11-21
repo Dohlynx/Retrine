@@ -28,6 +28,7 @@
 #import <CoreImage/CoreImage.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Redesigned/Player/Player.h"
 #import "Redesigned/Kit/SGRCoverRead.h"
 #import "Redesigned/Kit/SGRCoverViewer.h"
 #import "Redesigned/Kit/SGRHeroVeil.h"
@@ -428,6 +429,7 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
     NSUInteger _motionGeneration;
     AVPlayerLayer *_motion;
     AVQueuePlayer *_player;
+    NSHashTable *_motionScrolls;
     AVPlayerLooper *_looper;
     // The picture-aware cover, on with the Full screen cover only; none of the below is used otherwise.
     BOOL _adaptive;
@@ -443,6 +445,7 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
 }
 
 static void *kReadyContext = &kReadyContext;
+static char kScrollContext;
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
@@ -488,6 +491,7 @@ static void *kReadyContext = &kReadyContext;
     self.fieldColor = SGRNeutralField();
     // The color is read off the main thread, so it can land after the last layout pass of the page.
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self selector:@selector(sgr_updateMotion) name:SGRPlayerVisibilityDidChangeNotification object:nil];
     [center addObserver:self selector:@selector(sgr_fieldColorDidChange) name:SGRFieldColorDidChangeNotification object:nil];
     for (NSNotificationName name in @[UIApplicationDidBecomeActiveNotification, UIApplicationWillResignActiveNotification,
                                       NSProcessInfoPowerStateDidChangeNotification, UIAccessibilityReduceMotionStatusDidChangeNotification,
@@ -621,6 +625,7 @@ static void *kReadyContext = &kReadyContext;
     }
     _shadow.frame = CGRectOffset(_square, 0, self.stretch);
     _motion.frame = bounds;
+    [self sgr_updateMotion];
     if (_adaptive) {
         [self sgr_placeRender];
         [self sgr_fitDissolve];
@@ -914,12 +919,20 @@ static void *kReadyContext = &kReadyContext;
     [self.content.layer addSublayer:_motion];
     [self sgr_fitVeil];
     [_motion addObserver:self forKeyPath:@"readyForDisplay" options:NSKeyValueObservingOptionInitial context:kReadyContext];
-    [self sgr_updateMotion];
+    _motionScrolls = [NSHashTable weakObjectsHashTable];
+    __weak SGRAlbumHero *weakSelf = self;
+    SGRObserveVisibility(self, ^{ [weakSelf sgr_motionHierarchyChanged]; });
+    [self sgr_motionHierarchyChanged];
     if (_adaptive) [self sgr_readStill:file];
     SGLog(@"redesign album: animated cover %@", file.lastPathComponent);
 }
 
 - (void)sgr_dropMotion {
+    if (_motionScrolls) {
+        SGRObserveVisibility(self, nil);
+        SGRBindViewportScrolls(nil, _motionScrolls, self, &kScrollContext);
+        _motionScrolls = nil;
+    }
     [_player pause];
     [_looper disableLooping];
     _looper = nil;
@@ -939,6 +952,7 @@ static void *kReadyContext = &kReadyContext;
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context == &kScrollContext) { [self sgr_updateMotion]; return; }
     if (context != kReadyContext) {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
         return;
@@ -981,15 +995,17 @@ static void *kReadyContext = &kReadyContext;
 // Video Previews on; otherwise it holds its frame. Off screen it stops: an album page left on the
 // navigation stack would otherwise keep decoding.
 - (void)sgr_updateMotion {
+    if (!_player) return;
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    BOOL may = SGMotionHeaderMayPlay(self.window != nil, front, SGRReduceMotion(),
+    BOOL may = SGMotionHeaderMayPlay(SGRViewInViewport(self, SGRSettledPlayerRect(self.window)), front, SGRReduceMotion(),
                                    NSProcessInfo.processInfo.lowPowerModeEnabled, UIAccessibilityIsVideoAutoplayEnabled());
-    if (may) [_player play];
-    else [_player pause];
+    if (may != (_player.rate != 0)) {
+        if (may) [_player play]; else [_player pause];
+    }
 }
 
-- (void)didMoveToWindow {
-    [super didMoveToWindow];
+- (void)sgr_motionHierarchyChanged {
+    SGRBindViewportScrolls(self, _motionScrolls, self, &kScrollContext);
     [self sgr_updateMotion];
 }
 

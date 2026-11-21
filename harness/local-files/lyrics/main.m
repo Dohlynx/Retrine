@@ -27,6 +27,9 @@
 @end
 @implementation SGFakeState
 static CFTimeInterval sg_started;
+- (BOOL)isPlaying { return !self.isPaused; }
+- (BOOL)isLoading { return NO; }
+- (double)playbackSpeed { return 4; }
 - (double)position {
     return self.positionAsOfTimestamp + (CACurrentMediaTime() - sg_started) * 4;
 }
@@ -35,7 +38,17 @@ static CFTimeInterval sg_started;
 static SGFakeState *sg_state;
 SPTPlayerState *SGPlayerState(void) { return (SPTPlayerState *)sg_state; }
 NSString *SGURIString(id uri) { return [uri isKindOfClass:NSString.class] ? uri : nil; }
-void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer) {}
+static NSHashTable<id<SGPlayerStateObserver>> *observers;
+void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer) {
+    if (!observers) observers = [NSHashTable weakObjectsHashTable];
+    [observers addObject:observer];
+}
+static void report(void) {
+    for (id<SGPlayerStateObserver> observer in observers.allObjects) {
+        if ([observer respondsToSelector:@selector(playerStateDidReport:)]) [observer playerStateDidReport:SGPlayerState()];
+        [observer playerStateDidChange:SGPlayerState()];
+    }
+}
 
 // What LyricsSources.m and KaraokeSource.x give the tweak.
 @implementation SGLyricsResult
@@ -53,6 +66,7 @@ SPTPlayerTrack *SGKaraokeTrackFor(NSString *trackID) { return nil; }
 // SGTTML.m reads it for a translation in the language the Lyrics page asks for, which this page of lines does not show.
 NSString *SGLyricsTranslationLanguage(void) { return nil; }
 NSInteger SGKaraokeDelayMs(void) { return [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLyricsDelay]; }
+NSNotificationName const SGLyricsOffsetsDidChangeNotification = @"harness.offsets";
 
 #pragma mark - the run
 
@@ -91,6 +105,7 @@ static void playRaceTrack(NSString *name) {
     track.trackTitle = name;
     track.artistName = @"Harness";
     sg_state.track = track;
+    report();
 }
 
 static SGLyricsResult *raceLyrics(NSString *text) {
@@ -105,7 +120,7 @@ static SGLyricsResult *raceLyrics(NSString *text) {
 }
 
 // The first A lookup is held until the second A is displayed. Spotify's state and the viewer's real
-// quarter-second clock drive A -> B -> A; no private viewer method or state is changed by the test.
+// reports drive A -> B -> A; no private viewer method or state is changed by the test.
 SGLyricsResult *SGHarnessImportedLRCFor(NSString *uri, NSString *title, NSString *artist) {
     if (!sg_race) return SGImportedLRCFor(uri, title, artist);
     if ([title isEqual:@"B"]) {
@@ -120,6 +135,7 @@ SGLyricsResult *SGHarnessImportedLRCFor(NSString *uri, NSString *title, NSString
             after(0.5, ^{
                 NSArray *texts = [labelsIn(sg_racePage.view) valueForKey:@"text"];
                 HARNESS_CHECK([texts isEqual:@[@"Current A"]]);
+                HARNESS_CHECK(![[sg_racePage valueForKey:@"timer"] isValid]);
                 say(@"PASS A -> B -> A keeps only the current lyrics batch");
                 exit(0);
             });
@@ -210,6 +226,21 @@ SGLyricsResult *SGHarnessImportedLRCFor(NSString *uri, NSString *title, NSString
             }
             check([lit.text hasPrefix:@"Line 7 "], [NSString stringWithFormat:@"line 7 lit (%@)", lit.text]);
             say(@"SHOT playing");
+            sg_state.isPaused = YES;
+            sg_state.positionAsOfTimestamp = 17;
+            report();
+            HARNESS_CHECK(lines[8].alpha == 1 && ![[page valueForKey:@"timer"] isValid]);
+            sg_state.positionAsOfTimestamp = 5;
+            report();
+            HARNESS_CHECK(lines[2].alpha == 1);
+            [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+            sg_state.positionAsOfTimestamp = 1;
+            [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+            HARNESS_CHECK(lines[0].alpha == 1);
+            sg_state.isPaused = NO;
+            sg_started = CACurrentMediaTime();
+            report();
+            HARNESS_CHECK([[page valueForKey:@"timer"] isValid]);
             after(4, ^{
                 say(@"SHOT later");
                 // Another track with nothing linked or matching.
@@ -218,6 +249,7 @@ SGLyricsResult *SGHarnessImportedLRCFor(NSString *uri, NSString *title, NSString
                 other.trackTitle = @"Untitled";
                 other.artistName = @"Someone";
                 sg_state.track = other;
+                report();
                 after(1, ^{
                     check(labelsIn(page.view).count == 0, @"a track with no file shows no lines");
                     say(@"SHOT none");

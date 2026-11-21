@@ -17,8 +17,8 @@ done
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 xcrun clang -target arm64-apple-ios26.0-macabi -isysroot "$SDK" -iframework "$SDK/System/iOSSupport/System/Library/Frameworks" \
     -fobjc-arc -g -O0 -Wall -I"$OUT/gen" -I"$SRC" -I"$SRC/Shared/ArtistBlock" -I"$SRC/Shared/LockScreenLyrics" -I"$SRC/Shared/AnimatedArtwork" -I"$SRC/Shared/LiveActivity" \
-    "$(dirname "$0")/main.m" "$(dirname "$0")/artwork.m" "$(dirname "$0")/activity.m" "$OUT/gen/LockScreenMotion.m" \
-    "$OUT/gen/ArtistSkip.m" "$OUT/gen/LockScreenLyrics.m" "$OUT/gen/LyricsArtwork.m" "$OUT/gen/NowPlayingExtras.m" "$(dirname "$0")/activity-clock-driver.m" \
+    "$(dirname "$0")/main.m" "$(dirname "$0")/artwork.m" "$(dirname "$0")/activity.m" "$(dirname "$0")/motion-dispatch-driver.m" \
+    "$OUT/gen/ArtistSkip.m" "$(dirname "$0")/row-clock-driver.m" "$(dirname "$0")/art-clock-driver.m" "$(dirname "$0")/extras-clock-driver.m" "$(dirname "$0")/activity-clock-driver.m" \
     "$SRC/Shared/AnimatedArtwork/SGMotionFollower.m" "$SRC/Shared/AnimatedArtwork/SGMotionTicket.m" "$SRC/Core/SGOptionalWork.m" "$SRC/Core/SGLog.m" \
     "$SRC/Shared/Player/SGLastTrack.m" "$SRC/Core/SGFileHash.m" \
     "$SRC/Shared/LyricsBackground/LyricsBackground.m" \

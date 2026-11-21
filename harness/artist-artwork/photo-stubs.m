@@ -1,6 +1,7 @@
 // What photo-hero-check does not compile: the rest of the artist header's pass (the Kit's header info and lookups,
 // Follow, About, the logo), which the harness never runs, and the hooks the field leans on elsewhere.
 #import <UIKit/UIKit.h>
+#import "motion-view-stubs.h"
 #import "Redesigned/Kit/SGRHeaderInfo.h"
 
 const CGFloat SGRHeaderInfoBottom = 14;

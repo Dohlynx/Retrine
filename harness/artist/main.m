@@ -8,6 +8,7 @@
 // names: `none` at once, or in `late` a second in; Following, as saved, after the tap made at 2.5 s.
 #import <UIKit/UIKit.h>
 #import "../harness-fail.h"
+#import "../album/motion-visibility.h"
 #import "../album/hero-veil-check.h"
 
 #pragma mark - Spotify's classes, by name
@@ -609,6 +610,7 @@ static void verifyPlay(UIView *root) {
               pinned ? NSStringFromCGRect(pinned.frame) : @"MISSING", pinned.alpha);
     });
     UIView *rootView = root.view;
+    motionVisibilityCheck(rootView, YES);
     if ([NSProcessInfo.processInfo.arguments containsObject:@"verify-play"])
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ verifyPlay(rootView); });
     // `veil` / `veil-off` (../album/hero-veil-check.h): the page scrolled by its own scroll view, the header's container

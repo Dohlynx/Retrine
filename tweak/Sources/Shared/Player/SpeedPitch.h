@@ -28,6 +28,8 @@ double SGPlayerSpeed(void);
 // Whether speed can apply: Spotify's output was taken over when it wired it.
 BOOL SGPlayerSpeedAllowed(void);
 void SGSetPlayerSpeed(double speed);
+// Main thread, after an admitted effective speed change (manual or per-song restore).
+FOUNDATION_EXPORT NSNotificationName const SGPlayerSpeedDidChangeNotification;
 // Semitones Spotify's output is moved by, 0 when it is not.
 float SGPlayerPitch(void);
 void SGSetPlayerPitch(float semitones);

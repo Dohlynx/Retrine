@@ -1,7 +1,6 @@
 // The lyrics page for a local file in the native look (LocalLyrics.h): the title and the artist, then
 // the lines on black, the one being sung white and a little larger, the rest gray, scrolled to keep it
-// in the middle. Read four times a second from the player's state, which is plenty for lines; the clock
-// stops when the page goes. A new track while it is open brings its lines, or says it has none.
+// in the middle. Reports catch skips, seeks and pauses; only a playing timed sheet needs a clock.
 #import "Core/SGCore.h"
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/LocalFiles/LocalLyrics.h"
@@ -13,7 +12,7 @@ static const CGFloat kSide = 24;
 // The line being sung grows this much; the rest are dimmed to gray, #808080 on black, 5.3:1.
 static const CGFloat kCurrentScale = 1.06, kOtherAlpha = 0.5;
 
-@interface SGLocalLyricsViewer : UIViewController
+@interface SGLocalLyricsViewer : UIViewController <SGPlayerStateObserver>
 @end
 
 @implementation SGLocalLyricsViewer {
@@ -25,7 +24,7 @@ static const CGFloat kCurrentScale = 1.06, kOtherAlpha = 0.5;
     NSString *_uri;
     NSArray<SGKaraokeLine *> *_lines;
     NSArray<UILabel *> *_labels;
-    BOOL _timed;
+    BOOL _timed, _presented, _inactive;
     NSInteger _current;
     NSUInteger _loadGeneration;
 }
@@ -56,6 +55,11 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    SGAddPlayerStateObserver(self);
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self selector:@selector(activity:) name:UIApplicationDidBecomeActiveNotification object:nil];
+    [center addObserver:self selector:@selector(activity:) name:UIApplicationWillResignActiveNotification object:nil];
+    [center addObserver:self selector:@selector(tick) name:SGLyricsOffsetsDidChangeNotification object:nil];
     UIView *view = self.view;
     view.backgroundColor = UIColor.blackColor;
 
@@ -122,19 +126,24 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    _presented = YES;
     [self tick];
-    [_timer invalidate];
-    __weak typeof(self) weakSelf = self;
-    _timer = [NSTimer timerWithTimeInterval:kTick repeats:YES block:^(NSTimer *timer) { [weakSelf tick]; }];
-    // Common modes, so the line still moves on while the lines are dragged.
-    [NSRunLoop.mainRunLoop addTimer:_timer forMode:NSRunLoopCommonModes];
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
+    _presented = NO;
     [_timer invalidate];
     _timer = nil;
 }
+
+- (void)activity:(NSNotification *)note {
+    _inactive = [note.name isEqual:UIApplicationWillResignActiveNotification];
+    [self tick];
+}
+
+- (void)playerStateDidReport:(SPTPlayerState *)state { [self tick]; }
+- (void)playerStateDidChange:(SPTPlayerState *)state { /* handled by the preceding report */ }
 
 - (void)dismiss {
     [self dismissViewControllerAnimated:YES completion:nil];
@@ -190,6 +199,7 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
     _labels = labels;
     [_stack layoutIfNeeded];
     [_scroll setContentOffset:CGPointMake(0, -_scroll.contentInset.top) animated:NO];
+    [self tick];
 }
 
 // Fades and scales only, a short ease out; with Reduce Motion the line is not scaled and the list jumps.
@@ -218,6 +228,9 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
 }
 
 - (void)tick {
+    [_timer invalidate];
+    _timer = nil;
+    if (!_presented || _inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
     SPTPlayerState *state = SGPlayerState();
     NSString *uri = SGURIString(state.track.URI);
     if (uri && ![uri isEqualToString:_uri]) [self load:state uri:uri];
@@ -225,6 +238,22 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
     NSInteger ms = (NSInteger)((state.isPaused ? state.positionAsOfTimestamp : state.position) * 1000) - SGKaraokeDelayMs();
     NSInteger current = SGKaraokeLeadLine(_lines, ms);
     if (current != _current && current < (NSInteger)_labels.count) [self light:current];
+    if (!state || state.isPaused || !state.isPlaying || state.isLoading) return;
+    NSInteger next = NSIntegerMax;
+    for (SGKaraokeLine *line in _lines) {
+        if (line.start > ms) next = MIN(next, line.start);
+    }
+    if (current >= 0 && current + 1 < (NSInteger)_lines.count) {
+        NSInteger end = SGKaraokeSungEnd(_lines[(NSUInteger)current]);
+        if (end > ms) next = MIN(next, end);
+    }
+    if (next == NSIntegerMax) return;
+    // Speed can change between reports. Never sleep past the former quarter-second clock.
+    double rate = state.playbackSpeed;
+    NSTimeInterval wait = rate > 0 ? MIN(kTick, (next - ms) / (1000.0 * rate)) : kTick;
+    __weak typeof(self) weakSelf = self;
+    _timer = [NSTimer timerWithTimeInterval:wait repeats:NO block:^(NSTimer *timer) { [weakSelf tick]; }];
+    [NSRunLoop.mainRunLoop addTimer:_timer forMode:NSRunLoopCommonModes];
 }
 
 @end

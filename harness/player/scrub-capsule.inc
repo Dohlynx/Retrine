@@ -8,6 +8,12 @@
     [host addSubview:slider];
     slider.frame = host.bounds;
     float initial = slider.value;
+    [slider setValue:.25f animated:NO];
+    [slider setValue:.250001f animated:NO];
+    HARNESS_CHECK(slider.value == .25f);
+    [slider setValue:.75f animated:YES];
+    [slider setValue:.250001f animated:NO];
+    HARNESS_CHECK(slider.value == .250001f);
     void (^settle)(NSTimeInterval) = ^(NSTimeInterval seconds) {
         [CATransaction flush];
         [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
