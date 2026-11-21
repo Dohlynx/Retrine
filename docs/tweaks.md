@@ -1776,7 +1776,8 @@ Redesigned:
                   breaks (SGRKeyLyricsBreakLabels, off) sets Intro, Interlude or Outro beside the dots, in their group
                   so it breathes and fades with them. Simplify song titles and Translate song titles change what the
                   player's own title and artist labels draw (Player/PlayerTitle.x, which gives those two labels a
-                  subclass of their own class), and the landscape lyrics' title, never Spotify's text underneath. Both refresh after title
+                  subclass of their own class), the landscape lyrics' title, and the title and matching artist on each
+                  now playing bar page, never Spotify's text underneath. Both refresh after title
                   translation completes or its settings change; a landscape refresh leaves controls and idle timers alone.
                   Keep screen on (SGRKeyLyricsKeepAwake, off) holds the idle timer off while lines show and the song moves,
                   and lets it go 5 s into a pause, when the view leaves its window or the app leaves the front.

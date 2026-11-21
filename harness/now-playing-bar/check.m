@@ -11,6 +11,7 @@
 #pragma mark - the player's state, a double
 
 @interface SPTPlayerTrack ()
+@property (nonatomic, readwrite) id URI;
 @property (nonatomic, readwrite) NSString *trackTitle;
 @property (nonatomic, readwrite) NSString *artistName;
 @end
@@ -63,6 +64,18 @@ static SGHarnessPlayer *sg_player;
 id SGPlayer(void) { return sg_player; }
 
 #include "NowPlayingBar.gen.m"
+#include "../shared/bar-title-notifications.inc"
+
+// The player owns the title policy; give its neighbour a distinct answer for the bar to draw.
+NSString *SGRShownTitle(NSString *trackID, NSString *title, NSString *artist, NSString **shownArtist) {
+    *shownArtist = artist;
+    if (!trackID && [title isEqualToString:@"Finale (Part 2)"]) return @"Finale";
+    if ([trackID isEqualToString:@"a"] || [trackID isEqualToString:@"b"]) {
+        *shownArtist = [@"Artist " stringByAppendingString:trackID];
+        return [@"Title " stringByAppendingString:trackID];
+    }
+    return (!trackID || [trackID isEqualToString:@"next"]) && [title isEqualToString:@"Whiplash - Remastered"] ? @"Whiplash" : title;
+}
 
 #pragma mark - Spotify's page, a double
 
@@ -475,6 +488,36 @@ static void run(void) {
     expect(@"collision, neighbor, hidden artists", makePage(@"Rock • Roll • The Band", @"The Band", YES, nil), @"Rock • Roll", @"The Band");
     expect(@"collision, neighbor, hidden artists empty", makePage(@"Rock • Roll • The Band", @"", YES, nil), @"Rock • Roll", @"The Band");
     expect(@"collision, current", makePage(@"Rock", nil, NO, @"Roll"), @"Rock", @"Roll");
+
+    SPTPlayerTrack *remaster = makeTrack(@"Whiplash - Remastered", @"aespa");
+    sg_showTitles = YES;
+    remaster.URI = [NSURL URLWithString:@"spotify:track:next"];
+    sg_state = [SPTPlayerState new];
+    sg_state.track = makeTrack(@"Rock", @"Roll");
+    sg_state.track.URI = @"spotify:track:current";
+    sg_state.future = @[remaster];
+    expect(@"simplified neighbour", makePage(@"Whiplash - Remastered • aespa", @"", YES, nil), @"Whiplash", @"aespa");
+    expect(@"playing page unchanged", makePage(@"Rock", nil, NO, @"Roll"), @"Rock", @"Roll");
+    sg_state = [SPTPlayerState new];
+    sg_state.track = makeTrack(@"Whiplash - Remastered", @"aespa");
+    sg_state.track.URI = @"spotify:local:aespa:Album:Whiplash:180";
+    expect(@"simplified local file", makePage(@"Whiplash - Remastered", nil, NO, @"aespa"), @"Whiplash", @"aespa");
+    sg_state = [SPTPlayerState new];
+    sg_state.track = makeTrack(@"Finale (Part 2)", @"Podcast");
+    sg_state.track.URI = @"spotify:episode:finale";
+    expect(@"episode keeps Spotify title", makePage(@"Finale (Part 2)", nil, NO, @"Podcast"), @"Finale (Part 2)", @"Podcast");
+    sg_state = [SPTPlayerState new];
+    sg_state.track = makeTrack(@"Echo", @"유리");
+    sg_state.track.URI = @"spotify:track:a";
+    SPTPlayerTrack *other = makeTrack(@"Echo", @"유리상자");
+    other.URI = @"spotify:track:b";
+    sg_state.reverse = @[other];
+    expect(@"same title, playing", makePage(@"Echo", nil, NO, @"유리"), @"Title a", @"Artist a");
+    expect(@"same title, neighbour", makePage(@"Echo", nil, NO, @"유리상자"), @"Title b", @"Artist b");
+    expect(@"same title, multiple artists", makePage(@"Echo", nil, NO, @"유리상자, Guest"), @"Title b", @"유리상자, Guest");
+    expect(@"combined line, longest artist prefix", makePage(@"Echo • 유리상자, Guest", @"", YES, nil), @"Title b", @"유리상자, Guest");
+    expect(@"same title, unknown artist keeps first match", makePage(@"Echo", nil, NO, @"Guest"), @"Title a", @"Guest");
+    sg_showTitles = NO;
 
     // The same page laid out again, with the same state and line, is not scanned again; a new line or a new state
     // is, and its answer follows.

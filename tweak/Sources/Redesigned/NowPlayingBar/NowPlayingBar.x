@@ -37,6 +37,8 @@
 #import "Settings/SGModPage.h"
 #import "Shared/Navigation/Links.h"
 #import "Shared/Player/PlayerState.h"
+#import "Shared/Lyrics/Lyrics.h"
+#import "Shared/LyricsTranslation/LyricsTranslation.h"
 
 static const CGFloat kCardRadius = 24;
 // The strip's pane is this much smaller than the strip at each end, so a gap parts it from the card's glass.
@@ -910,45 +912,70 @@ static BOOL inSight(UIView *view, UIView *unit) {
 // pager may show a neighbor: a title equal to the line wins, else the longest title the line starts with that
 // the track's artist follows, so a short title ("Rock" by "Roll") never takes the line of a longer one
 // ("Rock • Roll" by "The Band"). Nil when none matches.
-static NSString *scanKnownTitle(SPTPlayerState *state, NSString *line) {
+static NSString *scanKnownTitle(SPTPlayerState *state, NSString *line, NSString *visibleArtist, SPTPlayerTrack **match) {
     NSMutableArray *tracks = [NSMutableArray array];
     if (state.track) [tracks addObject:state.track];
     if ([state.future isKindOfClass:NSArray.class]) [tracks addObjectsFromArray:state.future];
     if ([state.reverse isKindOfClass:NSArray.class]) [tracks addObjectsFromArray:state.reverse];
     NSString *best = nil;
+    NSUInteger bestArtistLength = 0;
     for (id item in tracks) {
         if (![item isKindOfClass:NSClassFromString(@"SPTPlayerTrack")]) continue;
         SPTPlayerTrack *track = item;
         NSString *title = track.trackTitle, *artist = track.artistName;
         if (![title isKindOfClass:NSString.class] || !title.length) continue;
-        if ([line isEqualToString:title]) return title;
-        NSString *head = [title stringByAppendingString:kBullet];
-        if (![line hasPrefix:head] || title.length <= best.length) continue;
-        NSString *rest = [line substringFromIndex:head.length];
-        if (rest.length && (![artist isKindOfClass:NSString.class] || !artist.length || [rest hasPrefix:artist])) best = title;
+        if (title.length < best.length) continue;
+        BOOL exact = [line isEqualToString:title];
+        NSString *pageArtist = visibleArtist;
+        if (!exact) {
+            NSString *head = [title stringByAppendingString:kBullet];
+            if (![line hasPrefix:head] || line.length == head.length) continue;
+            pageArtist = [line substringFromIndex:head.length];
+        }
+        BOOL hasArtist = [artist isKindOfClass:NSString.class] && artist.length;
+        NSUInteger artistLength = hasArtist && [pageArtist hasPrefix:artist] ? artist.length : 0;
+        if (!exact && hasArtist && !artistLength) continue;
+        if (exact && (!pageArtist.length || [pageArtist isEqualToString:artist])) {
+            *match = track;
+            return title;
+        }
+        // For equal titles the longest matching artist prefix wins; otherwise keep the first.
+        if (title.length > best.length || artistLength > bestArtistLength) {
+            best = title;
+            bestArtistLength = artistLength;
+            *match = track;
+        }
     }
     return best;
 }
 
-// The scan's answers kept for the state object they were made for, one per line, since the pager's pages each
+// The scan's answers kept for the state object they were made for, keyed by the lines used to match, since the pager's pages each
 // hold their own: the cells lay out far more often than either changes, and the player reports a new state
 // object whenever it does. The state is held so that its address cannot be reused by another while the answers
 // are kept.
 static SPTPlayerState *sg_knownState;
-static NSMutableDictionary<NSString *, id> *sg_knownTitles;
+static NSMutableDictionary *sg_knownTitles;
 
-static NSString *knownTitleOf(NSString *line) {
+// With either title setting on, cache the track instead of just the split point's title.
+static BOOL sg_showTitles;
+static NSString *knownTitleOf(NSString *line, NSString *visibleArtist, SPTPlayerTrack **match) {
     SPTPlayerState *state = SGPlayerState();
     if (!sg_knownTitles || state != sg_knownState) {
         sg_knownTitles = [NSMutableDictionary dictionary];
         sg_knownState = state;
     }
-    id known = sg_knownTitles[line];
+    id key = visibleArtist.length ? (id)@[line, visibleArtist] : line;
+    id known = sg_knownTitles[key];
     if (!known) {
-        known = scanKnownTitle(state, line) ?: NSNull.null;
-        sg_knownTitles[[line copy]] = known;
+        SPTPlayerTrack *track = nil;
+        NSString *title = scanKnownTitle(state, line, visibleArtist, &track);
+        known = (sg_showTitles ? (id)track : title) ?: NSNull.null;
+        sg_knownTitles[key] = known;
     }
-    return known == NSNull.null ? nil : known;
+    if (known == NSNull.null) return nil;
+    if (!sg_showTitles) return known;
+    *match = known;
+    return (*match).trackTitle;
 }
 
 static void placeText(UIView *page) {
@@ -975,10 +1002,22 @@ static void placeText(UIView *page) {
     });
     if (!line.length) return;
     NSString *title = line;
-    NSString *known = knownTitleOf(line);
+    SPTPlayerTrack *track = nil;
+    NSString *known = knownTitleOf(line, sg_showTitles ? shown : nil, &track);
     if (known) {
         title = known;
         artists = line.length > known.length ? [line substringFromIndex:known.length + kBullet.length] : shown;
+        if (track) {
+            id uri = track.URI;
+            NSString *text = [uri isKindOfClass:NSURL.class] ? ((NSURL *)uri).absoluteString : [uri description];
+            NSString *trackID = [text hasPrefix:@"spotify:track:"] ? [text substringFromIndex:@"spotify:track:".length] : nil;
+            if (trackID || [text hasPrefix:@"spotify:local:"]) {
+                NSString *artist = track.artistName, *translated = nil;
+                title = SGRShownTitle(trackID, known, artist, &translated);
+                if (translated.length && ![translated isEqualToString:artist] && [artists isEqualToString:artist])
+                    artists = translated;
+            }
+        }
     } else if (artists) {
         title = [line substringToIndex:line.length - artists.length - kBullet.length];
     } else {
@@ -1250,6 +1289,16 @@ static SGRBarOptionsWatcher *sg_optionsWatcher;
     %init;
     sg_optionsWatcher = [SGRBarOptionsWatcher new];
     SGAddPlayerStateObserver(sg_optionsWatcher);
+    sg_showTitles = SGFlag(SGKeyLyricsSimplifyTitles, NO) || SGFlag(SGKeyLyricsTranslateTitles, NO);
+    if (sg_showTitles) {
+        for (NSString *name in @[SGSimplifyTitlesDidChangeNotification, SGTranslatedTitleDidChangeNotification,
+                                 SGTitleTranslationSettingsDidChangeNotification]) {
+            [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+                // The next layout places every page after the player has applied its own settings notification.
+                dispatch_async(dispatch_get_main_queue(), ^{ [sgr_nowPlayingRoot setNeedsLayout]; });
+            }];
+        }
+    }
     // Posted on the main thread.
     [NSNotificationCenter.defaultCenter addObserverForName:SGRAccentDidChangeNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) { showPlayerOptions(); }];

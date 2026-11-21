@@ -47,6 +47,11 @@ void SGRRefreshTabBar(void) {
 }
 
 #import "../shared/placeholder-artwork.m"
+#include "../shared/bar-title-notifications.inc"
+NSString *SGRShownTitle(NSString *trackID, NSString *title, NSString *artist, NSString **shownArtist) {
+    *shownArtist = artist;
+    return title;
+}
 // Shared/Player/PlayerState.x, which NowPlayingBar.x reads titles from: no player has reported a state here, so the
 // card's text is split by its line alone.
 @class SPTPlayerState;
