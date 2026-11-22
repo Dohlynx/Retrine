@@ -139,6 +139,7 @@ their check executable in the workflow.
 | `home-header/check.sh` | Catalyst Home header through Logos: the filter pill and the avatar 6pt apart, and the page's tint across its whole width, through an iPad's turns, window resizes, a feed that arrives after the page's last pass and a replaced page view. |
 | `playlist/creator-check.sh` | Simulator executable through Logos: the playlist header's creator lookup keeps one-character names and skips the facepile's initial. |
 | `playlist/rows-check.sh` | Simulator executable through Logos: the playlist track row separator spans from the artwork's text edge, mirrored right to left. |
+| `playlist/chip-check.sh` | Catalyst: the playlist chip row keeps its touches while moving, fades over 24 pt while pinned, and returns on the reverse scroll; unrelated siblings are untouched. |
 | `player/lyrics-layout-check.sh` | Catalyst, `PlayerLyrics.x`'s measurements as compiled: the lyric viewport and its controls keep the player's own bounds while the cover cell pages between tracks. |
 | `player/repeat-check.sh` | Production repeat-mode transition (`SGPlayerAdvanceRepeat`) extracted from `PlayerState.x`: every flag combination, command order and returned answer; no simulator. |
 | `player/upcoming-tracks-check.sh` | Production upcoming-track parsing (`SGURIString`, `SGPlayerUpcomingTracks`) extracted from `PlayerState.x` and run against Foundation doubles; no simulator. |

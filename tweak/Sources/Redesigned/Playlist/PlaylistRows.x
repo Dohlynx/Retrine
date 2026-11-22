@@ -227,6 +227,51 @@ static BOOL applyRow(UIView *cell) {
 }
 %end
 
+#pragma mark - Spotify's chip row
+
+// Spotify 9.2.0 gives the playlists it makes itself (the mixes, the charts) a row of chips over the first track --
+// Video, Duplicate, Sort, Select (ListUXPlatformConsumers_DefaultToolbarImpl's DefaultToolbarElement: a view of the
+// page's beside the list, placed by its frame, not a cell of the list) -- and holds it under the navigation bar once
+// the list has scrolled past it. The redesign has no bar there, so the held row stood over the rows going by under
+// it, across their names, with nothing behind it. It goes with the list instead: held, it fades over the first
+// kChipFade of scroll past where it was held and takes no touch, and comes back as the list brings its place back.
+// Duplicate and Select are nowhere else, so the row itself stays whatever Hide the curation pills says.
+static const CGFloat kChipFade = 24;
+static char kChipYKey, kChipPlaceKey, kChipFadedKey;
+
+static void followChipRow(UIScrollView *list) {
+    UIView *row = nil;
+    for (UIView *sibling in list.superview.subviews) {
+        if (SGClassNamed(sibling.class, @"DefaultToolbarElement")) { row = sibling; break; }
+    }
+    if (!row) return;
+    // Where the row is in the list's content. While it moves with the list that stays the same, and is its place;
+    // held, the row stands still and the difference is how far the list has gone on.
+    CGFloat y = CGRectGetMinY(row.frame), place = y + list.contentOffset.y;
+    NSNumber *lastY = objc_getAssociatedObject(list, &kChipYKey), *rest = objc_getAssociatedObject(list, &kChipPlaceKey);
+    if (!rest || !lastY || fabs(lastY.doubleValue - y) > 0.01) {
+        objc_setAssociatedObject(list, &kChipPlaceKey, rest = @(place), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (!lastY || lastY.doubleValue != y) objc_setAssociatedObject(list, &kChipYKey, @(y), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CGFloat past = place - rest.doubleValue;
+    CGFloat alpha = past <= 0 ? 1 : MAX(0, 1 - past / kChipFade);
+    // Spotify's own alpha is left alone until the row has been faded here.
+    BOOL faded = objc_getAssociatedObject(row, &kChipFadedKey) != nil;
+    if (alpha >= 1 && !faded) return;
+    if (fabs(row.alpha - alpha) > 0.001) row.alpha = alpha;
+    row.userInteractionEnabled = alpha >= 1;
+    row.accessibilityElementsHidden = alpha <= 0;
+    if (faded != (alpha < 1)) objc_setAssociatedObject(row, &kChipFadedKey, alpha < 1 ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+// The playlist's own list class, so no other scroll view pays for this.
+%hook _TtC35ListUXPlatform_FreeTierPlaylistImpl32FTPTouchCancellingCollectionView
+- (void)setContentOffset:(CGPoint)offset {
+    %orig;
+    followChipRow((UIScrollView *)self);
+}
+%end
+
 // The rows of the songs liked by one artist are another cell (a UITableView's, Track.Row painted the base surface)
 // with the same row kit in it, so they get the playlist's row: no paint, rounded artwork, the hairline.
 %hook SPTEncoreSwipeableTableViewCell

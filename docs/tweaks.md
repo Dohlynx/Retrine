@@ -2007,6 +2007,11 @@ Redesigned:
                   and the curation pills gone, and the track rows on the field with a hairline between them
                   (Playlist.h lists its files). Sort and Mix, the two of those pills the ⋯ menu does not already offer,
                   are put on that menu's own sheet instead, above Spotify's rows, and fire Spotify's own buttons.
+                  The chip row 9.2.0 gives the playlists Spotify makes itself (Video, Duplicate, Sort, Select; a view
+                  beside the list, not a cell) stays, since Duplicate and Select are nowhere else, but goes with the list:
+                  where Spotify holds it under the navigation bar it fades over the first 24 pt of scroll past that
+                  point and takes no touch, and comes back as the list brings its place back (PlaylistRows.x), so it
+                  no longer stands across the rows going by under it.
                   Hide on a playlist's page → Recommended songs (`spotifyglass.redesign.playlist.hide.recommendations`,
                   off; PlaylistRows.x) collapses the recommendation heading, its tracks and Refresh below the list to
                   zero height, clipped, hidden from VoiceOver and not interactive; rows found by their recommendation
