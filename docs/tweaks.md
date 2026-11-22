@@ -1715,7 +1715,10 @@ Redesigned:
                   stays a moment for the next track's to cross over it. With Reduce Motion, Low Power Mode or a Serious
                   or Critical thermal state, the player clears the clip and shows the cover over the still field.
                   Once those holds clear, the moving field continues from where it stopped; the player looks up the clip
-                  again and plays it from the beginning. A black gradient dims the clip by its brightness (the 75th
+                  again and plays it from the beginning. The Colors field (Kit/SGRFlow.m) is moved 15 times a second
+                  by a timer and drawn at half a pixel to a point, then stretched to the screen: played by the render
+                  server at full resolution it was drawn again on every frame, 21% of an iPhone 13 Pro's GPU under the
+                  player against 9% so (1.4% held still, 6.5% for Spotify's own player). A black gradient dims the clip by its brightness (the 75th
                   percentile of the linear luminance of three frames), so white text keeps 4.5:1 (7:1 with Increase
                   Contrast), from 0.10 to 0.80, only where text is: a band under the header and from above the title
                   down; behind the lyrics it covers the whole clip, 0.15 darker (issue #101). A track that changes
