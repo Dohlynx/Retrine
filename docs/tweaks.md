@@ -2381,7 +2381,8 @@ Picture-aware photo and Monthly listeners in About (`spotifyglass.redesign.artis
 under the name goes once the page's own diffable data source has configured Spotify's About card for this artist,
 which carries the count itself; without About, or with About hidden, it stays; ArtistSections.x,
 harness/artist/listeners-check.py). The Player page leads with a pinned miniature of the whole player showing the
-current or last song (480 pt, shrinking to 236 pt as the page scrolls, opaque above the rows), whose Without a clip
+current or last song (480 pt, shrinking to 236 pt as the page scrolls, opaque above the rows; with Star add button on,
+the star before the ⋯ as the player draws it), whose Without a clip
 pill shows, for Animated and Auto, what a song without a clip would show, never sending a playback command
 (PlayerSettings.m; preview lookups are tied to the shown track and torn down with the page, SGRPlayerMotionPreviewStop,
 SGRPlayerVisualiserPreviewStop; harness/player/settings-check.sh). Its Buttons card has Shuffle, Repeat and Video chips.
