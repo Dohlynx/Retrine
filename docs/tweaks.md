@@ -1059,7 +1059,9 @@ Shared:
                   metadata gives nothing, never Crossfade; another device playing gives nothing. The facts are cached and
                   remade on a track, queue, settings or metadata change, with SGAutoMixTransitionDidChangeNotification
                   (harness/automix/). The page opens on a preview of the transition drawn from the switch, style and
-                  Blend length (AutoMixPreview.m), and holds the redesigned player's three switches, all off:
+                  Blend length (AutoMixPreview.m); its notes say that Spotify's Automix covers only some playlists
+                  Spotify made, so the user's own need Spotify's Mix button in the queue, and that the bar and cover
+                  show crossfades only. It holds the redesigned player's three switches, all off:
                   spotifyglass.automix.show-progress (the blend's window on the progress bar; with Crossfade on, Spotify
                   shortens a song's clock by the crossfade so its bar ends where the blend begins, and the window shows
                   as the next song's first seconds; seen on a 9.1.90 phone),

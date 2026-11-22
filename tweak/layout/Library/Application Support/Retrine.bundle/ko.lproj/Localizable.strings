@@ -578,7 +578,8 @@
 "settings.automix.blendlength.format" = "%ld초";
 "settings.automix.blendlength.title" = "블렌드 길이";
 "settings.automix.footer.note" = "AutoMix를 사용하려면 Premium이 필요합니다. 무료 계정은 'Premium, 광고 및 개인정보 보호'에서 'Premium 위장'을 켜세요.";
-"settings.automix.player.footer" = "재설계 플레이어에서 적용됩니다.";
+"settings.automix.footer.style" = "비트 일치는 Spotify가 만든 일부 플레이리스트에만 적용됩니다. 내 플레이리스트는 대기열에서 셔플 왼쪽의 믹스 버튼도 켜세요.";
+"settings.automix.player.footer" = "재설계 플레이어에서 적용됩니다. 진행 막대와 커버에는 크로스페이드만 표시됩니다. 비트 일치 전환은 Spotify가 시각을 알려 주지 않기 때문입니다.";
 "settings.automix.preview.accessibility" = "AutoMix, %@, %@";
 "settings.automix.preview.beatmatched.subtitle" = "%ld초 블렌드, 비트에 맞춤";
 "settings.automix.preview.beatmatched.title" = "비트 매칭 믹스";
