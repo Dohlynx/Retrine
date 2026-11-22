@@ -75,6 +75,7 @@ static UIButton *lyricsMenuIn(UIView *stage) {
 
 - (void)runAdaptiveChecks {
     BOOL checkCompactHeader = !getenv("HARNESS_NO_LYRICS");
+    BOOL checkLandscapeBadge = getenv("HARNESS_LANDSCAPE") != NULL;
     __block CGRect originalHost, originalBand;
     __block UIUserInterfaceSizeClass originalWidthClass;
     __block UIView *compactOverlay;
@@ -168,6 +169,51 @@ static UIButton *lyricsMenuIn(UIView *stage) {
                 NSLog(@"[harness] adaptive frames: artwork %@ controls %@ side %@", NSStringFromCGRect(art),
                       NSStringFromCGRect(controls), NSStringFromCGRect(side));
             }
+        }],
+        // Issue #24: turned to landscape, the iPad player keeps its time row, and the audio quality badge for a song
+        // Spotify reports High shows between the times, apart from the tap to seek, and opens its details.
+        @[@0, ^{
+            if (!checkLandscapeBadge) return;
+            HARNESS_CHECK(UIInterfaceOrientationIsLandscape(self.window.windowScene.interfaceOrientation));
+            UIViewController *durationUnit = self->_units[2];
+            UIView *unit = durationUnit.view;
+            NSArray<UILabel *> *labels;
+            UISlider *slider = spotifyBar(unit, &labels);
+            [NSUserDefaults.standardUserDefaults setBool:YES forKey:SGKeyPlayerAudioQuality];
+            SGAudioQualitySettingChanged();
+            SPTPlayerState *state = SGPlayerState();
+            SGRHarnessQuality *quality = [SGRHarnessQuality new];
+            quality.bitrateLevel = 3;
+            quality.strategy = 1;
+            [state setValue:quality forKey:@"playbackQuality"];
+            extern void SGRHarnessReport(SPTPlayerState *state);
+            SGRHarnessReport(state);
+            [durationUnit viewDidLayoutSubviews];
+            UIView *badge = SGAudioQualityShownBadge(unit);
+            if (!badge) HARNESS_FAIL(@"no audio quality badge in the landscape %.0fpt time row", unit.bounds.size.width);
+            CGRect take = labels.firstObject.superview.frame, remaining = labels.lastObject.superview.frame;
+            HARNESS_CHECK(CGRectGetMinX(badge.frame) - CGRectGetMaxX(take) >= 7.5 && CGRectGetMinX(remaining) - CGRectGetMaxX(badge.frame) >= 7.5);
+            // The badge reaches below the unit, over the controls' unit: its tap is on the view holding both, which a
+            // touch on the badge reaches, and the top of the badge, inside the unit, does not seek while beside it does.
+            UIGestureRecognizer *tap = [badge valueForKey:@"tap"];
+            CGPoint onBadge = [self.window convertPoint:badge.center fromView:unit];
+            HARNESS_CHECK(tap.view == unit.superview && [[self.window hitTest:onBadge withEvent:nil] isDescendantOfView:tap.view]);
+            CGFloat top = CGRectGetMinY(badge.frame) + 2;
+            HARNESS_CHECK(top < CGRectGetMaxY(unit.bounds));
+            HARNESS_CHECK(!SGRSeekTapLands(unit, slider, CGPointMake(badge.center.x, top)));
+            HARNESS_CHECK(SGRSeekTapLands(unit, slider, CGPointMake(CGRectGetMinX(badge.frame) - 6, top)));
+            NSLog(@"[harness] landscape badge %@ (%@) between times %@ and %@", NSStringFromCGRect(badge.frame), badge.accessibilityLabel,
+                  NSStringFromCGRect(take), NSStringFromCGRect(remaining));
+            HARNESS_CHECK([badge accessibilityActivate]);
+        }],
+        @[^BOOL {
+            return !checkLandscapeBadge
+                || [self.window.rootViewController.presentedViewController isKindOfClass:NSClassFromString(@"SGAudioQualityPanel")];
+        }, ^{
+            if (!checkLandscapeBadge) return;
+            [self.window.rootViewController dismissViewControllerAnimated:NO completion:nil];
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyPlayerAudioQuality];
+            SGAudioQualitySettingChanged();
         }],
         @[@0, ^{
             if (!checkCompactHeader) return;
