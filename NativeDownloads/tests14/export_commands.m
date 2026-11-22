@@ -8,6 +8,17 @@ static NSUInteger calls;
 static NSData *expectedPayload;
 static NSString *expectedMethod;
 static BOOL simulateTimeout;
+BOOL SAPDiagnosticsEnabled(void){return NO;}
+void SAPJournalNoteAction(NSString *name,NSDictionary *facts){}
+dispatch_queue_t SAPTransportWorker(void) {
+    static dispatch_queue_t queue;static dispatch_once_t once;
+    dispatch_once(&once,^{queue=dispatch_queue_create("export-command-fixture",DISPATCH_QUEUE_SERIAL);});
+    return queue;
+}
+dispatch_block_t SAPCallReadOnlyServiceCancellable(NSString *service,NSString *method,NSData *payload,
+                                                  void (^completion)(NSData *,NSString *)) {
+    fputs("FAIL: explicit offline command unexpectedly read library membership\n",stderr);exit(1);
+}
 
 void SAPInvokeServiceOnce(NSString *service,NSString *method,NSData *payload,
                          void (^completion)(NSData *,NSString *,SAPCommandInvocationDisposition)) {

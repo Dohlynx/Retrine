@@ -86,6 +86,7 @@ static NSMutableSet<SAPOfflineCall *> *calls;
 @end
 @implementation SAPAlbumDownloadCall @end
 static SAPAlbumDownloadCall *albumCall;
+static BOOL albumPreparing;
 
 static void albumMessage(void (^callback)(NSString *), NSString *message) {
     SAP_JOURNAL_ACTION(@"album_user_message",@{@"text":message?:@""});
@@ -485,19 +486,22 @@ void SAPDownloadTrack(NSString *uri,NSString *trackName,void (^message)(NSString
         });});
     });
 }
+static BOOL validAlbumURI(NSString *albumURI) {
+    if(![albumURI isKindOfClass:NSString.class])return NO;
+    NSString *prefix = @"spotify:album:";
+    NSString *identifier = [albumURI hasPrefix:prefix] ? [albumURI substringFromIndex:prefix.length] : nil;
+    NSCharacterSet *invalid = [NSCharacterSet characterSetWithCharactersInString:
+        @"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"].invertedSet;
+    return identifier.length==22 && [identifier rangeOfCharacterFromSet:invalid].location==NSNotFound;
+}
 void SAPDownloadCurrentAlbum(void (^message)(NSString *)) {
     if(!SAPRuntimeProfileAdmitted()){if(message)message(SAPL(@"settings.pixie.native.unsupported_profile",@"Pixie is not enabled for this exact Spotify profile."));return;}
     SAPInstallTrackDownloader();
     SAPTraceID trace=SAPTraceCurrentOperation();if(!trace&&SAPTraceIsActive())trace=SAPTraceBegin(@"download_current_album",@"pixie_api",@{});
     id state = SAPTransportObject(SAPTransportPlayer(), @"state"), track = SAPTransportObject(state, @"track");
     id value = SAPTransportObject(track, @"albumURI");
-    NSString *albumURI = [value isKindOfClass:NSURL.class] ? [value absoluteString] :
-                         [value isKindOfClass:NSString.class] ? value : nil;
-    NSString *prefix = @"spotify:album:";
-    NSString *identifier = [albumURI hasPrefix:prefix] ? [albumURI substringFromIndex:prefix.length] : nil;
-    NSCharacterSet *invalid = [NSCharacterSet characterSetWithCharactersInString:
-        @"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"].invertedSet;
-    if (identifier.length != 22 || [identifier rangeOfCharacterFromSet:invalid].location != NSNotFound) {
+    NSString *albumURI = [value isKindOfClass:NSURL.class] ? [value absoluteString] : value;
+    if (!validAlbumURI(albumURI)) {
         SAP_JOURNAL_ACTION(@"album_rejected",@{@"reason":@"current_album_uri_unavailable"});
         if (message) message(SAPL(@"settings.pixie.album.cannot_identify_current",
                                @"Could not identify the current track's album. Start the track on this iPhone and try again."));
@@ -505,14 +509,22 @@ void SAPDownloadCurrentAlbum(void (^message)(NSString *)) {
     }
     SAP_JOURNAL_ACTION(@"album_requested",@{@"album_uri":albumURI});
     void (^reply)(NSString *) = [message copy];
-    SAPTraceWithOperation(trace,^{SAPPrepareNativeOffline(^BOOL { return YES; }, ^(BOOL ready, NSString *reason) {
-        if (!ready) { SAP_JOURNAL_ACTION(@"album_preparation_failed",@{@"album_uri":albumURI,@"reason":reason?:@""});albumMessage(reply, reason); return; }
-        dispatch_async(SAPTransportWorker(), ^{
-            if (albumCall) {
+    dispatch_async(SAPTransportWorker(), ^{
+            if (albumCall || albumPreparing) {
                 albumMessage(reply, SAPL(@"settings.pixie.album.already_running",
                                          @"An album download request is already in progress."));
                 return;
             }
+            albumPreparing=YES;
+            SAPTraceWithOperation(trace,^{SAPPrepareNativeOffline(^BOOL { return YES; }, ^(BOOL ready, NSString *reason) {
+                if(!ready) {
+                    SAP_JOURNAL_ACTION(@"album_preparation_failed",@{@"album_uri":albumURI,@"reason":reason?:@""});
+                    dispatch_async(SAPTransportWorker(),^{albumPreparing=NO;albumMessage(reply,reason);});return;
+                }
+                SAPTraceWithOperation(trace,^{SAPEnsureAlbumInLibrary(albumURI,^(BOOL member,NSString *error){
+                    dispatch_async(SAPTransportWorker(),^{
+            albumPreparing=NO;
+            if(!member){albumMessage(reply,error);return;}
             id endpoint = SAPTransportCandidates().firstObject;
             SEL selector = NSSelectorFromString(@"callSingle:method:payload:onResponse:");
             Method method;
@@ -600,8 +612,10 @@ void SAPDownloadCurrentAlbum(void (^message)(NSString *)) {
                 albumMessage(reply, SAPL(@"settings.pixie.album.reply_timeout",
                                          @"Spotify did not answer within 30 seconds. The album download is unconfirmed."));
             });
-        });
-    });});
+                    });
+                });});
+            });});
+    });
 }
 void SAPVerifyCurrentTrack(void (^message)(NSString *)) {
     if(!SAPRuntimeProfileAdmitted()){if(message)message(SAPL(@"settings.pixie.native.unsupported_profile",@"Pixie is not enabled for this exact Spotify profile."));return;}

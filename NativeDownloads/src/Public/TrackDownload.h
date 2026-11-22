@@ -40,6 +40,9 @@ void SAPCallOfflineCommandOnceWithDisposition(NSString *method,NSData *payload,
 void SAPCallOfflineCommandOnce(NSString *method,NSData *payload,void (^completion)(NSData *,NSString *));
 // Exact native Collection.Add album payload; one send and no mutation replay.
 void SAPAddAlbumToLibraryOnce(NSString *albumURI,void (^completion)(NSData *,NSString *));
+// One native save, followed by authoritative membership confirmation. Never
+// downloads or removes membership; callbacks are delivered on main.
+void SAPEnsureAlbumInLibrary(NSString *albumURI,void (^completion)(BOOL,NSString *));
 // User-confirmed playlist creation/append only. One proven transport, no replay.
 void SAPCallPlaylistModificationOnce(BOOL rootlist,NSData *payload,void (^completion)(NSData *,NSString *));
 void SAPSetPlaylistOfflineOnce(NSString *playlistURI,BOOL enabled,void (^completion)(NSData *,NSString *));

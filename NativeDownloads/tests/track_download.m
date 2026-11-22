@@ -160,6 +160,9 @@ static void installFeatureFixtures(void) {
 @interface SPTEsperantoTransportBridgeImpl : NSObject
 @property(nonatomic) unsigned scenario, queries, requests, removes;
 @property(nonatomic) unsigned albumRequests;
+@property(nonatomic) BOOL albumSaved,albumSaveFails;
+@property(nonatomic) BOOL holdAlbumConfirmation;
+@property(nonatomic,copy) dispatch_block_t confirmAlbumMembership;
 @property(nonatomic) unsigned commandBehavior, commandCount;
 @property(nonatomic,copy) void (^commandLateCallback)(NSData *);
 @property(nonatomic, copy) NSString *requested;
@@ -182,14 +185,30 @@ static NSData *join(NSData *a, NSData *b) { NSMutableData *d = [a mutableCopy]; 
         if ([method isEqual:@"AddDownload"]) self.requests++;
         return nil; // Wrong/stale native channel: never answers.
     }
-    assert([service isEqual:@"spotify.offline_esperanto.proto.Offline"]);
     NSString *albumURI = @"spotify:album:3333333333333333333333";
+    if([service isEqual:@"spotify.your_library_esperanto.proto.YourLibraryService"] && [method isEqual:@"Contains"]) {
+        assert([SAPProtoString(SAPProtoFields(payload),3)isEqual:albumURI]);
+        NSData *entity=join(SAPProtoBytes(1,[albumURI dataUsingEncoding:NSUTF8StringEncoding]),SAPProtoInteger(2,self.albumSaved));
+        NSData *response=join(SAPProtoBytes(2,entity),SAPProtoInteger(98,200));
+        if(self.albumSaved && self.holdAlbumConfirmation)self.confirmAlbumMembership=^{callback(response);};
+        else callback(response);
+        return [FakeLifetime new];
+    }
+    if([service isEqual:@"spotify.collection_esperanto.proto.CollectionService"] && [method isEqual:@"Add"]) {
+        assert(payload.length==40 && memcmp(payload.bytes,(uint8_t[]){0x12,0x26,0x0a,0x24},4)==0);
+        assert(memcmp((uint8_t *)payload.bytes+4,albumURI.UTF8String,36)==0);
+        self.albumSaved=!self.albumSaveFails;
+        // Collection's status is nested in field 1, not YourLibrary's field 98.
+        callback([NSData dataWithBytes:self.albumSaveFails?(uint8_t[]){0x0a,0x03,0x08,0x93,0x03}:(uint8_t[]){0x0a,0x03,0x08,0xc8,0x01} length:5]);
+        return [FakeLifetime new];
+    }
+    assert([service isEqual:@"spotify.offline_esperanto.proto.Offline"]);
     if ([method isEqual:@"AddDownload"] && [SAPProtoString(SAPProtoFields(payload), 2) isEqual:albumURI]) {
         self.albumRequests++; callback(NSData.data); return [FakeLifetime new];
     }
     if ([method isEqual:@"GetContexts"]) {
         assert([SAPProtoString(SAPProtoFields(payload), 3) isEqual:albumURI]);
-        NSData *context = join(SAPProtoBytes(1, [albumURI dataUsingEncoding:NSUTF8StringEncoding]), SAPProtoInteger(2, 3));
+        NSData *context = join(SAPProtoBytes(1, [albumURI dataUsingEncoding:NSUTF8StringEncoding]), SAPProtoInteger(2, self.albumSaved?3:0));
         callback(SAPProtoBytes(1, SAPProtoBytes(1, context))); return [FakeLifetime new];
     }
     if([method isEqual:@"SetOfflinePlaybackAllowed"]) {
@@ -636,15 +655,28 @@ int main(void) { @autoreleasepool {
     for (NSString *message in cancelledMessages)
         assert(![message hasPrefix:@"“Cancelled A”: "]);
 
-    // Album/bulk uses the untouched native album path, never the single-track
-    // preference. Test a real accepted command and its GetContexts confirmation.
+    // Unsaved albums must become library members before Spotify can download.
     adds = library.adds; next.albumURI = [NSURL URLWithString:@"spotify:album:3333333333333333333333"];
+    t.holdAlbumConfirmation=YES;unsigned requestsBeforeMembership=t.albumRequests;
     __block BOOL albumDone = NO;
     SAPDownloadCurrentAlbum(^(NSString *message) {
         if ([message isEqual:@"The album is already fully downloaded in Spotify."]) albumDone = YES;
     });
-    waitFor(^BOOL { return albumDone; });
-    assert(t.albumRequests == 1 && library.adds == adds);
+    waitFor(^BOOL{return t.confirmAlbumMembership!=nil;});
+    assert(t.albumSaved && t.albumRequests==requestsBeforeMembership);
+    t.holdAlbumConfirmation=NO;t.confirmAlbumMembership();t.confirmAlbumMembership=nil;
+    NSDate *albumDeadline=[NSDate dateWithTimeIntervalSinceNow:4];
+    while(!albumDone && albumDeadline.timeIntervalSinceNow>0)
+        [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:albumDeadline];
+    if(!albumDone){fputs("FAIL: unsaved album did not become downloaded\n",stderr);return 1;}
+    assert(t.albumSaved && library.adds == adds);
+    t.albumSaved=NO;t.albumSaveFails=YES;unsigned albumRequests=t.albumRequests;
+    __block BOOL saveFailed=NO;
+    SAPDownloadCurrentAlbum(^(NSString *message){saveFailed=YES;});
+    waitFor(^BOOL{return saveFailed;});
+    assert(!t.albumSaved && t.albumRequests==albumRequests);
+    t.albumSaveFails=NO;
+    puts("PASS: album save then confirmed membership before download; rejected save starts no download");
     __block BOOL cancelledLibrary = NO;
     SAPAddTrackToLikedSongs(trackURI, ^BOOL { return NO; }, ^(NSString *status, NSString *message) {
         assert([status isEqual:@"cancelled"] && !message); cancelledLibrary = YES;

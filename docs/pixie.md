@@ -47,7 +47,12 @@ Music-track context menus gain **Download**, bound to the selected track rather 
 the currently playing one. The manager's **Add single-track downloads to Liked Songs**
 switch defaults off and applies to subsequent individual downloads, including the
 current-track action. When enabled, an accepted or already-present download also
-requests an add to Liked Songs; album downloads do not. Canceling or removing a
+requests an add to Liked Songs; album downloads do not. The manager's **Download
+current track's album** saves that album to Your Library first when it is not there,
+and sends the download only once Spotify confirms the save (within 30 seconds):
+Spotify accepts a download for an album outside the library and then never starts
+it. A save that fails or is not confirmed sends no download, and removing the
+download later does not remove the album from the library. Canceling or removing a
 download never removes a like. Library-add errors are reported separately from
 download status. Menu routing and library changes still need real-device acceptance;
 the host regressions check captured track identity and the verified 9.1.90 API.

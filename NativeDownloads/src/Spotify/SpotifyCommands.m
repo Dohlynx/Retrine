@@ -74,3 +74,75 @@ void SAPAddAlbumToLibraryOnce(NSString *albumURI,void (^completion)(NSData *,NSS
     NSData *payload=SAPProtoBytes(2,SAPProtoBytes(1,[albumURI dataUsingEncoding:NSUTF8StringEncoding]));
     callExplicitServiceOnce(@"spotify.collection_esperanto.proto.CollectionService",@"Add",payload,completion);
 }
+
+@interface SAPAlbumMembershipRequest : NSObject
+@property(nonatomic,copy) NSString *uri;
+@property(nonatomic,copy) void (^completion)(BOOL,NSString *);
+@property(nonatomic,copy) dispatch_block_t cancelRead;
+@property(nonatomic,strong) dispatch_source_t deadline,recheck;
+@property(nonatomic) BOOL finished,saveSent;
+- (void)readMembership;
+- (void)finish:(NSString *)error;
+@end
+@implementation SAPAlbumMembershipRequest
+- (void)finish:(NSString *)error {
+    if(self.finished)return;self.finished=YES;
+    if(self.deadline)dispatch_source_cancel(self.deadline);self.deadline=nil;
+    if(self.recheck)dispatch_source_cancel(self.recheck);self.recheck=nil;
+    if(self.cancelRead)self.cancelRead();self.cancelRead=nil;
+    void (^done)(BOOL,NSString *)=self.completion;self.completion=nil;
+    SAP_JOURNAL_ACTION(@"album_library_confirmed",@{@"album_uri":self.uri,@"member":@(!error),@"save_sent":@(self.saveSent),@"error":error?:@""});
+    if(done)dispatch_async(dispatch_get_main_queue(),^{done(!error,error);});
+}
+- (void)readMembership {
+    if(self.finished)return;
+    self.cancelRead=SAPCallReadOnlyServiceCancellable(@"spotify.your_library_esperanto.proto.YourLibraryService",@"Contains",
+        SAPProtoBytes(3,[self.uri dataUsingEncoding:NSUTF8StringEncoding]),^(NSData *data,NSString *error){
+        dispatch_async(SAPTransportWorker(),^{
+            if(self.finished)return;self.cancelRead=nil;
+            NSArray *fields=SAPProtoFields(data);NSNumber *member=nil;
+            BOOL loading=SAPProtoNumber(SAPProtoFields(SAPProtoData(fields,1)),2,0)!=0;
+            if(!error.length && fields && !loading && SAPProtoNumber(fields,98,0)==200 && !SAPProtoString(fields,99).length)
+                for(NSDictionary *field in fields)if([field[@"number"]unsignedIntValue]==2 && [field[@"wire"]unsignedIntValue]==2) {
+                    NSArray *entity=SAPProtoFields(field[@"value"]);
+                    if([SAPProtoString(entity,1)isEqual:self.uri] && SAPProtoNumber(entity,2,0)<=1)member=@(SAPProtoNumber(entity,2,0));
+                }
+            if(error.length || (!member && !loading)) {
+                [self finish:error?:SAPL(@"settings.pixie.session.library_state_invalid",@"Spotify did not return a valid library state for this album.")];return;
+            }
+            if(member.boolValue){[self finish:nil];return;}
+            if(member && !self.saveSent) {
+                self.saveSent=YES;
+                SAPAddAlbumToLibraryOnce(self.uri,^(NSData *reply,NSString *saveError){
+                    dispatch_async(SAPTransportWorker(),^{
+                        if(self.finished)return;
+                        // Collection.Add has Status in field 1; only Contains
+                        // has the separate status_code field 98.
+                        NSArray *status=SAPProtoFields(SAPProtoData(SAPProtoFields(reply),1));
+                        if(saveError.length || SAPProtoNumber(status,1,0)!=200) {
+                            [self finish:saveError?:SAPL(@"settings.pixie.session.library_state_invalid",@"Spotify did not return a valid library state for this album.")];return;
+                        }
+                        [self readMembership];
+                    });
+                });return;
+            }
+            self.recheck=SAPScheduleDeadline(SAPTransportWorker(),1,^{
+                self.recheck=nil;[self readMembership];
+            });
+        });
+    });
+}
+@end
+
+void SAPEnsureAlbumInLibrary(NSString *albumURI,void (^completion)(BOOL,NSString *)) {
+    if(!explicitAlbumURI(albumURI)) {
+        if(completion)dispatch_async(dispatch_get_main_queue(),^{completion(NO,SAPL(@"settings.pixie.transport.invalid_album_identity",@"Invalid album identity for Collection.Add."));});return;
+    }
+    dispatch_async(SAPTransportWorker(),^{
+        SAPAlbumMembershipRequest *request=[SAPAlbumMembershipRequest new];request.uri=albumURI;request.completion=completion;
+        request.deadline=SAPScheduleDeadline(SAPTransportWorker(),30,^{
+            [request finish:SAPL(@"settings.pixie.session.library_timeout",@"Spotify did not confirm the album in Your Library within 30 seconds.")];
+        });
+        [request readMembership];
+    });
+}
