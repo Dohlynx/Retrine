@@ -12,6 +12,17 @@ spec.loader.exec_module(planner)
 
 
 class BuildInputSelection(unittest.TestCase):
+    def test_layout_hooks_select_their_catalyst_checks(self):
+        index = planner.build_index()
+        for source, name in [
+            ("Playlist/PlaylistRows.x", "Playlist chip row"),
+            ("Player/PlayerLyricLine.x", "Player lyric preview margin"),
+            ("Player/PlayerFooter.x", "Player lyric preview margin"),
+        ]:
+            with self.subTest(source=source):
+                selected, _, _ = planner.plan(index, ["tweak/Sources/Redesigned/" + source], False)
+                self.assertIn(name, {entry["name"] for entry in selected})
+
     def test_reading_source_does_not_compile_its_imports(self):
         index = planner.build_index()
         for path, expected in [
