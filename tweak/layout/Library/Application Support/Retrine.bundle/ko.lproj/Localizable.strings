@@ -1342,6 +1342,8 @@
 "settings.lyrics.delay.format" = "%ld ms";
 "settings.lyrics.delay.title" = "지연 시간";
 "settings.lyrics.display.header" = "표시";
+"settings.lyrics.full_rate.subtitle" = "끄면 가사를 최대 60Hz로 그려 배터리를 덜 씁니다. ProMotion 화면에서만 차이가 납니다.";
+"settings.lyrics.full_rate.title" = "부드러운 가사 (120Hz)";
 "settings.lyrics.furigana.subtitle" = "일본어 노래의 한자 위에 읽는 법 표시";
 "settings.lyrics.furigana.title" = "후리가나";
 "settings.lyrics.hide_controls.all" = "모두 숨기기";

@@ -1609,8 +1609,8 @@ static const CFTimeInterval kBreakEpoch = 1;
 
 // The rate the page's display link asks for, asked for here too: an animation that settles for less
 // could hold the player's own 120 Hz animations down, as a link asking for 60 once did.
-static void atFullRate(CAAnimation *animation) {
-    animation.preferredFrameRateRange = CAFrameRateRangeMake(80, 120, 120);
+static CAFrameRateRange lyricsFrameRate(void) {
+    return SGEnabled(SGRKeyLyricsFullRate) ? CAFrameRateRangeMake(80, 120, 120) : CAFrameRateRangeMake(30, 60, 60);
 }
 
 static double easeOutExpo(double p) {
@@ -1744,7 +1744,7 @@ static double smoothstep(double p) {
         run.beginTime = kBreakEpoch;
         run.fillMode = kCAFillModeBoth;
         run.removedOnCompletion = NO;
-        atFullRate(run);
+        run.preferredFrameRateRange = lyricsFrameRate();
         [_group addAnimation:run forKey:run.keyPath];
     }
     // Each dot fills over its third of the time before they go, in the order the next line reads.
@@ -1756,7 +1756,7 @@ static double smoothstep(double p) {
         fill.duration = exitAt / 3;
         fill.fillMode = kCAFillModeBoth;
         fill.removedOnCompletion = NO;
-        atFullRate(fill);
+        fill.preferredFrameRateRange = lyricsFrameRate();
         [_dots[i] addAnimation:fill forKey:@"fill"];
     }
 }
@@ -1904,6 +1904,7 @@ typedef struct {
     SGAddPlayerStateObserver(self);
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(plainSheetChanged:) name:SGKaraokeLinesKeptNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(awakeSettingChanged) name:SGRKeyLyricsKeepAwake object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(frameRateChanged) name:SGRKeyLyricsFullRate object:nil];
     _fade = [CAGradientLayer layer];
     _fade.colors = @[(id)UIColor.clearColor.CGColor, (id)UIColor.whiteColor.CGColor,
                      (id)UIColor.whiteColor.CGColor, (id)UIColor.clearColor.CGColor, (id)UIColor.clearColor.CGColor];
@@ -2466,11 +2467,19 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
     [self presentPendingTranslationAlert];
 }
 
+- (void)frameRateChanged {
+    // Reinstall an open break's animations on the same timeline with the new range.
+    _dotsLine = -1;
+    if (_dots.superview) [self placeBreak];
+    [self scheduleLink];
+}
+
+// Smooth lyrics asks for 80–120 Hz by default; switching it off asks for 30–60 Hz, preferring 60.
 - (void)startLink {
     if (!self.window || _link) return;
     if (_inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
     _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick)];
-    _link.preferredFrameRateRange = CAFrameRateRangeMake(80, 120, 120);
+    _link.preferredFrameRateRange = lyricsFrameRate();
     _stirredAt = CACurrentMediaTime();
     [_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     [self queueAutomaticTranslation];

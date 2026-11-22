@@ -194,7 +194,7 @@ by merely compiling them.
 | `local-files/suggest-sim.py` | iOS simulator Edit info with Find Info against network fixtures: review sheet, Use, the picked cover's 1200 px bound, save through the overlay. |
 | `lossless/build.sh` | iOS simulator decoder probe. |
 | `lossless/handoff-build.sh` | iOS simulator audio chain. |
-| `lyrics/build.sh` | iOS simulator lyrics UI; `-plainIdle 1 -song static` checks zero settled ticks, scrolling, five-second holds on pause and zero-speed stall, resume, and late timed replacement. |
+| `lyrics/build.sh` | iOS simulator lyrics UI; `-frameRateCheck 1 -song plain` checks the live display link and instrumental break animations with Smooth lyrics unset, off, and on. `-plainIdle 1 -song static` checks zero settled ticks, scrolling, five-second holds on pause and zero-speed stall, resume, and late timed replacement. |
 | `lyrics-page/build.sh` | iOS simulator settings UI. |
 | `menu/build.sh` | iOS simulator UI. |
 | `mod-settings/build.sh` | iOS simulator settings UI. |

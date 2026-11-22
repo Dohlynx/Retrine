@@ -243,9 +243,11 @@ Shared:
                   screen's line and artwork, the Live Activity, the native look's lyrics page for local files), and a
                   tap on a line seeks to its start plus the delay. Karaoke's audio, the scrubber and the lyrics preview
                   are left alone. It is read at every use, so a change applies at once (checked by harness/lyrics' -check).
-                  The redesign's lyrics view asks its display link for 80 to 120 Hz, and drops it to 10 to 15 Hz once a
-                  paused song has been still for a second, while the page is not scrolled by hand and no tapped line is
-                  gliding, logging each change as “karaoke: frame rate idle (paused)” and “frame rate full”. Plain
+                  In the redesign's Lyrics → Display section, “Smooth lyrics (120 Hz)” is on by default: the lyrics
+                  display link and instrumental break animations request 80–120 Hz, preferring 120. Turning it off
+                  requests 30–60 Hz, preferring 60, to use less battery. Only ProMotion displays show a difference.
+                  The switch applies to the open page immediately. The link still pauses when nothing moves and
+                  is put down during player transitions and while the app is inactive. Plain
                   (untimed) lyrics pause the link as soon as the rows in sight are filled, with no repeating poll: scroll,
                   layout, player and keeper events wake it. Keep screen on releases five seconds after playback stops
                   advancing, including a zero-speed stall, and is held again when playback advances. With EeveeSpotify injected (SGEeveeSpotifyInjected), its lyrics

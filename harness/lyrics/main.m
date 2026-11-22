@@ -38,6 +38,7 @@
 #import <mach/mach_time.h>
 #import "Redesigned/Lyrics/SGRKaraokeView.h"
 #import "Redesigned/Lyrics/LyricsTools.h"
+#import "Core/SGPrefs.h"
 #import "Settings/SGModPage.h"
 #import "Redesigned/Lyrics/SGRSingButton.h"
 #import "Shared/Sing/Sing.h"
@@ -681,6 +682,34 @@ static void checkFailureUI(SGRKaraokeView *view) {
     }];
     self.window.rootViewController = root;
     [self.window makeKeyAndVisible];
+#ifdef SGRKeyLyricsFullRate
+    if ([args boolForKey:@"frameRateCheck"]) after(1, ^{
+        HARNESS_CHECK(![args objectForKey:SGRKeyLyricsFullRate]);
+        SGModRow *row = SGRLyricsFullRateRow();
+        void (^checkRate)(float) = ^(float maximum) {
+            CADisplayLink *link = [karaoke valueForKey:@"link"];
+            UIView *dots = [karaoke valueForKey:@"dots"];
+            CALayer *group = [dots valueForKey:@"group"];
+            NSArray<CALayer *> *layers = [dots valueForKey:@"dots"];
+            HARNESS_CHECK(link && !link.paused && dots.window && layers.count == 3);
+            HARNESS_CHECK(link.preferredFrameRateRange.maximum == maximum);
+            for (NSString *key in @[@"transform.scale", @"opacity"])
+                HARNESS_CHECK([group animationForKey:key].preferredFrameRateRange.maximum == maximum);
+            for (CALayer *layer in layers)
+                HARNESS_CHECK([layer animationForKey:@"fill"].preferredFrameRateRange.maximum == maximum);
+        };
+        checkRate(120);
+        SGSetEnabled(SGRKeyLyricsFullRate, NO);
+        row.changed(NO);
+        checkRate(60);
+        SGSetEnabled(SGRKeyLyricsFullRate, YES);
+        row.changed(YES);
+        checkRate(120);
+        [args removeObjectForKey:SGRKeyLyricsFullRate];
+        NSLog(@"[harness] PASS live lyrics frame rate: unset, off, on");
+        exit(0);
+    });
+#endif
     if ([args boolForKey:@"plainIdle"]) {
         extern BOOL SGHarnessAwake;
         extern void SGHarnessPause(BOOL);
