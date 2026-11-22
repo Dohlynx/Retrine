@@ -46,7 +46,7 @@ class Fixture:
     frameworks: tuple[str, ...] = ("Foundation",)
     scenarios: tuple[tuple[str, ...], ...] = ((),)
     defines: tuple[str, ...] = ()
-    admitted: bool = True
+    admitted: bool | None = True  # None links the production NativeAdmission.m instead of a host double
 
 
 # basename resolution allows the production tree to be reorganized without
@@ -88,6 +88,7 @@ FIXTURES = (
     Fixture("audio_probe", "audio", ("AudioProbe.c", "test_probe.c"), diagnostics=True, frameworks=("Foundation", "AudioToolbox")),
     Fixture("audio_probe_unadmitted", "audio", ("AudioProbe.c", "test_probe_unadmitted.c"), diagnostics=True, frameworks=("Foundation", "AudioToolbox"), admitted=False),
     Fixture("av_hooks", "audio", ("AudioProbe.c", "AVAudioHooks.m", "av_hooks.m"), diagnostics=True, frameworks=("Foundation", "AudioToolbox", "AVFoundation", "CoreMedia")),
+    Fixture("host_executable_image", "config", ("NativeAdmission.m", "host_executable_image.m"), admitted=None),
     Fixture("offline_flags", "config", ("OfflineFlags.m", "offline_flags.m"), diagnostics=True),
     Fixture("offline_config", "config", ("OfflineConfig.m", "offline_config.m"), diagnostics=True),
     Fixture("download_evidence", "config", ("download_evidence.m",)),
@@ -138,7 +139,8 @@ def include_dirs() -> list[Path]:
 
 
 def fixture_sources(test: Fixture) -> list[Path]:
-    paths = [source("admitted_host.c" if test.admitted else "unadmitted_host.c"), *[source(n) for n in test.sources]]
+    host = {True: ["admitted_host.c"], False: ["unadmitted_host.c"], None: []}[test.admitted]
+    paths = [*map(source, host), *[source(n) for n in test.sources]]
     if "Foundation" in test.frameworks:
         paths.append(source("Localization.m"))
     for name in test.groups:
