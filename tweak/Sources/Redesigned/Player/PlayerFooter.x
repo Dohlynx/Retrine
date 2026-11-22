@@ -527,12 +527,15 @@ static CGFloat insetSign(NSLayoutConstraint *constraint, UIView *view) {
 // in the pin, not in the frame (which can still be the reused row's last adjusted frame). Where the content starts in
 // the view is Spotify's only until the view is inset: the narrowed title row lays its content out anew (the title 8 pt
 // in for 12 on the next pass, 9.2.0), and an inset measured from that changed pass by pass, the row left 24, 32 or
-// 36 pt in by where the passes stopped (issue #35). So it is read once, on the view's first pass.
+// 36 pt in by where the passes stopped (issue #35). So it is read once the view is inset and kept for as long as it is.
+// A view not inset still shows Spotify's own layout and is read on every pass: a title row first read while it held
+// a video podcast's thumbnail (the title 60 pt in, so no inset) is read again without it.
 void SGRPlayerHoldMargin(UIView *view, CGFloat contentX) {
     UIView *unit = view.superview;
     if (!unit) return;
     NSNumber *content = objc_getAssociatedObject(view, &kMarginContentKey);
-    if (!content) objc_setAssociatedObject(view, &kMarginContentKey, content = @(contentX), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!content || [objc_getAssociatedObject(view, &kMarginInsetKey) doubleValue] <= 0)
+        objc_setAssociatedObject(view, &kMarginContentKey, content = @(contentX), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     contentX = content.doubleValue;
     NSMapTable<NSLayoutConstraint *, NSNumber *> *originals = objc_getAssociatedObject(view, &kMarginOriginalsKey);
     BOOL rtl = unit.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;

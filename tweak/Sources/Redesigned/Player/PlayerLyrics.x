@@ -1256,8 +1256,22 @@ static UIView *informationUnitLaidOut(UIViewController *unit) {
     // The row's view in the unit's, inset so the title starts at the player's margin, its trailing buttons as far in.
     UIView *row = element;
     while (row && row.superview != host) row = row.superview;
-    // Only once the row has placed the title: the inset is measured from where it stands.
+    // Only once the row has placed the title: the inset is measured from where it stands. A unit made while another
+    // player's is up (a song started after the app opened on a video podcast, 9.2.0) lays out once, before its row has
+    // placed anything, and its title stayed 24 pt in over a bar 32 in: the unit is asked for another pass a second
+    // on, three times at most, by when the row has dropped the podcast's thumbnail (a pass at once still found it,
+    // the title 60 pt in).
+    static char kTitlePassesKey;
+    if (row && element.bounds.size.width <= 0) {
+        NSInteger passes = [objc_getAssociatedObject(host, &kTitlePassesKey) integerValue];
+        if (passes < 3) {
+            objc_setAssociatedObject(host, &kTitlePassesKey, @(passes + 1), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            __weak UIView *weakHost = host;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [weakHost setNeedsLayout]; });
+        }
+    }
     if (row && element.bounds.size.width > 0) {
+        objc_setAssociatedObject(host, &kTitlePassesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         // Where Spotify put the title, the slide this file gives it beside the thumbnail left out.
         CGRect placed = CGRectMake(element.center.x - element.bounds.size.width / 2, 0, element.bounds.size.width, 0);
         CGRect inRow = [element.superview convertRect:placed toView:row];

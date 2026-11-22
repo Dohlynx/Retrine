@@ -1594,7 +1594,11 @@ Redesigned:
                   15 s skips, or in landscape, the slots stay Spotify's. In portrait on an iPhone-shaped one column player
                   the Music app's measures hold (Player.h, PlayerFooter.x keepRhythm): the title row, progress bar and
                   volume row stand 32 pt in from the sides (SGRPlayerSideMargin, set through the constants of Spotify's own
-                  side constraints so the content lays out for the width), the cover keeps Spotify's tilt view's size (24 pt
+                  side constraints so the content lays out for the width; Spotify's own lyric preview under the cover,
+                  shown while the lyric line is off, is inset in the cover's column to the same margin, PlayerLyricLine.x;
+                  where the title starts in its row is read from the pass that insets the row and read again while the
+                  row is not inset, and a unit that laid out before its row placed the title, a song started after the
+                  app opened on a video podcast, is asked for another pass a second on), the cover keeps Spotify's tilt view's size (24 pt
                   in on a 402 pt iPhone, 354 pt, as the Music app's) and is drawn up to 33 pt under the window's safe area
                   where Spotify's tilt view stands lower (PlayerArtwork.x; only up, never in landscape or on an iPad,
                   never over a header row that takes touches: with Hide where it plays from off, Spotify's arrow live

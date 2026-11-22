@@ -1091,6 +1091,21 @@ CGRect SGRPlayerLyricLineIn(UIView *view) {
     return [view convertRect:line.bounds fromView:line];
 }
 
+// Spotify's preview is as wide as the cover's column, 24 pt in from the player's sides, and its text starts at its
+// edge: 8 pt out from the title under it, which stands SGRPlayerSideMargin in. The preview is inset in its column the
+// way the title row is in its unit (SGRPlayerHoldMargin, through Spotify's own side pins: H:|-0-[preview] and its
+// trailing to the column's, 9.2.0), the column's own distance from the player's side counted as where its content
+// starts. Only where the column runs from side to side: a column of a wide player has no title under it to start with.
+static void holdPreviewMargin(UIView *preview, UIView *host) {
+    UIView *column = preview.superview;
+    if (!column || column.bounds.size.width <= 0 || !host.window) return;
+    CGRect inHost = [host convertRect:column.bounds fromView:column];
+    CGFloat left = CGRectGetMinX(inHost) - CGRectGetMinX(host.bounds), right = CGRectGetMaxX(host.bounds) - CGRectGetMaxX(inHost);
+    BOOL across = left >= 0 && right >= 0 && left < SGRPlayerSideMargin && right < SGRPlayerSideMargin;
+    BOOL rtl = column.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    SGRPlayerHoldMargin(preview, across ? (rtl ? right : left) : SGRPlayerSideMargin);
+}
+
 // The cover's own layout (PlayerArtwork.x sizes it there): the line follows where the cover now is. Only the
 // player's covers, not the now playing bar's.
 %group SGRLyricPreviewLayout
@@ -1166,10 +1181,17 @@ static void watchPreviewTaps(UIView *preview) {
     objc_setAssociatedObject(preview, &key, tap, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+// These two are there whether the line is on or not (SGRLyricPreviewLayout is the line's): the preview shows when it
+// is off.
 %hook _TtC25Lyrics_NPVElementsKitImpl24LyricsElementWrapperView
 - (void)didMoveToWindow {
     %orig;
     watchPreviewTaps((UIView *)self);
+}
+- (void)layoutSubviews {
+    %orig;
+    UIView *host = sg_host;
+    if (host && [(UIView *)self isDescendantOfView:host]) holdPreviewMargin((UIView *)self, host);
 }
 %end
 
@@ -1177,6 +1199,11 @@ static void watchPreviewTaps(UIView *preview) {
 - (void)didMoveToWindow {
     %orig;
     watchPreviewTaps((UIView *)self);
+}
+- (void)layoutSubviews {
+    %orig;
+    UIView *host = sg_host;
+    if (host && [(UIView *)self isDescendantOfView:host]) holdPreviewMargin((UIView *)self, host);
 }
 %end
 

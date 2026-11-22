@@ -133,6 +133,28 @@ static BOOL checkReusedTitle(void) {
     ok = CGRectGetMinX(row.frame) == 20 && CGRectGetMaxX(row.frame) == 382;
     NSLog(@"%@ inset title row holds at %.0f", ok ? @"PASS" : @"FAIL", CGRectGetMinX(row.frame));
     if (!ok) return NO;
+    // A row first read while it still held a video podcast's thumbnail (the title 60 pt in) is not inset, and is
+    // read again without it: only a reading that inset the row is kept.
+    UIView *late = [UIView new];
+    late.translatesAutoresizingMaskIntoConstraints = NO;
+    [host addSubview:late];
+    [NSLayoutConstraint activateConstraints:@[
+        [late.leadingAnchor constraintEqualToAnchor:host.leadingAnchor constant:12],
+        [late.trailingAnchor constraintEqualToAnchor:host.trailingAnchor constant:-12],
+        [late.topAnchor constraintEqualToAnchor:host.topAnchor],
+        [late.bottomAnchor constraintEqualToAnchor:host.bottomAnchor],
+    ]];
+    [host layoutIfNeeded];
+    SGRPlayerHoldMargin(late, 60);
+    [host layoutIfNeeded];
+    BOOL native = CGRectGetMinX(late.frame) == 12;
+    SGRPlayerHoldMargin(late, 12);
+    [host setNeedsLayout];
+    [host layoutIfNeeded];
+    ok = native && CGRectGetMinX(late.frame) == 20 && CGRectGetMaxX(late.frame) == 382;
+    NSLog(@"%@ row read with a thumbnail, then without, starts at %.0f", ok ? @"PASS" : @"FAIL", CGRectGetMinX(late.frame));
+    [late removeFromSuperview];
+    if (!ok) return NO;
     // UIKit can normalize a direct leadingMargin constraint into one on
     // the unit's own guide. A sibling's margin is genuinely not that pin.
     UIView *rail = [[UIView alloc] initWithFrame:host.bounds];
