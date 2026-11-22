@@ -2041,7 +2041,12 @@ Redesigned:
                   there and the row carries the Kit's stand-ins, which draw their glyph and fire them; download is
                   pinned beside ⋯ in the top corner, the two one 88x44 glass capsule that download carries, laid right
                   under ⋯ and, while the page fades in, over the field's veil, so ⋯ is never its glyph alone; right to
-                  left the pair mirrors into the left corner, ⋯ outermost (Kit/SGRActionRow.m). A track's artist line
+                  left the pair mirrors into the left corner, ⋯ outermost (Kit/SGRActionRow.m). Where that capsule covers
+                  the Card cover (a 402pt phone: the cover {77, 76, 248, 248}, the capsule {298, 62, 88, 44}), the cover is
+                  drawn smaller: square, on the same vertical axis, its bottom edge kept and its top 8pt under the capsule
+                  ({96, 114, 210, 210}), its shadow and the veil on its picture with it, measured with the page at rest so a
+                  scroll moves it with the page (SGRAlbumHero -sgr_card in AlbumHeader.x). ⋯ alone, the Full screen cover,
+                  Cover beside and the playlist are left as they were (harness/album/layout-check.py chrome-*). A track's artist line
                   goes where it only repeats the album's artist (with the guests the title names after "feat." and the
                   like), its explicit badge drawn after the title instead (AlbumCredits.m decides, checked on the Mac
                   by harness/album-credits/; a switch on the Albums page). Under the tracks

@@ -16,6 +16,13 @@
 //                 once the faces stand before it: the name wraps instead of being cut, and the details start under it.
 //   measure       (iPhone, Artist picture, the artist's face shown) the header's passes over and over with nothing changed: the info's labels
 //                 measured no more after the first; the artist's name changed, measured again once, the line reading it.
+//   chrome-card   (iPhone 402pt, Card cover, Spotify's square at {77, 76, 248, 248} as a phone measured it) the pinned
+//                 download and ⋯ on one capsule at {298, 62, 88, 44} cover the square's top trailing corner: the square and
+//                 its shadow are drawn at {96, 114, 210, 210}, there scrolled 120pt too (moved up with the page); download
+//                 gone, ⋯'s circle alone clears it and it is Spotify's square again; download back, the smaller one again.
+//   chrome-card-rtl the same laid out right to left, the capsule mirrored onto the left corner.
+//   chrome-full   (iPhone 402pt, Full screen cover) the same pair over the cover: the picture is the hero's top square,
+//                 {0, 0, 402, 402}, untouched by it.
 //
 // Each holds a "[harness] SHOT <file>" (the window drawn to Documents) before its checks, then logs PASS and exits 0, or
 // logs a FAIL line and exits 1 (../harness-fail.h).
@@ -343,12 +350,94 @@ static void layoutMeasure(UIWindow *window, UIView *page, UILabel *artistName, d
     });
 }
 
-static void layoutRun(UIWindow *window, UIView *page, UIView *cover, UILabel *artistName, dispatch_block_t relayout) {
+// The pinned pair on `page`: download by its identifier, ⋯ the other mirror button pinned there.
+static void layoutPinned(UIView *page, SGRMirrorButton **download, SGRMirrorButton **more) {
+    *download = nil;
+    *more = nil;
+    for (UIView *view in page.subviews) {
+        if (![view isKindOfClass:SGRMirrorButton.class]) continue;
+        if ([view.accessibilityIdentifier isEqualToString:@"Retrine.Album.Download"]) *download = (SGRMirrorButton *)view;
+        else *more = (SGRMirrorButton *)view;
+    }
+}
+
+// The square as the hero draws it, and its shadow, both at `expected` in the page.
+static void layoutExpectCard(NSString *what, UIView *hero, UIView *page, CGRect expected) {
+    [hero layoutIfNeeded];
+    layoutExpectRect([what stringByAppendingString:@", the square"], layoutSquare(hero, page), expected);
+    CALayer *shadow = object_getIvar(hero, class_getInstanceVariable(hero.class, "_shadow"));
+    layoutExpectRect([what stringByAppendingString:@", its shadow"], [hero.layer convertRect:shadow.frame toLayer:page.layer], expected);
+    CGRect path = CGPathGetBoundingBox(shadow.shadowPath);
+    layoutExpectRect([what stringByAppendingString:@", its shadow's path"], path, (CGRect){CGPointZero, expected.size});
+}
+
+// The phone's geometry (iOS 26, 402pt across, Spotify's square 76pt down the header) and the pair's frames there.
+static const CGFloat kLayoutPhoneWidth = 402;
+static const CGRect kLayoutDownload = {{298, 62}, {44, 44}}, kLayoutMore = {{342, 62}, {44, 44}};
+
+static CGRect layoutMirrored(CGRect frame, BOOL rtl) {
+    if (rtl) frame.origin.x = kLayoutPhoneWidth - CGRectGetMaxX(frame);
+    return frame;
+}
+
+static void layoutChrome(UIWindow *window, UIView *page, UIView *cover, UIScrollView *scroll, NSString *name,
+                         dispatch_block_t relayout) {
+    BOOL rtl = [name hasSuffix:@"-rtl"], card = [name hasPrefix:@"chrome-card"];
+    __block UIView *hero = nil;
+    __block SGRMirrorButton *download = nil, *more = nil;
+    layoutWhen(@"the cover under the pinned pair", ^BOOL {
+        hero = besideFind(page, @"SGRAlbumHero");
+        layoutPinned(page, &download, &more);
+        // No veil at all: main.m's pinned hold puts one over the page again once the first has gone.
+        return hero && !besideFind(page, @"SGRFieldVeil") && download && !download.hidden && more && !more.hidden;
+    }, ^{
+        relayout();
+        HARNESS_CHECK(fabs(page.bounds.size.width - kLayoutPhoneWidth) < 0.5);
+        HARNESS_CHECK((page.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft) == rtl);
+        layoutExpectRect(@"the pinned download", download.frame, layoutMirrored(kLayoutDownload, rtl));
+        layoutExpectRect(@"the pinned ⋯", more.frame, layoutMirrored(kLayoutMore, rtl));
+        CGRect spotify = CGRectMake(77, 76, 248, 248);
+        layoutExpectRect(@"Spotify's square", [cover convertRect:cover.bounds toView:page], spotify);
+        layoutShot(window, name);
+        if (!card) {
+            UIView *picture = [hero valueForKey:@"picture"];
+            layoutExpectRect(@"the full screen cover under the pair", [picture convertRect:picture.bounds toView:page],
+                             CGRectMake(0, 0, kLayoutPhoneWidth, kLayoutPhoneWidth));
+            NSLog(@"[harness] PASS album chrome full: the full screen cover is the hero's top square under the pinned pair");
+            exit(0);
+        }
+        CGRect smaller = CGRectMake(96, 114, 210, 210);
+        layoutExpectCard(@"under the two-button capsule", hero, page, smaller);
+        scroll.contentOffset = CGPointMake(0, 120);
+        relayout();
+        layoutExpectCard(@"scrolled 120pt", hero, page, CGRectOffset(smaller, 0, -120));
+        scroll.contentOffset = CGPointZero;
+        relayout();
+        UIView *source = download.source, *row = source.superview;
+        NSUInteger slot = [row.subviews indexOfObject:source];
+        [source removeFromSuperview];
+        relayout();
+        HARNESS_CHECK(download.hidden && !more.hidden);
+        layoutExpectCard(@"under ⋯ alone", hero, page, spotify);
+        if ([row isKindOfClass:UIStackView.class]) [(UIStackView *)row insertArrangedSubview:source atIndex:slot];
+        else [row insertSubview:source atIndex:slot];
+        relayout();
+        HARNESS_CHECK(!download.hidden);
+        layoutExpectCard(@"with download back", hero, page, smaller);
+        NSLog(@"[harness] PASS album chrome card%@: %@ under the capsule, scrolled with the page, %@ under ⋯ alone",
+              rtl ? @" rtl" : @"", NSStringFromCGRect(smaller), NSStringFromCGRect(spotify));
+        exit(0);
+    });
+}
+
+static void layoutRun(UIWindow *window, UIView *page, UIView *cover, UIScrollView *scroll, UILabel *artistName,
+                      dispatch_block_t relayout) {
     NSString *name = layoutCase();
     if ([name isEqualToString:@"text-size"]) layoutTextSize(window, page);
     else if ([name isEqualToString:@"resize-card"]) layoutResizeCard(window, page, cover, relayout);
     else if ([name isEqualToString:@"beside-scrim"]) layoutBesideScrim(window, page);
     else if ([name isEqualToString:@"beside-faces"]) layoutBesideFaces(window, page, artistName, relayout);
     else if ([name isEqualToString:@"measure"]) layoutMeasure(window, page, artistName, relayout);
+    else if ([@[@"chrome-card", @"chrome-card-rtl", @"chrome-full"] containsObject:name]) layoutChrome(window, page, cover, scroll, name, relayout);
     else HARNESS_FAIL(@"no layout case %@", name);
 }

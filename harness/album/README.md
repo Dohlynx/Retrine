@@ -37,7 +37,12 @@ screen cover and requires the contrast gradient back; `beside-faces` gives the a
 face, names that fit the column on one line but not after the face, and requires them wrapped, not cut, with the details
 under them. Each of those writes `album-<case>.png` before its checks. `measure` (iPhone) counts `sizeThatFits:` on the
 header info's labels and requires none over ten header and info passes with nothing changed, some once the artist's
-name changes (the line then as wide as the new name), and none over ten passes after.
+name changes (the line then as wide as the new name), and none over ten passes after. `chrome-card` (iPhone, Card,
+`-coverTop 76` putting Spotify's square at {77, 76, 248, 248} as a 402pt phone measured it) requires the pinned download
+and ⋯ at {298, 62} and {342, 62}, the square and its shadow at {96, 114, 210, 210}, the same moved up 120pt with the
+page scrolled that far, Spotify's square again with download gone (⋯'s circle alone) and the smaller one with it back;
+`chrome-card-rtl` the same with the pair mirrored onto the left; `chrome-full` the Full screen cover the hero's top
+{0, 0, 402, 402} square under the pair.
 
 The side-column checks require a 28pt cover gap, leading text/actions (mirrored in
 RTL), a description wrapped below the row, and action sizes identical to the

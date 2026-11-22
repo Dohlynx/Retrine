@@ -524,7 +524,11 @@ static NSString *trailingLabel(UIView *root) {
     UIView *topGroup = box(outer, UIView.class, CGRectMake(0, 0, W, 321.33), nil);
     UIStackView *groupStack = (UIStackView *)box(topGroup, UIStackView.class, topGroup.bounds, nil);
 
-    UIView *artRow = box(groupStack, UIView.class, CGRectMake(0, 0, W, 248), nil);
+    // `-coverTop <pt>`: Spotify's square that far down the header instead of right under its top inset, where a phone
+    // measured it (layout-check.h's chrome cases).
+    NSUserDefaults *launch = NSUserDefaults.standardUserDefaults;
+    CGFloat coverTop = [launch objectForKey:@"coverTop"] ? [launch doubleForKey:@"coverTop"] : CGRectGetMinY(inset.frame);
+    UIView *artRow = box(groupStack, UIView.class, CGRectMake(0, coverTop - CGRectGetMinY(inset.frame), W, 248), nil);
     UIView *coverElement = box(artRow, UIView.class, CGRectMake(round((W - 248) / 2), 0, 248, 248), nil);
     UIView *cover = box(coverElement, UIView.class, coverElement.bounds, @"CreativeWorkPlatform.Components.UI.ArtWorkElement.WithCoverArt");
     UIImageView *coverPicture = [[UIImageView alloc] initWithFrame:cover.bounds];
@@ -895,7 +899,7 @@ static NSString *trailingLabel(UIView *root) {
 
     [self.window makeKeyAndVisible];
     if (layoutCase()) {
-        layoutRun(self.window, page, cover, artistName, ^{
+        layoutRun(self.window, page, cover, scroll, artistName, ^{
             [page setNeedsLayout];
             [page layoutIfNeeded];
         });

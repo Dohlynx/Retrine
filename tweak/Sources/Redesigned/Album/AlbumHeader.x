@@ -45,6 +45,8 @@ static const CGFloat kMinHero = 120, kMinCover = 80;
 // The square cover's corners with Full bleed covers off: Spotify's own (its ImageViewHolder, r=4), so the album's
 // square is the playlist's, which is Spotify's square left in place.
 static const CGFloat kSquareRadius = 4;
+// The room between the pinned chrome's bottom and the top of a square drawn smaller to clear it, in points.
+static const CGFloat kChromeGapPoints = 8;
 
 // The picture-aware cover (SGRKeyAlbumAdaptiveCover, with the Full screen cover). The cover is read (Kit/SGRCoverRead.h)
 // and stays sharp, itself, down to kSharpRise above the hero's bottom unless the read moves that; from there down a
@@ -404,10 +406,15 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
 @property (nonatomic, readonly) UIImageView *picture;
 @property (nonatomic, copy) UIColor *fieldColor;
 // Where Spotify lays its cover square out, in the hero's coordinates. With Full bleed covers off the picture is
-// drawn there instead, on the field with neither gradient, until an animated cover fills the hero over it.
+// drawn there instead (smaller where the pinned chrome covers it, -sgr_card), on the field with neither gradient,
+// until an animated cover fills the hero over it.
 @property (nonatomic) CGRect square;
 // The header's width when the square was taken.
 @property (nonatomic) CGFloat squareWidth;
+// The page's pinned ⋯ and download (the glass over the top trailing corner) in the hero's coordinates with the page at
+// rest, CGRectNull while neither is pinned to the page. Where it covers the square, the square is drawn smaller under
+// it (-sgr_card).
+@property (nonatomic) CGRect chrome;
 @property (nonatomic) CGRect besideFrame;
 // The cover in Spotify's artwork view, and every cover it puts there afterward: the hero keeps itself
 // right, rather than being handed a picture on each of the header's passes and staying empty between them.
@@ -455,6 +462,7 @@ static char kScrollContext;
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
+    _chrome = CGRectNull;
     self.clipsToBounds = YES;
     self.accessibilityTraits = UIAccessibilityTraitButton | UIAccessibilityTraitImage;
     self.accessibilityLabel = SGL(@"settings.album.cover_viewer.cover", @"Album cover");
@@ -593,13 +601,22 @@ static char kScrollContext;
 - (void)setSquare:(CGRect)square {
     if (CGRectEqualToRect(_square, square)) return;
     _square = square;
-    // A path, so the shadow is drawn from it rather than from an offscreen pass over the layer every frame.
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    _shadow.bounds = (CGRect){CGPointZero, square.size};
-    _shadow.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_shadow.bounds cornerRadius:kSquareRadius].CGPath;
-    [CATransaction commit];
     [self setNeedsLayout];
+}
+
+- (void)setChrome:(CGRect)chrome {
+    if (CGRectEqualToRect(_chrome, chrome)) return;
+    _chrome = chrome;
+    [self setNeedsLayout];
+}
+
+// The square as drawn, and everything that follows it (its shadow, the veil on its picture): Spotify's square, or, where
+// the pinned chrome covers it, the square under the chrome on the same vertical axis, its bottom edge where Spotify's
+// is and its top kChromeGapPoints under the chrome's bottom.
+- (CGRect)sgr_card {
+    if (CGRectIsEmpty(CGRectIntersection(_square, _chrome))) return _square;
+    CGFloat top = CGRectGetMaxY(_chrome) + kChromeGapPoints, side = CGRectGetMaxY(_square) - top;
+    return CGRectMake(CGRectGetMidX(_square) - side / 2, top, side, side);
 }
 
 - (void)layoutSubviews {
@@ -608,7 +625,7 @@ static char kScrollContext;
     self.stretchesContent = bleeds;
     self.dissolves = bleeds;
     [super layoutSubviews];
-    CGRect bounds = self.restBounds;
+    CGRect bounds = self.restBounds, card = [self sgr_card];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     [_veil artWillLayOut];
@@ -622,7 +639,7 @@ static char kScrollContext;
     } else {
         // Stays square under an animated cover too: the clip covers the whole hero, so nothing moves under its fade.
         UIView *holder = _extension ?: _picture;
-        holder.frame = _square;
+        holder.frame = card;
         holder.layer.cornerRadius = kSquareRadius;
         holder.layer.cornerCurve = kCACornerCurveContinuous;
         holder.clipsToBounds = YES;
@@ -630,7 +647,10 @@ static char kScrollContext;
         _shadow.hidden = bleeds;
     }
     self.scrim.hidden = !bleeds;
-    _shadow.frame = CGRectOffset(_square, 0, self.stretch);
+    // A path, so the shadow is drawn from it rather than from an offscreen pass over the layer every frame.
+    if (!CGSizeEqualToSize(_shadow.bounds.size, card.size))
+        _shadow.shadowPath = [UIBezierPath bezierPathWithRoundedRect:(CGRect){CGPointZero, card.size} cornerRadius:kSquareRadius].CGPath;
+    _shadow.frame = CGRectOffset(card, 0, self.stretch);
     _motion.frame = bounds;
     [self sgr_updateMotion];
     if (_adaptive) {
@@ -1356,6 +1376,22 @@ static void applyWash(UIView *page) {
     }
 }
 
+// The ⋯ and download pinned to the page, in the header's coordinates with the page at rest: they stay where
+// they are while the header scrolls under them, so the scroll is taken back out, read from the scroll owner the hero
+// reads its pull from. CGRectNull while neither is shown on the page (Cover beside puts them in the header's info).
+static CGRect pinnedChrome(UIView *header, UIView *page) {
+    static const void *const keys[] = {&kPinnedMoreKey, &kPinnedDownloadKey};
+    CGRect chrome = CGRectNull;
+    for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
+        UIView *button = objc_getAssociatedObject(page, keys[i]);
+        if (button.superview == page && !button.hidden) chrome = CGRectUnion(chrome, button.frame);
+    }
+    if (CGRectIsNull(chrome)) return chrome;
+    UIScrollView *scroll = SGRStretchHeroScrollAbove(header);
+    CGFloat scrolled = scroll ? scroll.contentOffset.y + scroll.adjustedContentInset.top : 0;
+    return CGRectOffset([page convertRect:chrome toView:header], 0, -scrolled);
+}
+
 static void applyHeader(UIView *header, UIView *page) {
     if (!SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.TitleRow", &kTitleKey)) return;
     SGRAlbumHoldPage(page);
@@ -1387,6 +1423,7 @@ static void applyHeader(UIView *header, UIView *page) {
     else [existingHero followCover:nil];
     SGRAlbumHero *hero = objc_getAssociatedObject(header, &kHeroKey);
     hero.besideFrame = beside;
+    hero.chrome = pinnedChrome(header, page);
     header.accessibilityElements = info.sgr_coverBeside ? @[hero, info] : nil;
     // The header scrolls with the page's scroll view, the hero and the info with it. Spotify fades its header
     // element as the page scrolls; over the Music app's layout that left the title, the artist and the row faint

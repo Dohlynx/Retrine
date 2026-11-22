@@ -14,12 +14,18 @@ import threading
 ROOT = Path(__file__).resolve().parents[2]
 BUNDLE = "com.vojta.albumharness"
 MOTION_OFF = ["-spotifyglass.redesign.album.motion", "NO"]
+CARD = ["-spotifyglass.redesign.album.fullCover", "NO"]
+# Spotify's square where a 402pt phone measured it, 76pt down the header.
+PHONE_COVER = ["-coverTop", "76"]
 CASES = {
     "text-size": ("iPhone", MOTION_OFF),
-    "resize-card": ("iPad", MOTION_OFF + ["-spotifyglass.redesign.album.fullCover", "NO"]),
+    "resize-card": ("iPad", MOTION_OFF + CARD),
     "beside-scrim": ("iPad", MOTION_OFF + ["-spotifyglass.redesign.album.fullCover", "YES"]),
     "beside-faces": ("iPad", MOTION_OFF),
     "measure": ("iPhone", MOTION_OFF),
+    "chrome-card": ("iPhone", MOTION_OFF + CARD + PHONE_COVER),
+    "chrome-card-rtl": ("iPhone", MOTION_OFF + CARD + PHONE_COVER + ["rtl"]),
+    "chrome-full": ("iPhone", MOTION_OFF + ["-spotifyglass.redesign.album.fullCover", "YES"] + PHONE_COVER),
 }
 DEVICES = {"iPhone": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
            "iPad": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB"}

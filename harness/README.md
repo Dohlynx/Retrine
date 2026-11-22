@@ -172,7 +172,7 @@ by merely compiling them.
 | --- | --- |
 | `addtab/build.sh` | iOS simulator UI. |
 | `album/build.sh` | iOS simulator UI. |
-| `album/layout-check.py` | iOS simulator UI: the album header through a text-size change, a narrowed iPad window and Cover beside turning off, the artist line beside the cover with its faces, and no text measured on header passes with nothing changed. |
+| `album/layout-check.py` | iOS simulator UI: the album header through a text-size change, a narrowed iPad window and Cover beside turning off, the artist line beside the cover with its faces, no text measured on header passes with nothing changed, and the Card cover drawn smaller under the pinned download and ⋯ capsule (left to right, right to left, Full screen untouched). |
 | `appearance-page/build.sh` | iOS simulator UI. |
 | `artist/build.sh` | iOS simulator UI. |
 | `audio-effects-page/build.sh` | iOS simulator UI. |
