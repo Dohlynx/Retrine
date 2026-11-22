@@ -692,14 +692,18 @@ Shared:
                   system's now playing through this hook and Player/NowPlayingExtras.x is checked by harness/now-playing/
     AnimatedArtwork/ moving artwork (AnimatedArtwork.h): the track's Canvas, else Apple Music's animated album cover
                   (SGMotionCatalog.m: the full release title including the edition and the album artist suffice, even
-                  when a song's title differs; Apple Music's " - EP" suffix is not part of the title. Otherwise a single release must contain the song with its artist credit;
+                  when a song's title differs; Apple Music's " - EP" and " - Single" suffixes are not part of the title. A single
+                  named "X - Single" stands for Spotify's "X" only with video, as a last resort once neither the album nor the
+                  song found a release in a final (not full first-page) result; Spotify's own "X - Single" is compared whole.
+                  Otherwise a single release must contain the song with its artist credit;
                   trailing features and version tags are simplified on the song, never on the album. A soundtrack's songs
                   share the title search; only a full page with no identified release can be narrowed by artist.
                   If the title search cannot identify the release and the Spotify album URI is known, Spotify's album metadata
                   supplies its UPC. Apple Music gets the barcode as supplied; only albums whose own UPC matches (ignoring
                   leading zeros) qualify. If Apple returns no UPC match, the player's track (on the album page, the first
                   track on the album) supplies a recording code from Spotify. Of the Apple albums containing that ISRC,
-                  exactly one distinct non-single must share the edition-stripped album name, whether it has video or not.
+                  exactly one distinct non-single must share the edition-stripped album name, whether it has video or not;
+                  with none, exactly one "X - Single" whose whole name (less the suffix) is the album's.
                   The answer is cached by Spotify album URI in the same week-long album cache.
                   An identified album without video stays still rather than borrowing another artist's cover. Header and track share the
                   master and media playlist lookup for the same stream size. The catalog is
