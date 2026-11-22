@@ -216,6 +216,7 @@ by merely compiling them.
 | `tabbar/build.sh` | iOS simulator UI. |
 | `tabbar/capture.sh` | iOS simulator screen recording, for a visual review frame by frame. |
 | `tabbar/fade-check.sh` | iOS simulator UI. |
+| `tabbar/ipad-check.sh` | iPad simulator UI: tab names whole beside their glyphs, the fade down to the container's foot. |
 | `update/build.sh` | iOS simulator and live GitHub requests. |
 
 Excluded modes of otherwise included scripts: AutoEq `online` and translation

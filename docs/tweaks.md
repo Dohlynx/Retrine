@@ -1394,7 +1394,8 @@ Redesigned:
                   Offline or Private Session under the bar), so the now playing bar and the pages move up with it. Under both
                   bars the pages fade to half black (SGRBarFade, the stock bar's own subview, across the tab bar container's
                   width as Spotify's own fade under its bar is, so in a regular width, where Spotify's bar is narrower than the
-                  screen beside the iPad capsule, it has no sides of its own; Fade under the bar on the Tab bar
+                  screen beside the iPad capsule, it has no sides of its own, and down to that container's foot, 16 pt under
+                  Spotify's regular width bar, so it has no edge under the bar either; Fade under the bar on the Tab bar
                   page, spotifyglass.redesign.navbar.fade, on until switched off, applies as the bar lays out again and
                   lets the fade go altogether, and the page's preview draws the same ramp, 88 pt above the bar, over rows
                   of its own). Apple symbols on the Tab bar page (spotifyglass.redesign.navbar.symbols, on until
@@ -1403,7 +1404,9 @@ Redesigned:
                   magnifyingglass, Your Library books.vertical, Create plus, Premium crown, any other square.grid.2x2. The
                   page comes from the list of tabs Spotify reads (Navbar.x keeps each label's URI, SGRNavbarStockURIs), so it
                   holds in any language; a tab whose page the list has not named keeps Spotify's glyph, and a tab of the
-                  mod's own keeps the icon picked for it. A page scrolled down
+                  mod's own keeps the icon picked for it. The bar takes its items again when one that had no glyph gets
+                  it: in a regular width UIKit sets each name beside its glyph and sizes the tab as the bar takes the item,
+                  so an iPad cut the names of items handed over bare (harness/tabbar/ipad-check.sh). A page scrolled down
                   minimizes the bar to glyphs on circles: at the trailing end the last split tab or, with none, Spotify's
                   Search wherever the row holds it, as the Music app keeps Search there (known by the page it opens in
                   Spotify's list, spotify:search or 9.1.78 to 9.1.90's spotify:find, never by its name or place; a tab

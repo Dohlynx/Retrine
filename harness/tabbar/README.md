@@ -56,7 +56,8 @@ frames, so how Spotify's own content takes the narrower card is not shown here.
 `names` logs every title the glass bars show and whether UIKit cut it short ("CUT", against the width the text
 needs at the smallest size its label may shrink to): at rest, as the bar starts to expand from minimized, mid-way,
 once expanded, after four turns 0.1 s apart, after a minimize and an expand with no animation (the player opening
-and closing), and after another layout pass. Each line ends with how many are cut, which should be 0. `split2`
+and closing), and after another layout pass. Each line ends with how many are cut, which should be 0; with `strict`
+a cut name fails the run and the last report ends it with `PASS all names`. `split2`
 sets Create apart as well as Search, `five` adds a fifth tab and `long` gives two tabs long names (`names split2`,
 `names split five long`). The log is read most reliably from the console:
 `xcrun simctl launch --console-pty <udid> com.vojta.tabbarharness names split2`.
@@ -127,13 +128,22 @@ and the glass bar stood the difference above it, over the now playing bar.
 
 `fade-check.sh` checks the fade under the bars (`spotifyglass.redesign.navbar.fade`) in a simulator of its own:
 `fade toggle` (and `fade toggle split`) switches it off and on live the way the Tab bar page does, and asserts one
-`SGRBarFade` behind the glass from `SGRBarFadeAbovePt` over the glass bar's top to its foot and across the tab bar
-container's whole width, taking no touches (a finger in its band lands on the page), none at all when off, none
+`SGRBarFade` behind the glass from `SGRBarFadeAbovePt` over the glass bar's top to the tab bar container's foot and
+across its whole width, taking no touches (a finger in its band lands on the page), none at all when off, none
 kept alive after 20 turns, the same minimized and with the bar hidden, and Spotify's own `TabBarGradientView` left
 clear throughout. `fade toggle regular` does it over Spotify's regular width bar, 8 pt in and 648 of the
-container's 1016 pt as 9.2.0 lays it out on an iPad Pro 13-inch (`regular` lays the bar out so everywhere),
-minimized left out since that bar never minimizes. 2026-11-19, before the fix: the fade was only as wide as that
-bar, which an iPad showed as a dark rectangle with hard sides behind the glass. `fade`, `fade off` and
+container's 1016 pt as 9.2.0 lays it out on an iPad Pro 13-inch and 16 pt above the container's foot as on an
+iPad Pro 11-inch (`regular` lays the bar out so everywhere), minimized left out since that bar never minimizes.
+2026-11-19, before the fix: the fade was only as wide as that bar, which an iPad showed as a dark rectangle with
+hard sides behind the glass. 2026-11-22, before the fix (issue #38): the fade ended at the bar's foot, 16 pt short
+of the container's, so the page showed undimmed in a strip under the half black, a hard edge across the screen.
+
+`ipad-check.sh` runs in an iPad simulator of its own (the harness app is built for both device families):
+`names strict` and `names strict regular`, then `fade toggle regular`. 2026-11-22, iPad Pro 11-inch on iOS 26.5,
+before the fix: an iPad's bar sets each name beside its glyph, and the names were cut ("Search" 24 pt for 42,
+"Your Library" 24 for 72, "Create" 24 for 40; "홈" 4 for 10.5 and "만…" in Spotify itself), since UIKit gave each tab
+its width as the bar took the items, before they had their glyphs. A split tab's own bar is a circle there too
+and shows its glyph alone, so `split` is not part of the check. `fade`, `fade off` and
 `fade mini` hold the page in color for a screenshot, and `navsettings` opens the Tab bar page over the bar
 (navsettings.m): its fade switch starts on, the preview reads the fade, and the switch takes the fade off the real
 bar at once. It does so through the switch's own path in the product (`SGRRefreshBarFade`, TabBar.x): stubs.m's

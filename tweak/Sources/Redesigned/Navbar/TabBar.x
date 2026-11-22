@@ -547,7 +547,9 @@ static UIViewController *containerOf(UIView *stockBar);
 // at all, and switching it on again makes one anew. Across, it spans TabBarContainerImpl's view, as Spotify's own
 // TabBarGradientView does: in a regular width Spotify's bar is narrower than that view (648 of 1016 pt beside the
 // now playing capsule, 9.2.0 on an iPad Pro 13-inch), and a fade only as wide as the bar dimmed the page under it as
-// a rectangle with hard sides. In a compact width the bar is as wide as the view.
+// a rectangle with hard sides. In a compact width the bar is as wide as the view. Down, it reaches that view's foot
+// too: Spotify's regular width bar stands 16 pt above it (y 1058, 76 pt tall in 1150, 9.2.0 on an iPad Pro 11-inch),
+// and a fade ending at the bar's foot left the page undimmed below it, a hard edge under the half black.
 static void placeFade(UIView *stockBar, CGRect glass) {
     SGRBarFade *fade = objc_getAssociatedObject(stockBar, &kFadeKey);
     if (!SGEnabled(SGRKeyNavbarFade)) {
@@ -566,7 +568,7 @@ static void placeFade(UIView *stockBar, CGRect glass) {
     if (!container) return;
     CGRect across = [stockBar convertRect:container.bounds fromView:container];
     CGFloat top = CGRectGetMinY(glass) - SGRBarFadeAbovePt;
-    CGRect frame = CGRectMake(CGRectGetMinX(across), top, CGRectGetWidth(across), CGRectGetMaxY(glass) - top);
+    CGRect frame = CGRectMake(CGRectGetMinX(across), top, CGRectGetWidth(across), MAX(CGRectGetMaxY(glass), CGRectGetMaxY(across)) - top);
     if (!CGRectEqualToRect(fade.frame, frame)) fade.frame = frame;
     if (fade.superview != stockBar || stockBar.subviews.firstObject != fade) [stockBar insertSubview:fade atIndex:0];
 }
@@ -651,6 +653,10 @@ static void setGlyphs(UITabBarItem *item, UIImage *image, UIImage *selectedImage
 }
 
 // One bar's share of the tabs: its items, their glyphs and titles. YES while a glyph is still missing.
+// The bar takes its items again when one that had no glyph gets it. In a regular width UIKit sets a title beside its
+// glyph and gives the tab the width the two need as the bar takes the item, never again when the glyph comes later:
+// items handed over bare kept the width of the title alone, which the glyph then took 21 pt of (iPad Pro 11-inch,
+// iOS 26.5: "홈" 4 pt wide for 10.5, "만들기" 19.5 for 31.5, cut to "만…").
 static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideLabels) {
     bar.tintColor = SGRAccent();
     if (![sources isEqualToArray:bar.sources]) {
@@ -670,9 +676,13 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         SGLogLong(@"navbar", out);
     }
 
-    BOOL missing = NO;
+    // Drawing a glyph lays Spotify's row out, which comes back here (itemDidLayOut): a pass inside the one handing
+    // the items over again finds the bar empty and leaves it to that one.
+    NSArray<UITabBarItem *> *barItems = bar.items;
+    if (barItems.count != sources.count) return NO;
+    BOOL missing = NO, drew = NO;
     for (NSUInteger i = 0; i < sources.count; i++) {
-        UITabBarItem *item = bar.items[i];
+        UITabBarItem *item = barItems[i];
         // A tab not selected when its item was drawn kept an outlined selectedImage, and one selected kept its filled
         // glyph as image. Both images come from the icon the view holds (glyphOfIcon), known by the icon itself and
         // never by the label's color, which Spotify repaints apart from the icon: an SPTEncoreIcon, which Spotify
@@ -697,8 +707,10 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         }
         NSArray<NSString *> *keys = symbol ? nil : glyphKeysOf(live);
         if (!item.image || !item.selectedImage || (keys && ![objc_getAssociatedObject(item, &kGlyphKeysKey) containsObject:keys.firstObject])) {
+            BOOL bare = !item.image;
             if (symbol) setGlyphs(item, symbolGlyph(symbol, NO), symbolGlyph(symbol, YES));
             else setGlyphs(item, glyphOfIcon(live, NO), glyphOfIcon(live, YES));
+            drew |= bare && item.image;
             if (item.image && item.selectedImage) objc_setAssociatedObject(item, &kGlyphKeysKey, keys, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         missing |= !item.image || !item.selectedImage;
@@ -707,6 +719,14 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         item.accessibilityHint = sg_minimized && bar == objc_getAssociatedObject(bar.stockBar, &kBarKey) ? SGL(@"settings.tabbar.minimized.hint", @"Shows all tabs") : nil;
         NSString *title = hideLabels ? nil : labelIn(sources[i]).text;
         if (hideLabels ? item.title != nil : title.length && ![title isEqualToString:item.title]) item.title = title;
+    }
+    if (drew) {
+        // The same items again, which UIKit only measures anew once the bar has let go of them. The selection goes
+        // with them and comes back, for a bar whose tab Spotify paints no selection for (selectActive).
+        UITabBarItem *selected = bar.selectedItem;
+        [bar setItems:@[] animated:NO];
+        [bar setItems:barItems animated:NO];
+        bar.selectedItem = selected;
     }
     return missing;
 }

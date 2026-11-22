@@ -407,11 +407,11 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
         [self.compactGuide.topAnchor constraintEqualToAnchor:view.safeAreaLayoutGuide.bottomAnchor constant:-49],
         [self.compactGuide.bottomAnchor constraintEqualToAnchor:view.bottomAnchor],
         // `regular`: Spotify's regular width bar, 8 pt in and 648 of the container's 1016 pt, leaving the rest to the
-        // now playing capsule (9.2.0, iPad Pro 13-inch).
+        // now playing capsule (9.2.0, iPad Pro 13-inch), and 16 pt above the container's foot (iPad Pro 11-inch).
         [stack.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:regular ? 8 : 0],
         regular ? [stack.widthAnchor constraintEqualToAnchor:view.widthAnchor multiplier:648.0 / 1016]
                 : [stack.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
-        [stack.bottomAnchor constraintEqualToAnchor:view.bottomAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:regular ? -16 : 0],
         [stack.heightAnchor constraintEqualToAnchor:self.compactGuide.heightAnchor],
         [self.bar.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor],
         [self.bar.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor],
@@ -665,8 +665,9 @@ static void setFade(SGHarnessChrome *chrome, BOOL on) {
     [chrome.tabs.bar layoutIfNeeded];
 }
 
-// The fade there once, behind the glass, from SGRBarFadeAbovePt over the glass bar's top to its foot and across the
-// tab bar container's whole width (with `regular` wider than Spotify's bar), taking no touches; or no fade of the
+// The fade there once, behind the glass, from SGRBarFadeAbovePt over the glass bar's top to the tab bar container's
+// foot (with `regular` 16 pt under the bar's) and across its whole width (with `regular` wider than Spotify's bar),
+// taking no touches; or no fade of the
 // redesign's anywhere in the window. Either way Spotify's own stays clear, and a finger in the fade's band over the
 // now playing card lands on the page.
 static void expectFade(SGHarnessChrome *chrome, BOOL on, NSString *moment) {
@@ -680,7 +681,7 @@ static void expectFade(SGHarnessChrome *chrome, BOOL on, NSString *moment) {
         UIView *fade = fades.firstObject;
         CGRect frame = [fade convertRect:fade.bounds toView:window];
         if (fades.count != 1 || fade.superview != stock || stock.subviews.firstObject != fade || fade.userInteractionEnabled
-            || fabs(CGRectGetMinY(frame) - (CGRectGetMinY(glass) - SGRBarFadeAbovePt)) > 0.5 || fabs(CGRectGetMaxY(frame) - CGRectGetMaxY(glass)) > 0.5
+            || fabs(CGRectGetMinY(frame) - (CGRectGetMinY(glass) - SGRBarFadeAbovePt)) > 0.5 || fabs(CGRectGetMaxY(frame) - MAX(CGRectGetMaxY(glass), CGRectGetMaxY(across))) > 0.5
             || fabs(CGRectGetMinX(frame) - CGRectGetMinX(across)) > 0.5 || fabs(CGRectGetMaxX(frame) - CGRectGetMaxX(across)) > 0.5) {
             HARNESS_FAIL(@"%@: %lu fades, the first %@ under %@ (first subview %d, touches %d), glass %@, container %@", moment,
                          (unsigned long)fades.count, NSStringFromCGRect(frame), NSStringFromClass(fade.superview.class),
@@ -758,7 +759,7 @@ static void runFadeChecks(SGHarnessChrome *chrome) {
 }
 
 // Every title the glass bars show, and whether UIKit cut it short: the width its text needs at the
-// smallest size the label may shrink to, against the width it was given.
+// smallest size the label may shrink to, against the width it was given. With `strict` a cut title fails the run.
 static void reportNames(SGHarnessChrome *chrome, NSString *moment) {
     NSMutableString *out = [NSMutableString stringWithFormat:@"[harness] %@ names", moment];
     NSUInteger cut = 0;
@@ -790,6 +791,7 @@ static void reportNames(SGHarnessChrome *chrome, NSString *moment) {
     }
     [out appendFormat:@" | %lu cut", (unsigned long)cut];
     NSLog(@"%@", out);
+    if (cut && [NSProcessInfo.processInfo.arguments containsObject:@"strict"]) HARNESS_FAIL(@"%@", out);
 }
 
 // Whether the bar and the card agree: minimized, the platter is the 62 pt circle 21 pt in and the card is in
@@ -1115,7 +1117,7 @@ static void runStates(SGHarnessChrome *chrome) {
 
 // Before every %ctor, so the redesign's gate reads on; the fade under the bars on unless the launch line says `off`;
 // Apple symbols stored off (the product's default is on; `symbols` switches it itself), and the tabs' names stored
-// hidden (the product's default shows them), but shown from the bar's first pass with `symbols` (not `symbols hold`):
+// hidden (the product's default shows them), but shown from the bar's first pass with `names` and `symbols` (not `symbols hold`):
 // the glyph checks below compare Spotify's own glyphs on a bar of icons alone.
 __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
@@ -1125,7 +1127,8 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     else [store removeObjectForKey:SGRKeyNavbarFade];
     [store setBool:NO forKey:SGRKeyNavbarSymbols];
     BOOL names = (args.count > 1 && [args[1] isEqualToString:@"symbols"] && ![args containsObject:@"hold"])
-              || (args.count > 1 && [args[1] isEqualToString:@"search"] && [args containsObject:@"labels"]);
+              || (args.count > 1 && [args[1] isEqualToString:@"search"] && [args containsObject:@"labels"])
+              || (args.count > 1 && [args[1] isEqualToString:@"names"]);
     [store setBool:!names forKey:SGRKeyNavbarHideLabels];
 }
 
@@ -1427,7 +1430,14 @@ static void after(double seconds, dispatch_block_t block) {
             [chrome.tabs.bar setNeedsLayout];
             [chrome.tabs.bar layoutIfNeeded];
         });
-        after(7.5, ^{ reportNames(chrome, @"after Spotify lays out"); });
+        after(7.5, ^{
+            reportNames(chrome, @"after Spotify lays out");
+            if ([NSProcessInfo.processInfo.arguments containsObject:@"strict"]) {
+                printf("PASS all names\n");
+                fflush(stdout);
+                exit(0);
+            }
+        });
     }
     // `edges` (after `none`, `split`, `split2` or `jam`, with `regular` or `rtl` for Spotify's own edges): the card's
     // sides at rest, minimized and expanded with no animation, after a minimize turned back mid-spring, and minimized
