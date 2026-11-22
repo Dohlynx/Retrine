@@ -692,7 +692,7 @@ Shared:
                   system's now playing through this hook and Player/NowPlayingExtras.x is checked by harness/now-playing/
     AnimatedArtwork/ moving artwork (AnimatedArtwork.h): the track's Canvas, else Apple Music's animated album cover
                   (SGMotionCatalog.m: the full release title including the edition and the album artist suffice, even
-                  when a song's title differs. Otherwise a single release must contain the song with its artist credit;
+                  when a song's title differs; Apple Music's " - EP" suffix is not part of the title. Otherwise a single release must contain the song with its artist credit;
                   trailing features and version tags are simplified on the song, never on the album. A soundtrack's songs
                   share the title search; only a full page with no identified release can be narrowed by artist.
                   If the title search cannot identify the release and the Spotify album URI is known, Spotify's album metadata
