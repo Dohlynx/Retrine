@@ -79,6 +79,11 @@ static NSURL *metadataURL(NSString *path, BOOL post) {
 @end
 
 dispatch_block_t SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done) {
+    return SGSpotifyMetadataRequestAllowConstrained(path, body, YES, done);
+}
+
+dispatch_block_t SGSpotifyMetadataRequestAllowConstrained(NSString *path, NSData *body, BOOL allowConstrained,
+                                                          SGSpotifyMetadataReply done) {
     __block BOOL cancelled = NO;
     __block NSURLSessionDataTask *task;
     void (^start)(void) = ^{
@@ -93,6 +98,7 @@ dispatch_block_t SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotif
     SGSpclientHeaders(^(NSDictionary<NSString *, NSString *> *headers) {
         if (cancelled) return;
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+        request.allowsConstrainedNetworkAccess = allowConstrained;
         request.allHTTPHeaderFields = headers;
         if (body) {
             request.HTTPMethod = @"POST";

@@ -93,7 +93,7 @@ static NSString *songArtists(SPTPlayerTrack *track, NSDictionary *metadata) {
     if (!_walked) { [self fetchAhead]; return; }
     NSDictionary *metadata = [state.track.metadata isKindOfClass:NSDictionary.class] ? state.track.metadata : nil;
     __weak SGMotionFollower *weakSelf = self;
-    _currentTicket = SGMotionRequestSongClip(uri, canvas, songArtists(state.track, metadata), metadata[@"album_title"], state.track.trackTitle, SGMotionPixels(), ^(NSURL *file, NSString *source) {
+    _currentTicket = SGMotionRequestAlbumSongClip(uri, canvas, songArtists(state.track, metadata), metadata[@"album_title"], state.track.trackTitle, metadata[@"album_uri"], SGMotionPixels(), ^(NSURL *file, NSString *source) {
         SGMotionFollower *follower = weakSelf;
         if (!follower || walk != follower->_walk) return;
         follower->_source = source;
@@ -115,7 +115,7 @@ static NSString *songArtists(SPTPlayerTrack *track, NSDictionary *metadata) {
     if (!allowed) return;
     _ahead = uri;
     NSDictionary *metadata = [track.metadata isKindOfClass:NSDictionary.class] ? track.metadata : nil;
-    _aheadTicket = SGMotionRequestSongClip(uri, SGMotionCanvasIn(metadata), songArtists(track, metadata), metadata[@"album_title"], track.trackTitle, SGMotionPixels(),
+    _aheadTicket = SGMotionRequestAlbumSongClip(uri, SGMotionCanvasIn(metadata), songArtists(track, metadata), metadata[@"album_title"], track.trackTitle, metadata[@"album_uri"], SGMotionPixels(),
                     ^(NSURL *file, NSString *source) {
         SGLog(@"motion: the next track's clip fetched ahead: %@", file ? source : @"none");
     });

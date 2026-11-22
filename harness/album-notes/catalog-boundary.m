@@ -1,5 +1,12 @@
 #import "catalog-boundary.h"
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
+#import "Shared/SpotifyMetadata/SGSpotifyMetadata.h"
+#import "../motion/no-recording-lookup.h"
+
+BOOL SGMotionAppleMusicOn(void) { return YES; }
+dispatch_block_t SGSpotifyMetadataRequestAllowConstrained(NSString *path, NSData *body, BOOL allow, SGSpotifyMetadataReply done) {
+    CHECK(NO); return ^{};
+}
 
 NSDictionary *CatalogFixture;
 BOOL CatalogLowData;

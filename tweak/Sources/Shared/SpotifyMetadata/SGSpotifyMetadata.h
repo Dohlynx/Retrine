@@ -9,6 +9,8 @@ static const NSUInteger SGSpotifyMetadataMaxResponseBytes = 2 * 1024 * 1024;
 // redirects and stop at 2 MiB. Completion is asynchronous; valid transfers finish on the delegate queue.
 // The returned action cancels this transfer, including a pending wait for headers.
 dispatch_block_t SGSpotifyMetadataRequest(NSString *path, NSData *body, SGSpotifyMetadataReply done);
+dispatch_block_t SGSpotifyMetadataRequestAllowConstrained(NSString *path, NSData *body, BOOL allowConstrained,
+                                                          SGSpotifyMetadataReply done);
 
 // The common BatchedEntityRequest wire shape. Inline so Foundation-only consumers of the
 // codec (including the existing haptics harness) need not link the authenticated transport.

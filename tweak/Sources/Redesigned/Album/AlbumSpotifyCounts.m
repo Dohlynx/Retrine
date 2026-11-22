@@ -7,63 +7,12 @@ static const NSTimeInterval kCountLifetimeSeconds = 24 * 60 * 60, kUnavailableLi
 // Extended-metadata play count: the request asks for kind 185; the response carries it in payload field 3
 // (a varint, or a message with varint field 1).
 static const uint64_t kPlayCountExtension = 185;
-static NSString *const kBase62 = @"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-static BOOL validURI(NSString *uri, NSString *kind) {
-    if (![uri isKindOfClass:NSString.class]) return NO;
-    NSString *prefix = [NSString stringWithFormat:@"spotify:%@:", kind];
-    if (![uri hasPrefix:prefix] || uri.length != prefix.length + 22) return NO;
-    for (NSUInteger i = prefix.length; i < uri.length; i++) {
-        if ([kBase62 rangeOfString:[uri substringWithRange:NSMakeRange(i, 1)]].location == NSNotFound) return NO;
-    }
-    return YES;
-}
-
-NSString *SGRAlbumMetadataPath(NSString *albumURI) {
-    if (!validURI(albumURI, @"album")) return nil;
-    NSString *identifier = [albumURI substringFromIndex:@"spotify:album:".length];
-    uint8_t gid[16] = {0};
-    for (NSUInteger i = 0; i < identifier.length; i++) {
-        NSUInteger carry = [kBase62 rangeOfString:[identifier substringWithRange:NSMakeRange(i, 1)]].location;
-        for (NSInteger j = sizeof(gid) - 1; j >= 0; j--) {
-            carry += gid[j] * 62;
-            gid[j] = carry & 255;
-            carry >>= 8;
-        }
-        if (carry) return nil; // A 22-digit base62 value need not fit Spotify's 128-bit GID.
-    }
-    NSMutableString *hex = [NSMutableString string];
-    for (NSUInteger i = 0; i < sizeof(gid); i++) [hex appendFormat:@"%02x", gid[i]];
-    return [NSString stringWithFormat:@"/metadata/4/album/%@?market=from_token", hex];
-}
-
-static NSString *trackFromGID(id hex) {
-    if (![hex isKindOfClass:NSString.class] || [hex length] != 32 ||
-        [hex rangeOfString:@"^[0-9A-Fa-f]{32}$" options:NSRegularExpressionSearch].location == NSNotFound) return nil;
-    uint8_t bytes[16];
-    for (NSUInteger i = 0; i < sizeof(bytes); i++) {
-        unsigned int value = 0;
-        [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(i * 2, 2)]] scanHexInt:&value];
-        bytes[i] = value;
-    }
-    unichar identifier[22];
-    for (NSInteger digit = 21; digit >= 0; digit--) {
-        NSUInteger remainder = 0;
-        for (NSUInteger i = 0; i < sizeof(bytes); i++) {
-            NSUInteger value = remainder * 256 + bytes[i];
-            bytes[i] = value / 62;
-            remainder = value % 62;
-        }
-        identifier[digit] = [kBase62 characterAtIndex:remainder];
-    }
-    return [@"spotify:track:" stringByAppendingString:[NSString stringWithCharacters:identifier length:22]];
-}
 
 NSString *SGRAlbumTrackURIFromMenuIdentifier(NSString *identifier) {
     NSString *prefix = @"Components.UI.ContextMenuButton-";
     if (![identifier hasPrefix:prefix]) return nil;
     NSString *uri = [@"spotify:track:" stringByAppendingString:[identifier substringFromIndex:prefix.length]];
-    return validURI(uri, @"track") ? uri : nil;
+    return SGSpotifyValidURI(uri, @"track") ? uri : nil;
 }
 
 NSArray<NSString *> *SGRAlbumMetadataTracks(NSData *json) {
@@ -75,8 +24,8 @@ NSArray<NSString *> *SGRAlbumMetadataTracks(NSData *json) {
         if (![disc isKindOfClass:NSDictionary.class] || ![disc[@"track"] isKindOfClass:NSArray.class]) return nil;
         for (id track in disc[@"track"]) {
             if (![track isKindOfClass:NSDictionary.class]) return nil;
-            NSString *uri = track[@"uri"], *gidURI = trackFromGID(track[@"gid"]);
-            if (!validURI(uri, @"track")) uri = gidURI;
+            NSString *uri = track[@"uri"], *gidURI = SGSpotifyTrackURIFromGID(track[@"gid"]);
+            if (!SGSpotifyValidURI(uri, @"track")) uri = gidURI;
             if (!uri || (gidURI && ![uri isEqual:gidURI])) return nil;
             [tracks addObject:uri];
             if (tracks.count > kMaxTracksPerAlbum) return nil;
@@ -193,7 +142,7 @@ static BOOL validCounts(id counts) {
     if (![counts isKindOfClass:NSDictionary.class] || [counts count] > kMaxTracksPerAlbum) return NO;
     for (id uri in counts) {
         id number = counts[uri];
-        if (!validURI(uri, @"track") || ![number isKindOfClass:NSNumber.class] ||
+        if (!SGSpotifyValidURI(uri, @"track") || ![number isKindOfClass:NSNumber.class] ||
             CFGetTypeID((__bridge CFTypeRef)number) == CFBooleanGetTypeID() ||
             [number doubleValue] < 0 || [number unsignedLongLongValue] > (unsigned long long)LLONG_MAX ||
             floor([number doubleValue]) != [number doubleValue]) return NO;
@@ -226,7 +175,7 @@ static BOOL validCounts(id counts) {
     if (![records isKindOfClass:NSDictionary.class] || [records count] > kMaxCachedAlbums) return;
     for (NSString *uri in records) {
         id record = records[uri];
-        if (!SGRAlbumMetadataPath(uri) || ![record isKindOfClass:NSDictionary.class] ||
+        if (!SGSpotifyAlbumMetadataPath(uri) || ![record isKindOfClass:NSDictionary.class] ||
             ![record[@"expires"] isKindOfClass:NSDate.class] || ![record[@"saved"] isKindOfClass:NSDate.class] ||
             !validCounts(record[@"counts"])) continue;
         if ([record[@"expires"] timeIntervalSinceNow] > 0) _records[uri] = record;
@@ -259,7 +208,7 @@ static BOOL validCounts(id counts) {
     });
 }
 - (void)loadAlbum:(NSString *)uri completion:(SGRAlbumCountsReply)done {
-    NSString *path = SGRAlbumMetadataPath(uri);
+    NSString *path = SGSpotifyAlbumMetadataPath(uri);
     if (!path) { done(nil); return; }
     dispatch_async(_queue, ^{
         [self readCache];
@@ -323,7 +272,7 @@ SGRAlbumCountsStore *SGRAlbumSpotifyCountsStore(void) {
     _counts = nil;
     NSUInteger generation = ++_generation;
     changed();
-    if (!SGRAlbumMetadataPath(uri)) return;
+    if (!SGSpotifyAlbumMetadataPath(uri)) return;
     __weak SGRAlbumCountPage *weakSelf = self;
     [_store loadAlbum:uri completion:^(NSDictionary *counts) {
         SGRAlbumCountPage *page = weakSelf;

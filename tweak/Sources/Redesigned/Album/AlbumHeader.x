@@ -39,6 +39,10 @@
 #import "AlbumNotes.h"
 #import "SGRCoverBeside.h"
 
+@interface SGAlbumQueuePage : NSObject
++ (NSString *)albumURI:(id)controller;
+@end
+
 // A header whose text begins nearer the top than this is one mid load, not one to measure the hero from;
 // and an artwork view narrower than this is a placeholder glyph rather than the cover.
 static const CGFloat kMinHero = 120, kMinCover = 80;
@@ -898,6 +902,9 @@ static char kScrollContext;
     CGFloat pixels = SGMotionPixels();
     __weak SGRAlbumHero *weakSelf = self;
     __weak UIView *weakPage = page;
+    NSString *albumURI = nil;
+    for (UIResponder *r = page.nextResponder; r && !albumURI; r = r.nextResponder)
+        if ([r isKindOfClass:UIViewController.class]) albumURI = [NSClassFromString(@"SGAlbumQueuePage") albumURI:r];
     // Tall, as the Music app's album page: the hero runs past the title, taller than wide, and a square clip
     // filled into it lost its sides. An album with only a square clip gets that one.
     SGMotionPageAlbumCover(artist, album, pixels, ^(NSURL *file, BOOL identified) {
@@ -905,13 +912,22 @@ static char kScrollContext;
         UIView *owner = weakPage;
         if (!hero || hero->_motionGeneration != generation || SGRAlbumPageOf(hero) != owner) return;
         if (file) { [hero showMotion:file]; return; }
-        if (identified || !SGRAlbumMotionRowsAllowed(owner)) return;
+        if (identified || !SGMotionAppleMusicOn()) return;
+        void (^tryIdentifiers)(void) = ^{
+            if (!albumURI) return;
+            SGMotionPageIdentifierCover(albumURI, album, pixels, ^(NSURL *clip) {
+                SGRAlbumHero *target = weakSelf;
+                if (clip && target && target->_motionGeneration == generation && SGRAlbumPageOf(target) == weakPage)
+                    [target showMotion:clip];
+            });
+        };
+        if (!SGRAlbumMotionRowsAllowed(owner)) { tryIdentifiers(); return; }
         BOOL (^stillCurrent)(void) = ^BOOL {
             SGRAlbumHero *current = weakSelf;
             return current && current->_motionGeneration == generation && SGRAlbumPageOf(current) == weakPage &&
                    SGRAlbumMotionRowsAllowed(weakPage);
         };
-        SGRAlbumWaitForMotionRow(owner, NO, ^BOOL(NSString *credit, NSString *song) {
+        BOOL (^startRows)(NSString *, NSString *) = ^BOOL(NSString *credit, NSString *song) {
             if (!stillCurrent()) return YES;
             SGMotionAlbumRowMatcher(artist, album, pixels, ^(SGMotionRowMatch match) {
                 // Read rows again from the settled list, not strings captured before the search.
@@ -919,9 +935,12 @@ static char kScrollContext;
             }, ^(NSURL *clip) {
                 SGRAlbumHero *target = weakSelf;
                 if (clip && stillCurrent()) [target showMotion:clip];
+                else if (!clip && stillCurrent()) tryIdentifiers();
             });
             return YES;
-        });
+        };
+        if (albumURI) startRows(nil, nil);
+        else SGRAlbumWaitForMotionRow(owner, NO, startRows);
     });
 }
 

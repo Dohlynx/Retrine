@@ -97,9 +97,9 @@ static void coverChecks(void) {
 int main(void) {
     @autoreleasepool {
         coverChecks();
-        check([SGRAlbumMetadataPath(album) isEqual:@"/metadata/4/album/00000000000000000000000000000001?market=from_token"], @"album base62 converted to 128-bit GID");
-        check(!SGRAlbumMetadataPath(@"spotify:album:ZZZZZZZZZZZZZZZZZZZZZZ"), @"overflowing identity rejected");
-        check(!SGRAlbumMetadataPath(one), @"a track cannot stand in for an album");
+        check([SGSpotifyAlbumMetadataPath(album) isEqual:@"/metadata/4/album/00000000000000000000000000000001?market=from_token"], @"album base62 converted to 128-bit GID");
+        check(!SGSpotifyAlbumMetadataPath(@"spotify:album:ZZZZZZZZZZZZZZZZZZZZZZ"), @"overflowing identity rejected");
+        check(!SGSpotifyAlbumMetadataPath(one), @"a track cannot stand in for an album");
         check([SGRAlbumMetadataTracks(metadata()) isEqual:@[one, two, missing]], @"multi-disc and repeated tracks normalize by URI/GID");
         check(!SGRAlbumMetadataTracks(json(@{@"disc": @[@{@"track": @[@{@"uri": one, @"gid": @"00000000000000000000000000000002"}]}]})),
               @"conflicting identities rejected");

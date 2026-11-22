@@ -6,6 +6,8 @@ cd "$(dirname "$0")"
 OUT=${OUT:-build}
 mkdir -p "$OUT"
 sed '/^static void report/,$d' ../../tweak/Sources/Shared/Player/PlayerState.x > "$OUT/player-state.inc"
+# Compile the Spotify ISRC reader, not the iOS Music Haptics hooks which follow it.
+sed '/^#pragma mark - iOS$/,$d' ../../tweak/Sources/Shared/Haptics/SystemMusicHaptics.x > "$OUT/spotify-isrc.m"
 xcrun clang -fobjc-arc -O2 -I ../../tweak/Sources \
     -framework Foundation -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework CoreGraphics \
     main.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
@@ -21,7 +23,8 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -fobjc-arc -DSG_MOTION_TEST_STORE -I ../../tweak/Sources -I ../../tweak/Sources/Shared/Player -I "$OUT" \
     -framework UIKit -framework Foundation -framework CoreGraphics -framework AVFoundation -framework CoreMedia -framework CoreVideo \
     -framework Network \
-    state-check.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionFollower.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m ../../tweak/Sources/Core/SGLog.m \
+    state-check.m -I ../../tweak/Sources/Shared/Haptics "$OUT/spotify-isrc.m" ../../tweak/Sources/Shared/Haptics/SGHapticTrack.m \
+    ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionFollower.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m ../../tweak/Sources/Core/SGLog.m \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionCatalog.m "$OUT/language.o" -framework NaturalLanguage -Wl,-dead_strip \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
     ../../tweak/Sources/Core/SGDataRoot.m -o "$OUT/state-check"

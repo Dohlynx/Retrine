@@ -695,6 +695,12 @@ Shared:
                   when a song's title differs. Otherwise a single release must contain the song with its artist credit;
                   trailing features and version tags are simplified on the song, never on the album. A soundtrack's songs
                   share the title search; only a full page with no identified release can be narrowed by artist.
+                  If the title search cannot identify the release and the Spotify album URI is known, Spotify's album metadata
+                  supplies its UPC. Apple Music gets the barcode as supplied; only albums whose own UPC matches (ignoring
+                  leading zeros) qualify. If Apple returns no UPC match, the player's track (on the album page, the first
+                  track on the album) supplies a recording code from Spotify. Of the Apple albums containing that ISRC,
+                  exactly one distinct non-single must share the edition-stripped album name, whether it has video or not.
+                  The answer is cached by Spotify album URI in the same week-long album cache.
                   An identified album without video stays still rather than borrowing another artist's cover. Header and track share the
                   master and media playlist lookup for the same stream size. The catalog is
                   left alone for 10 minutes after a 403 or 429; an album's answer kept on disk for a week, so a relaunch skips the search), kept as local files (SGMotionStore.m, a download that
@@ -2044,7 +2050,8 @@ Redesigned:
                   first. Only a fresh page with an unidentified release uses one title search, indexed off main,
                   for at most eight distinct song/credit pairs; a page, hero or track list reused for another
                   release is header-only. The pairs come from
-                  this page's own settled track list, never the playing song or cells in a list update. The cover fades in once its first frame
+                  this page's own settled track list, never the playing song or cells in a list update. When the two services
+                  name the release differently, the page uses its own album for barcode and recording-code evidence. The cover fades in once its first frame
                   is decoded and moving only in front of the app, below Serious heat, with Reduce Motion and Low Power Mode off and Auto-Play
                   Video Previews on), the title, the artist and the kind and date centered under it, and the same row of glass
                   controls, shuffle, Play and add -- play and shuffle float over the album page outside its header, so they are concealed

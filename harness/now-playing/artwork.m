@@ -182,6 +182,10 @@ SGMotionTicket *SGMotionRequestSongClip(NSString *uri, NSURL *canvas, NSString *
     SGMotionClipFor(uri, canvas, artist, album, pixels, done);
     return [SGMotionTicket new];
 }
+SGMotionTicket *SGMotionRequestAlbumSongClip(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, NSString *song,
+                                           NSString *albumURI, CGFloat pixels, void (^done)(NSURL *, NSString *)) {
+    return SGMotionRequestSongClip(uri, canvas, artist, album, song, pixels, done);
+}
 // Shared/Player/PlayerState.x's first future track, other than the one playing.
 SPTPlayerTrack *SGPlayerUpNextIn(SPTPlayerState *state) {
     id future = [state respondsToSelector:@selector(future)] ? state.future : nil;

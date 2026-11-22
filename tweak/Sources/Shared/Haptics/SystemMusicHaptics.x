@@ -62,10 +62,11 @@ static NSCache<NSString *, id> *sg_isrcs;
 
 // `done` gets the ISRC, or nil, on the main queue. The headers are read again for every try: a refused one
 // may have expired, and Spotify's next request of its own brings a fresh one. They are never logged.
-static dispatch_block_t askSpotify(NSString *uri, NSUInteger triesLeft, BOOL failed, void (^done)(NSString *isrc, BOOL failed)) {
+typedef void (^ISRCReply)(NSString *isrc, BOOL answered, BOOL failed);
+static dispatch_block_t askSpotify(NSString *uri, NSUInteger triesLeft, BOOL failed, BOOL allowConstrained, ISRCReply done) {
     __block BOOL cancelled = NO;
     __block dispatch_block_t cancelChild;
-    cancelChild = SGSpotifyMetadataRequest(SGSpotifyExtendedMetadataPath, SGHapticTrackRequest(uri), ^(NSData *data, NSInteger status, NSError *error) {
+    cancelChild = SGSpotifyMetadataRequestAllowConstrained(SGSpotifyExtendedMetadataPath, SGHapticTrackRequest(uri), allowConstrained, ^(NSData *data, NSInteger status, NSError *error) {
             BOOL answered = NO;
             NSString *isrc = status == 200 ? SGHapticISRCInReply(data, uri, &answered) : nil;
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -73,18 +74,18 @@ static dispatch_block_t askSpotify(NSString *uri, NSUInteger triesLeft, BOOL fai
                 if (cancelled) return;
                 if (answered) {
                     [sg_isrcs setObject:isrc ?: (id)NSNull.null forKey:uri];
-                    done(isrc, failed);
+                    done(isrc, YES, failed);
                     return;
                 }
                 SGLog(@"isrc: Spotify's metadata for %@ not answered (%ld, %@), %lu tries left", uri, (long)status,
                       error.localizedDescription, (unsigned long)triesLeft - 1);
                 if (triesLeft <= 1) {
-                    done(nil, failed || error != nil || status == 429 || status >= 500);
+                    done(nil, NO, failed || error != nil || status == 429 || status >= 500);
                     return;
                 }
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kSpotifyRetryAfter * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     if (!cancelled) cancelChild = askSpotify(uri, triesLeft - 1,
-                        failed || error != nil || status == 429 || status >= 500, done);
+                        failed || error != nil || status == 429 || status >= 500, allowConstrained, done);
                 });
             });
     });
@@ -103,13 +104,21 @@ void SGSpotifyISRC(NSString *uri, NSUInteger tries, void (^done)(NSString *isrc)
     SGSpotifyISRCWithOutcome(uri, tries, ^(NSString *isrc, BOOL failed) { done(isrc); });
 }
 
-dispatch_block_t SGSpotifyISRCWithOutcome(NSString *uri, NSUInteger tries, void (^done)(NSString *isrc, BOOL failed)) {
+static dispatch_block_t readISRC(NSString *uri, NSUInteger tries, BOOL allowConstrained, ISRCReply done) {
     id kept = [sg_isrcs objectForKey:uri];
     if (kept) {
-        done(kept == NSNull.null ? nil : kept, NO);
+        done(kept == NSNull.null ? nil : kept, YES, NO);
         return ^{};
     }
-    return askSpotify(uri, MAX(tries, 1), NO, done);
+    return askSpotify(uri, MAX(tries, 1), NO, allowConstrained, done);
+}
+
+dispatch_block_t SGSpotifyISRCWithOutcome(NSString *uri, NSUInteger tries, void (^done)(NSString *isrc, BOOL failed)) {
+    return readISRC(uri, tries, YES, ^(NSString *isrc, BOOL answered, BOOL failed) { done(isrc, failed); });
+}
+
+dispatch_block_t SGSpotifyISRCAllowConstrained(NSString *uri, NSUInteger tries, BOOL allowConstrained, void (^done)(NSString *isrc, BOOL answered)) {
+    return readISRC(uri, tries, allowConstrained, ^(NSString *isrc, BOOL answered, BOOL failed) { done(isrc, answered); });
 }
 
 #pragma mark - iOS

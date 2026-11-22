@@ -12,6 +12,13 @@
 #import "Settings/SGPageStyle.h"
 
 #define CHECK HARNESS_CHECK
+#import "Shared/SpotifyMetadata/SGSpotifyMetadata.h"
+#import "../motion/no-recording-lookup.h"
+
+BOOL SGMotionAppleMusicOn(void) { return YES; }
+dispatch_block_t SGSpotifyMetadataRequestAllowConstrained(NSString *path, NSData *body, BOOL allow, SGSpotifyMetadataReply done) {
+    CHECK(NO); return ^{};
+}
 
 #pragma mark - stubs for what the production files take from the rest of the mod
 
