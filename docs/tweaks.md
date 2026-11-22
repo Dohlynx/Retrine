@@ -699,7 +699,8 @@ Shared:
                   trailing features and version tags are simplified on the song, never on the album. A soundtrack's songs
                   share the title search; only a full page with no identified release can be narrowed by artist.
                   If the title search cannot identify the release and the Spotify album URI is known, Spotify's album metadata
-                  supplies its UPC. Apple Music gets the barcode as supplied; only albums whose own UPC matches (ignoring
+                  supplies its UPC (on the album page, while same-name candidates are matched by track rows, these identifiers are
+                  asked alongside, since a row may never match, and the first clip either finds stays). Apple Music gets the barcode as supplied; only albums whose own UPC matches (ignoring
                   leading zeros) qualify. If Apple returns no UPC match, the player's track (on the album page, the first
                   track on the album) supplies a recording code from Spotify. Of the Apple albums containing that ISRC,
                   exactly one distinct non-single must share the edition-stripped album name, whether it has video or not;
