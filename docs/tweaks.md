@@ -1431,7 +1431,8 @@ Redesigned:
                   the row, over the shrinking main bar. Expanding, Search's glyph goes back to its place in the row as
                   a view of its own over both bars, on the bar's spring, drawn as the row draws it (lit when Search is
                   the tab selected), the row's Search glyph cleared and its name left to the row; the circle, its own
-                  glyph hidden, goes under the main bar and along with the glyph, and its glass goes in the very frame
+                  glyph hidden, travels horizontally under the main bar, level with the row even when the glyph rises
+                  above its name, and its glass goes in the very frame
                   the growing platter reaches it (issue #35: drawn over the row it was a darker disc), timed off the
                   spring UIKit made, its layer's opacity held over a model of 0 so a busy main thread cannot make it
                   late. As the spring ends the row's own glyph, which the spring has brought to the same place, takes
