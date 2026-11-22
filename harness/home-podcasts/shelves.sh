@@ -28,7 +28,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>home-shelves-check</string>
-<key>CFBundleIdentifier</key><string>com.vitrine.homeshelves.check</string>
+<key>CFBundleIdentifier</key><string>com.retrine.homeshelves.check</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>UIApplicationSceneManifest</key><dict>
 <key>UIApplicationSupportsMultipleScenes</key><false/>
@@ -42,4 +42,5 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 codesign -f -s - "$APP" >/dev/null 2>&1
 "$APP/Contents/MacOS/home-shelves-check"
+SG_SHELF_CASE=trailing "$APP/Contents/MacOS/home-shelves-check"
 SG_SHELF_CASE=unavailable "$APP/Contents/MacOS/home-shelves-check"

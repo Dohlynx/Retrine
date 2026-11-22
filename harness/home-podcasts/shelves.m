@@ -166,7 +166,7 @@ static void observeStoreState(id self, SEL command, id state) {
         afterCommit = ^{ [ShelfFeedFixture publish:self.generation renderer:self.renderer]; };
     } else {
         [ShelfFeedFixture publish:self.generation renderer:self.renderer];
-        if (self.phase == 1) {
+        if (self.phase == 1 && ![NSProcessInfo.processInfo.environment[@"SG_SHELF_CASE"] isEqualToString:@"trailing"]) {
             // The next model leads the pending UIKit commit, retaining the committed model as previous.
             [ShelfFeedFixture publish:[ShelfFeedFixture generation:3] renderer:self.renderer];
         }
@@ -229,7 +229,7 @@ static void observeStoreState(id self, SEL command, id state) {
     HARNESS_CHECK(self.list.collectionViewLayout.collectionViewContentSize.height == 0);
     HARNESS_CHECK(self.list.visibleCells.count == 0);
     NSLog(@"[harness] PASS %@", self.phase == 0 ? @"all hidden shelves preserve the snapshot and settle without visible cells"
-                                               : @"leading model preserves the committed hidden previews without cell construction");
+                                               : @"committed hidden previews are not constructed");
     self.phase++;
     [self applyPhase];
 }
