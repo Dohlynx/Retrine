@@ -1,7 +1,7 @@
 // Player redesign: Animated artwork, the track's Canvas or Apple Music's animated cover behind the player,
 // the way the Music app draws it. The clip runs edge to edge from the top, sharp to near its foot, where
-// it dissolves into the color of its last rows, drawn on down to the bottom of the field, so it ends in
-// its own color rather than on the Fluid field. A blur comes in from the seam (from above the controls for a
+// it dissolves into the colors of its last rows, a few of them from side to side, drawn on down to the bottom of
+// the field, so it ends in its own colors rather than on the Fluid field. A blur comes in from the seam (from above the controls for a
 // Canvas as tall as the screen) and lies under the controls; behind the lyrics the whole clip is blurred.
 // The player's square cover goes while a clip plays, so a track without one keeps its cover over Fluid
 // (PlayerField.x keeps the field Fluid for this choice). The player's ⋯ menu switches between Animated
@@ -20,8 +20,12 @@
 //
 // The clip is dimmed by how bright it is (SGRPlayerClipDim): three of its frames are measured as it comes in,
 // so a white Canvas is drawn darker than a black one and the white text over it keeps its contrast. The dim
-// lies only where text does, a band under the header and from above the title down, as the Music app's does:
-// over the whole clip it took up to four fifths of its light (issue #101). Behind the lyrics it covers the clip.
+// lies only where text does, a band at the top and from above the title down, as the Music app's does:
+// over the whole clip it took up to four fifths of its light (issue #101). The band is whole over the status bar,
+// and over the header too while it shows something to read (where it plays from, Spotify's arrow, the AI DJ's
+// buttons); a header with only the grabber leaves the clip's top to fade in right under the status bar (issue #39).
+// Below the title a second black, on top of the dim, deepens toward the bottom of the screen as the Music app's
+// player does, so the text there is never on anything lighter than the dim alone. Behind the lyrics it covers the clip.
 //
 // A track that changes while the player cannot be seen (out of a window, or with the app not in front, which a
 // locked phone's player is while it stays in its window) takes the last clip away at once, without a fade, so
@@ -74,8 +78,12 @@
 
 // Where the clip starts dissolving into its foot, as a share of its height.
 static const CGFloat kFootFrom = 0.9;
-// The share of the poster's height, at its bottom, whose mean color the foot is.
+// The share of the poster's height, at its bottom, whose colors the foot is.
 static const CGFloat kFootRows = 0.03;
+// The foot's colors from side to side: that many means of the last rows, each over its share of the width, laid
+// between by a gradient. A few, so the foot keeps the clip's left and right without columns: a row's own pixels
+// stretched on down read as vertical streaks (issue #40).
+static const size_t kFootSamples = 4;
 // A clip this much taller than wide is a Canvas (9:16), drawn to the window's full height and centered, cut at its
 // sides. Apple Music's tall cover (3:4) keeps its own height from the top, whole, as the Music app draws it
 // (issues #40 and #57: drawn to the window's height it lost two fifths of its width).
@@ -97,9 +105,12 @@ static const CGFloat kStillLeastAspect = 4.0 / 3, kStillLeastPixels = 300;
 static const CGFloat kStillScrimTop = 0.45, kStillScrimBelowSafeTop = 76;
 // The dim's floor and ceiling, and what the lyrics add to it.
 static const CGFloat kDimLeast = 0.10, kDimMost = 0.80, kDimLyrics = 0.15;
-// The dim's band at the top, under the status bar and the header: whole down to this share of the screen, so
-// the header's text gets all of it, then gone over kDimFade points.
+// The dim's band at the top: whole over the status bar, and down to this share of the screen while the header
+// shows something to read, so its text gets all of it, then gone over kDimFade points.
 static const CGFloat kDimTop = 0.14, kDimFade = 48;
+// The black over the dim at the bottom of the screen, from none where the dim is whole above the title: the Music
+// app's player darkens toward its foot (issue #39).
+static const CGFloat kDeepenBottom = 0.35;
 // The frames measured for the dim besides the poster, in seconds into the clip (one past its end is skipped).
 static const double kMeasuredAt[] = {1, 2};
 // Behind the lyrics the clip itself is blurred, a plain Gaussian blur with no material's gray tint over it
@@ -223,9 +234,9 @@ CGFloat SGRPlayerImageBrightEnd(CGImageRef image) {
     return brightEnd(luminances);
 }
 
-// The mean color of the poster's last rows (kFootRows): drawn 16 pixels wide and averaged. A row's own colors
-// stretched on down read as vertical streaks (issue #40).
-static UIColor *footColor(CGImageRef poster) {
+// The foot's colors from left to right (kFootSamples), each the mean of its share of the poster's last rows
+// (kFootRows), drawn 16 pixels wide.
+static NSArray *footColors(CGImageRef poster) {
     enum { kWide = 16 };
     size_t height = CGImageGetHeight(poster), rows = MAX(1, (size_t)(height * kFootRows));
     CGImageRef strip = CGImageCreateWithImageInRect(poster, CGRectMake(0, height - rows, CGImageGetWidth(poster), rows));
@@ -237,11 +248,17 @@ static UIColor *footColor(CGImageRef poster) {
     CGContextDrawImage(context, CGRectMake(0, 0, kWide, 1), strip);
     CGContextRelease(context);
     CGImageRelease(strip);
-    CGFloat sum[3] = {0};
-    for (int i = 0; i < kWide; i++) {
-        for (int c = 0; c < 3; c++) sum[c] += pixels[i * 4 + c];
+    const size_t per = kWide / kFootSamples;
+    NSMutableArray *colors = [NSMutableArray arrayWithCapacity:kFootSamples];
+    for (size_t s = 0; s < kFootSamples; s++) {
+        CGFloat sum[3] = {0};
+        for (size_t i = s * per; i < (s + 1) * per; i++) {
+            for (int c = 0; c < 3; c++) sum[c] += pixels[i * 4 + c];
+        }
+        [colors addObject:(__bridge id)[UIColor colorWithRed:sum[0] / (per * 255.0) green:sum[1] / (per * 255.0)
+                                                       blue:sum[2] / (per * 255.0) alpha:1].CGColor];
     }
-    return [UIColor colorWithRed:sum[0] / (kWide * 255.0) green:sum[1] / (kWide * 255.0) blue:sum[2] / (kWide * 255.0) alpha:1];
+    return colors;
 }
 
 @interface SGRPlayerMotionView : UIView <SGPlayerStateObserver>
@@ -275,8 +292,9 @@ static UIColor *footColor(CGImageRef poster) {
     CALayer *_still;    // the poster, with the video drawn over it
     AVPlayerLayer *_clip;
     CAGradientLayer *_clipMask, *_seamMask;
-    CALayer *_foot;   // the color of the poster's last rows, from the seam down
+    CAGradientLayer *_foot;   // the colors of the poster's last rows, from side to side, from the seam down
     CAGradientLayer *_dim;   // black over the clip's top and from above the title down, as dark as the clip is bright
+    CAGradientLayer *_deepen;   // more black over the dim, from where it is whole down to the bottom of the screen
     CAGradientLayer *_scrim;   // a still's only: black from the top fading out under the header's controls
     NSMutableData *_luminances;   // of the frames measured so far
     BOOL _lyricsUp;
@@ -308,7 +326,12 @@ static UIBlurEffect *blurEffect(void) {
     self.accessibilityElementsHidden = YES;
     _picture = [[UIView alloc] initWithFrame:frame];
     [self addSubview:_picture];
-    _foot = [CALayer layer];
+    _foot = [CAGradientLayer layer];
+    _foot.startPoint = CGPointMake(0, 0.5);
+    _foot.endPoint = CGPointMake(1, 0.5);
+    NSMutableArray *footAt = [NSMutableArray arrayWithCapacity:kFootSamples];
+    for (size_t s = 0; s < kFootSamples; s++) [footAt addObject:@((s + 0.5) / kFootSamples)];
+    _foot.locations = footAt;
     [_picture.layer addSublayer:_foot];
     // An AVPlayerLayer draws nothing until its first frame is decoded, so the poster, the clip's first
     // frame and where the looper starts, is the contents of the layer the video draws in: there is a
@@ -328,6 +351,10 @@ static UIBlurEffect *blurEffect(void) {
     _dim.colors = dimColors(NO);
     _dim.opacity = kDimLeast;
     [_picture.layer addSublayer:_dim];
+    _deepen = [CAGradientLayer layer];
+    _deepen.colors = @[(id)UIColor.clearColor.CGColor, (id)UIColor.blackColor.CGColor];
+    _deepen.opacity = kDeepenBottom;
+    [_picture.layer addSublayer:_deepen];
     _scrim = [CAGradientLayer layer];
     _scrim.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.clearColor.CGColor];
     _scrim.hidden = YES;
@@ -412,14 +439,20 @@ static UIBlurEffect *blurEffect(void) {
     _clipMask.frame = _still.bounds;
     _foot.frame = CGRectMake(0, seam, width, MAX(0, total - seam));
     _dim.frame = bounds;
+    _deepen.frame = bounds;
     // The window's safe area: this view's own, on the field in the player's list, reads none.
-    _scrim.frame = CGRectMake(0, 0, width, self.window.safeAreaInsets.top + kStillScrimBelowSafeTop);
+    CGFloat safeTop = self.window.safeAreaInsets.top;
+    _scrim.frame = CGRectMake(0, 0, width, safeTop + kStillScrimBelowSafeTop);
     NSNumber *(^at)(CGFloat) = ^NSNumber *(CGFloat y) { return @(MIN(1, y / total)); };
     // Whole again by where the seam's blur starts, so over the title and the controls below it.
     CGRect line = SGRPlayerVisibleClipLineIn(self);
     CGFloat dimFrom = CGRectIsNull(line) ? blurFrom : MIN(blurFrom, MAX(0, CGRectGetMinY(line)));
-    CGFloat topEnd = MIN(screen * kDimTop, dimFrom), rampFrom = MAX(topEnd, dimFrom - kBlurRamp);
+    // The band at the top reaches as far as there is something to read: the status bar, and the header while it
+    // shows more than the grabber.
+    CGFloat bandEnd = SGRPlayerHeaderShowsIn(self) ? screen * kDimTop : safeTop;
+    CGFloat topEnd = MIN(bandEnd, dimFrom), rampFrom = MAX(topEnd, dimFrom - kBlurRamp);
     _dim.locations = @[@0, at(topEnd), at(MIN(topEnd + kDimFade, rampFrom)), at(rampFrom), at(dimFrom)];
+    _deepen.locations = @[at(dimFrom), at(screen)];
     _seamMask.frame = bounds;
     _seamMask.locations = @[at(blurFrom), at(blurFrom + kBlurRamp)];
     [CATransaction commit];
@@ -428,7 +461,7 @@ static UIBlurEffect *blurEffect(void) {
 // The picture under the video, or the whole of a still, and the share of the width the view draws it tall.
 - (void)takePicture:(UIImage *)picture aspect:(CGFloat)aspect {
     _aspect = aspect;
-    _foot.backgroundColor = footColor(picture.CGImage).CGColor;
+    _foot.colors = footColors(picture.CGImage);
     _still.contents = (__bridge id)picture.CGImage;
     [self setNeedsLayout];
 }
@@ -448,7 +481,7 @@ static UIBlurEffect *blurEffect(void) {
     if (_inCover) {
         // The cover's own picture: nothing over it to keep readable, and nothing under it to fade into.
         _still.mask = nil;
-        _foot.hidden = _dim.hidden = _seamBlur.hidden = YES;
+        _foot.hidden = _dim.hidden = _deepen.hidden = _seamBlur.hidden = YES;
         return;
     }
     [self measure:file poster:poster];
@@ -885,6 +918,8 @@ BOOL SGRPlayerMotionShowing(void) {
 }
 
 void SGRPlayerMotionLineMoved(void) { [sg_motion setNeedsLayout]; }
+
+void SGRPlayerMotionHeaderChanged(void) { [sg_motion setNeedsLayout]; }
 
 // The card's one clip and the file it plays: a tap on another background choice takes the view off the card
 // and the next tap puts it back, so the same file is not made a playing looper a second time.

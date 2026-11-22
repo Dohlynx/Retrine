@@ -303,6 +303,15 @@ void SGRPlayerCoverUnderRow(UIView *row, BOOL live, UIView *player) {
     if (live) [sg_liveRows addObject:row];
     else [sg_liveRows removeObject:row];
     for (UIView *tilt in sg_tilts) [tilt setNeedsLayout];
+    SGRPlayerMotionHeaderChanged();
+}
+
+BOOL SGRPlayerHeaderShowsIn(UIView *view) {
+    UIWindow *window = view.window;
+    for (UIView *row in sg_liveRows) {
+        if (window && row.window == window) return YES;
+    }
+    return NO;
 }
 
 // The window's safe area can come after the cover's layout (a player laid out as its window is still being set up), and

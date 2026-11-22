@@ -2203,9 +2203,10 @@ static BOOL fieldCovered(void) {
     return field.covered && fluid && fluid.hidden;
 }
 
-// Green above the last 3% of rows, equal red/blue halves within them: the foot must
-// render as opaque purple everywhere, not green, either edge's color, or vertical streaks.
-static BOOL motionFootHasMeanColor(NSURL *file, NSString **detail) {
+// Green above the last 3% of rows, a red left half and a blue right half within them: the foot must keep the
+// clip's left and right, red at its left edge and blue at its right, opaque, never green, and blend between
+// them across the middle rather than meet in a hard edge as stretched pixel columns would.
+static BOOL motionFootAcross(NSURL *file, NSString **detail) {
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
     format.scale = 1;
     format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
@@ -2230,16 +2231,56 @@ static BOOL motionFootHasMeanColor(NSURL *file, NSString **detail) {
     CGContextScaleCTM(context, 16 / foot.bounds.size.width, 1 / foot.bounds.size.height);
     [foot renderInContext:context];
     CGContextRelease(context);
+    NSMutableArray *row = [NSMutableArray array];
+    BOOL ok = YES;
     for (NSUInteger x = 0; x < 16; x++) {
-        uint8_t *pixel = pixels + x * 4;
-        if (pixel[0] != 128 || pixel[1] != 0 || pixel[2] != 128 || pixel[3] != 255) {
-            *detail = [NSString stringWithFormat:@"pixel %lu RGBA %u,%u,%u,%u; expected 128,0,128,255",
-                       (unsigned long)x, pixel[0], pixel[1], pixel[2], pixel[3]];
-            return NO;
-        }
+        uint8_t *pixel = pixels + x * 4, *before = x ? pixel - 4 : pixel;
+        [row addObject:[NSString stringWithFormat:@"%u,%u,%u", pixel[0], pixel[1], pixel[2]]];
+        // Opaque, nothing of the green above (Core Animation's software render of a gradient puts a little green
+        // into pure red and blue: 38 and 50 on the iOS 26.5 simulator), red only ever giving way to blue from left
+        // to right, give or take the render's rounding of a level.
+        ok = ok && pixel[3] == 255 && pixel[1] < 64 && pixel[0] <= before[0] + 1 && pixel[2] + 1 >= before[2];
     }
-    *detail = @"all 16 pixels RGBA 128,0,128,255";
-    return YES;
+    uint8_t *left = pixels, *right = pixels + 15 * 4, *middle = pixels + 7 * 4, *past = pixels + 8 * 4;
+    ok = ok && left[0] >= 240 && left[2] <= 10 && right[0] <= 10 && right[2] >= 240
+         && middle[0] > 40 && middle[2] > 40 && past[0] > 40 && past[2] > 40;
+    *detail = [NSString stringWithFormat:@"RGB left to right %@; expected red at the left, blue at the right, both mixed in the middle",
+               [row componentsJoinedByString:@" "]];
+    return ok;
+}
+
+// The probe's whole picture, a gray poster with no video drawn, read down its middle: from where the dim is whole
+// (its last stop) to the bottom it gets darker, ending clearly darker than where it started, and nowhere lighter
+// than it is there, which is the dim alone.
+static BOOL motionDeepensDown(NSURL *file, NSString **detail) {
+    enum { kTall = 120 };
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1;
+    format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
+    UIImage *poster = [[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(32, 100) format:format]
+        imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+            [[UIColor colorWithWhite:0.5 alpha:1] setFill];
+            UIRectFill(CGRectMake(0, 0, 32, 100));
+        }];
+    SGRPlayerMotionView *probe = [[SGRPlayerMotionView alloc] initWithFrame:CGRectMake(0, 0, 32, kTall)];
+    [probe playFile:file poster:poster];
+    [probe layoutIfNeeded];
+    CAGradientLayer *dim = [probe valueForKey:@"_dim"];
+    NSUInteger whole = (NSUInteger)ceil([dim.locations.lastObject doubleValue] * kTall);
+    uint8_t pixels[kTall * 4] = {0};
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef context = CGBitmapContextCreate(pixels, 1, kTall, 8, 4, space, kCGBitmapByteOrder32Big | kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    // UIKit's way up: row 0 of the bitmap is the top of the picture.
+    CGContextTranslateCTM(context, 0, kTall);
+    CGContextScaleCTM(context, 1.0 / 32, -1);
+    [((UIView *)[probe valueForKey:@"_picture"]).layer renderInContext:context];
+    CGContextRelease(context);
+    uint8_t start = pixels[whole * 4], end = pixels[(kTall - 1) * 4];
+    BOOL ok = whole > 0 && whole < kTall - 1 && end + 20 < start;
+    for (NSUInteger y = whole + 1; y < kTall; y++) ok = ok && pixels[y * 4] <= pixels[(y - 1) * 4] + 1 && pixels[y * 4] <= start;
+    *detail = [NSString stringWithFormat:@"gray %u where the dim is whole (row %lu of %d), %u at the bottom", start, (unsigned long)whole, kTall, end];
+    return ok;
 }
 
 - (void)runMotionChecks {
@@ -2262,16 +2303,21 @@ static BOOL motionFootHasMeanColor(NSURL *file, NSString **detail) {
         [self expect:motion != nil && self->_covers.layer.mask != nil step:@"the player opened"
               detail:[NSString stringWithFormat:@"clip %@ the field, cover %@", motion ? @"on" : @"not on", self->_covers.layer.mask ? @"hidden" : @"shown"]];
         CGFloat seamAt = round(clip.frame.size.height * 0.9);
+        NSArray *footColors = [foot isKindOfClass:CAGradientLayer.class] ? ((CAGradientLayer *)foot).colors : nil;
+        BOOL footOpaque = footColors.count > 0;
+        for (id color in footColors) footOpaque = footOpaque && CGColorGetAlpha((__bridge CGColorRef)color) == 1;
         BOOL footDown = foot && fabs(foot.frame.origin.y - seamAt) < 1 && CGRectGetMaxY(foot.frame) >= self.window.bounds.size.height
-            && foot.backgroundColor && CGColorGetAlpha(foot.backgroundColor) == 1;
+            && footOpaque;
         [self expect:footDown step:@"the foot"
-              detail:[NSString stringWithFormat:@"clip %@, foot %@, opaque mean color %@",
-                      NSStringFromCGRect(clip.frame), NSStringFromCGRect(foot.frame),
-                      foot.backgroundColor ? [UIColor colorWithCGColor:foot.backgroundColor] : nil]];
-        NSString *footDetail = @"clip URL unavailable";
+              detail:[NSString stringWithFormat:@"clip %@, foot %@, %lu colors across, %@",
+                      NSStringFromCGRect(clip.frame), NSStringFromCGRect(foot.frame), (unsigned long)footColors.count,
+                      footOpaque ? @"all opaque" : @"not all opaque"]];
+        NSString *footDetail = @"clip URL unavailable", *deepDetail = @"clip URL unavailable";
         NSURL *file = ((AVURLAsset *)((AVPlayer *)[motion valueForKey:@"_player"]).currentItem.asset).URL;
-        BOOL meanColor = file && motionFootHasMeanColor(file, &footDetail);
-        [self expect:meanColor step:@"the foot's mean color" detail:footDetail];
+        BOOL across = file && motionFootAcross(file, &footDetail);
+        [self expect:across step:@"the foot's colors across" detail:footDetail];
+        BOOL deepens = file && motionDeepensDown(file, &deepDetail);
+        [self expect:deepens step:@"darker toward the bottom" detail:deepDetail];
         // The poster under the video, so the clip has a picture before its first frame is decoded; and the
         // Fluid field under it held still and, the clip being opaque, hidden.
         CALayer *still = clip.superlayer;
@@ -2298,10 +2344,34 @@ static BOOL motionFootHasMeanColor(NSURL *file, NSString **detail) {
                 step:@"the dim" detail:[NSString stringWithFormat:@"rule %@, dim %.2f %@%@", rule ? @"right" : @"wrong", dim.opacity,
                                         banded ? [NSString stringWithFormat:@"whole to %@ and from %@", dim.locations[1], dim.locations[4]] : @"not banded",
                                         expected ? [NSString stringWithFormat:@", %s expected", expected] : @""]];
+        // The band at the top: whole over the status bar only while the header shows nothing but the grabber, and over
+        // the header's row too while it shows where it plays from. The stored switch is put back as it was.
+        NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
+        id stored = [store objectForKey:SGRKeyPlayerHideContext];
+        UIView *row = ((UIViewController *)self->_units.firstObject).view;
+        CGFloat total = motion.bounds.size.height, safeTop = self.window.safeAreaInsets.top;
+        CGFloat (^bandEnd)(BOOL) = ^CGFloat(BOOL hide) {
+            SGSetEnabled(SGRKeyPlayerHideContext, hide);
+            [self layOut];
+            [motion layoutIfNeeded];
+            return [((CAGradientLayer *)[motion valueForKey:@"_dim"]).locations[1] doubleValue] * total;
+        };
+        CGFloat bare = bandEnd(YES), shown = bandEnd(NO), rowBottom = CGRectGetMaxY([motion convertRect:row.bounds fromView:row]);
+        if (stored) [store setObject:stored forKey:SGRKeyPlayerHideContext];
+        else [store removeObjectForKey:SGRKeyPlayerHideContext];
+        SGPrefsChanged();
+        [self layOut];
+        [motion layoutIfNeeded];
+        [self expect:safeTop > 0 && fabs(bare - safeTop) < 1 && shown >= rowBottom step:@"the band at the top"
+              detail:[NSString stringWithFormat:@"whole to %.0f with only the grabber (status bar to %.0f), to %.0f with where it plays from (its row to %.0f)",
+                      bare, safeTop, shown, rowBottom]];
         NSLog(@"[harness] motion: screenshot the clip now");
+        // Held here for a screenshot of the clip as it opened, the context as stored.
+        if (getenv("HARNESS_MOTION_SCREENSHOT")) return;
         reportPower();
         setThermal(NSProcessInfoThermalStateSerious);
     });
+    if (getenv("HARNESS_MOTION_SCREENSHOT")) return;
     after(6, ^{
         [self expect:!SGRPlayerMotionShowing() && !motionView() && !self->_covers.layer.mask
               step:@"serious heat" detail:@"the clip should be cleared for the cover"];

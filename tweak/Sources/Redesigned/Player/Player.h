@@ -137,6 +137,11 @@ void SGRPlayerSetCoverHidden(BOOL hidden);
 // player's own view holding it, or nil: the cover, lifted to the Music app's top, stays under every live row in its own
 // player, wherever the row is moved in it.
 void SGRPlayerCoverUnderRow(UIView *row, BOOL live, UIView *player);
+// A header row in `view`'s window shows something to read besides the grabber: where it plays from, Spotify's live
+// arrow, the AI DJ's buttons (the rows SGRPlayerCoverUnderRow is told are live). The clip's dim covers it
+// (PlayerMotion.x), which hears of each change through SGRPlayerMotionHeaderChanged.
+BOOL SGRPlayerHeaderShowsIn(UIView *view);
+void SGRPlayerMotionHeaderChanged(void);
 
 #pragma mark - the title (PlayerTitle.x)
 

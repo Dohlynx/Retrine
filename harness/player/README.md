@@ -240,12 +240,17 @@ come late, out of order, or not at all.
   to report (the simulator has none; Reduce Motion takes the same path), takes the clip away for the cover over
   Fluid and gives it back once off. Reported Serious heat also clears the clip, and cooling to Nominal brings it
   back. A track change with the app made to report the background takes the clip
-  away at once, with no fade. The foot checks retain the seam-to-bottom geometry and require an opaque
-  fill. A synthetic poster with green above its last 3% of rows and equal red/blue halves in those rows
-  checks that the real motion view renders a uniform purple foot (RGBA 128,0,128,255), not stretched
-  columns. `PlayerMotion.x` deliberately averages those rows to avoid vertical streaks (issue #40);
-  requiring cropped image contents on the foot was a stale expectation.
-  The log ends with `motion checks: n of 26 right -- PASS` or `FAIL`.
+  away at once, with no fade. The foot checks retain the seam-to-bottom geometry and require opaque
+  colors. A synthetic poster with green above its last 3% of rows and a red left half and blue right half in
+  those rows checks that the real motion view renders a foot red at its left edge and blue at its right,
+  blended across the middle (issue #39) rather than meeting in a hard edge as stretched pixel columns would
+  (issue #40), and with nothing of the green above. A gray poster checks that the picture gets darker from
+  where the dim is whole down to the bottom, never lighter than the dim alone. The band at the top is checked
+  with where it plays from hidden (whole to the window's safe area top, the status bar) and shown (over the
+  header's row), and the stored switch is put back. `HARNESS_MOTION_SCREENSHOT=1` stops after those checks,
+  with the clip as it opened, for a screenshot (store `spotifyglass.redesign.player.hideContext` NO in the
+  app's defaults first to show where it plays from).
+  The log ends with `motion checks: n of 30 right -- PASS` or `FAIL`.
   `HARNESS_CANVAS_FAILS=n` fails the first n requests for the clip on the way: with 1 the store tries again and
   every check passes, with 2 the clip never comes.
 - `catalog` is Apple Music's catalog (`SGMotionCatalog.m`) behind a stub of its search: the names searched

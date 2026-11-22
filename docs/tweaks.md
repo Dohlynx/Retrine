@@ -1702,7 +1702,9 @@ Redesigned:
                   plays a square clip (Apple Music's square animated cover, no taller than 1.05:1) inside the cover
                   itself, a subview of the cover on screen that takes its corners, paused shrink and swipe, over the
                   field as it is; any taller clip
-                  runs edge to edge from the top over the color of its last rows drawn on down, with a blur coming in
+                  runs edge to edge from the top over the colors of its last rows drawn on down (four means across the
+                  width, blended from side to side by a gradient, so the foot keeps the clip's left and right without
+                  the columns a row's own pixels made, issues #39 and #40), with a blur coming in
                   from the seam under the controls and over the whole clip behind the lyrics. The clip and the cover
                   cross over as one comes and the other goes, the clip from its poster frame before the video has
                   decoded one, and the Fluid field under a clip holds still and, once the clip has faded in, is hidden
@@ -1720,8 +1722,13 @@ Redesigned:
                   server at full resolution it was drawn again on every frame, 21% of an iPhone 13 Pro's GPU under the
                   player against 9% so (1.4% held still, 6.5% for Spotify's own player). A black gradient dims the clip by its brightness (the 75th
                   percentile of the linear luminance of three frames), so white text keeps 4.5:1 (7:1 with Increase
-                  Contrast), from 0.10 to 0.80, only where text is: a band under the header and from above the title
-                  down; behind the lyrics it covers the whole clip, 0.15 darker (issue #101). A track that changes
+                  Contrast), from 0.10 to 0.80, only where text is: a band at the top and from above the title
+                  down; behind the lyrics it covers the whole clip, 0.15 darker (issue #101). The band is whole over the
+                  status bar, and down over the header (to 14% of the screen) only while the header shows where it plays
+                  from, Spotify's arrow or the AI DJ's buttons; with only the grabber it fades out right under the status
+                  bar (issue #39). Over the dim, a second black deepens from where the dim turns whole down to the
+                  bottom of the screen (0.35 there), so the lower part darkens toward the bottom as the Music app's
+                  does and is nowhere lighter than the dim alone. A track that changes
                   while the player cannot be seen (no window, or the app not in front) takes the last clip away at
                   once. Checked in the simulator against harness/player/ (`motion`). The Visualizer
                   (PlayerVisualiser.m) draws two soft hills of the song's spectrum across the foot of the player, the kick
