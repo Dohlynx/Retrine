@@ -208,11 +208,12 @@ def run_fixture(test: Fixture, build: Path, sanitize: bool):
         helpers = ui[ui.index("static NSString * const SAPOfflineUnknownArtist"):ui.index("@class SAPOfflineLibraryController")]
         (folder / "OfflineLibraryRefreshHelpers.inc").write_text(helpers)
         (folder / "OfflineLibraryRefreshState.inc").write_text("\n".join(method(x) for x in (
-            "- (instancetype)init {\n", "- (void)load {", "- (void)refresh {",
+            "- (instancetype)init {\n", "- (void)load {", "- (void)refresh {", "- (void)cancelWork {",
             "- (void)beginExport:(NSArray<NSDictionary *> *)rows zip:(BOOL)zip save:(BOOL)save {", "- (void)releasePendingPackage {", "- (void)appendExportRows:(NSArray<NSDictionary *> *)rows {")))
         (folder / "OfflineLibraryRefreshController.inc").write_text("\n".join(method(x) for x in (
             "+ (NSArray<NSDictionary *> *)artistRowsForTracks:(NSArray<NSDictionary *> *)tracks {", "- (NSArray<NSDictionary *> *)buildReleaseSections {",
-            "- (void)viewDidAppear:", "- (void)updateLoading {", "- (void)refreshCatalog {", "- (void)progressActionTapped {", "- (NSArray<NSDictionary *> *)selectedRows {", "- (NSArray<NSDictionary *> *)newExportRows {")))
+            "- (void)viewDidAppear:", "- (void)updateLoading {", "- (void)refreshCatalog {", "- (void)progressActionTapped {", "- (NSArray<NSDictionary *> *)selectedRows {", "- (NSArray<NSDictionary *> *)newExportRows {",
+            "- (void)dealloc {", "- (NSArray<NSDictionary *> *)artists {", "- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {")))
         command.append("-I" + str(folder))
     command.extend("-I" + str(p) for p in include_directories(include))
     command.extend("-D" + s for s in test.defines)
