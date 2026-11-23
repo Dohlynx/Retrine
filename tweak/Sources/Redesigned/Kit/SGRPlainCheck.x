@@ -52,18 +52,12 @@ static UIImage *imageOf(SGRAddGlyph glyph) {
 }
 
 static UIView *animationIn(UIButton *button) {
-    UIView *found = objc_getAssociatedObject(button, &kAnimationKey);
-    if (found.superview) return found;
     static Class lottie;
     if (!lottie) lottie = NSClassFromString(@"Lottie.LottieAnimationView");
-    found = nil;
-    for (UIView *child in button.subviews) {
-        for (UIView *inner in child.subviews) {
-            if (lottie && [inner isKindOfClass:lottie]) found = inner;
-        }
-    }
-    objc_setAssociatedObject(button, &kAnimationKey, found, OBJC_ASSOCIATION_ASSIGN);
-    return found;
+    if (!lottie) return nil;
+    return SGFindRemembered(button, &kAnimationKey, ^BOOL(UIView *view) {
+        return [view isKindOfClass:lottie] && view.superview.superview == button;
+    });
 }
 
 static void showState(UIButton *button) {

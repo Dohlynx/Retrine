@@ -437,6 +437,15 @@ static void checkAddButtons(UIWindow *window) {
     expectShown(rowButton, rowAnimation, NO, @"spotify", @"a row's button, unsaved");
     // A song saved again after it was unsaved gets the mark back.
     expectShown(rowButton, rowAnimation, YES, mark, @"a row's button, saved again");
+    // Reuse can replace the whole state view while the old animation still has a superview.
+    UIView *oldState = rowAnimation.superview;
+    [oldState removeFromSuperview];
+    UIView *replacement = [[rowAnimation.class alloc] initWithFrame:rowButton.bounds];
+    UIView *newState = [[UIView alloc] initWithFrame:rowButton.bounds];
+    [newState addSubview:replacement];
+    [rowButton addSubview:newState];
+    expectShown(rowButton, replacement, YES, mark, @"a reused row with a new state view");
+    CHECK(rowAnimation.superview == oldState, @"reuse fixture lost the detached state view");
     [unit.view removeFromSuperview];
     [row removeFromSuperview];
 }
