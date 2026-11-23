@@ -131,11 +131,12 @@ static BOOL isRefetch(NSString *path) {
 }
 
 // What a request's URL makes it, worked out once per task: its data comes in many chunks.
-enum { kBlocked = 1, kRefetch = 2, kPatched = 4 };
+enum { kBlocked = 1, kRefetch = 2, kPatched = 4, kAd = 8 };
 
 static unsigned kindOf(NSURL *url) {
     NSString *path = url.path.lowercaseString ?: @"";
-    return ((premium && isLogout(path)) || (ads && isAd(url, path)) ? kBlocked : 0)
+    return (ads && isAd(url, path) ? kAd : 0)
+         | (premium && isLogout(path) ? kBlocked : 0)
          | (premium && isRefetch(path) ? kRefetch : 0)
          | ((premium && (isBootstrap(path) || isCustomize(path))) || (premiumSplit && isSplitConfig(path))
             || (ads && isFeed(path)) ? kPatched : 0);
@@ -143,15 +144,20 @@ static unsigned kindOf(NSURL *url) {
 
 // The thirty seconds are read at each call, as the task's data and its end arrive.
 // The kind is worked out once per URL the task is on: a redirect moves it to another, which is classified again.
-static SGNet classify(NSURLSessionTask *task) {
-    NSURL *url = task.currentRequest.URL;
+static unsigned taskKind(NSURLSessionTask *task, NSURL *url) {
+    id key = url ?: (id)NSNull.null;
     NSArray *stored = objc_getAssociatedObject(task, &kKindKey);   // @[url, kind]
-    if (!stored || (stored[0] != url && ![stored[0] isEqual:url])) {
-        stored = @[url ?: NSNull.null, @(kindOf(url))];
-        objc_setAssociatedObject(task, &kKindKey, stored, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!stored || (stored[0] != key && ![stored[0] isEqual:key])) {
+        stored = @[key, @(kindOf(url))];
+        // resume and the delegate queue can both read the cached classification.
+        objc_setAssociatedObject(task, &kKindKey, stored, OBJC_ASSOCIATION_RETAIN);
     }
-    unsigned kind = [stored[1] unsignedIntValue];
-    if ((kind & kBlocked) || ((kind & kRefetch) && elapsed() > 30)) return SGNetBlock;
+    return [stored[1] unsignedIntValue];
+}
+
+static SGNet classify(NSURLSessionTask *task) {
+    unsigned kind = taskKind(task, task.currentRequest.URL);
+    if ((kind & (kBlocked | kAd)) || ((kind & kRefetch) && elapsed() > 30)) return SGNetBlock;
     return kind & kPatched ? SGNetPatch : SGNetPass;
 }
 
@@ -279,7 +285,7 @@ static void deliver(id<NSURLSessionDataDelegate> delegate, NSURLSession *session
 
 static BOOL blockedAdTask(NSURLSessionTask *task) {
     NSURL *url = task.currentRequest.URL ?: task.originalRequest.URL;
-    return ads && isAd(url, url.path.lowercaseString ?: @"");
+    return ads && (taskKind(task, url) & kAd);
 }
 
 static NSHTTPURLResponse *emptyAdResponse(NSURLSessionTask *task) {
@@ -347,8 +353,14 @@ static BOOL completeAd(id<NSURLSessionDataDelegate> delegate, NSURLSession *sess
 // A conditional nebula reply uses server bytes captured under the task's original session.
 static NSURLResponse *responseFor(NSURLSessionTask *task, NSURLResponse *response) {
     NSURL *url = task.currentRequest.URL;
+    if (!isOfflineConfig(url)) {
+        // A later response on the same task must supersede any earlier offline buffer.
+        if (objc_getAssociatedObject(task, &kOfflineKey))
+            objc_setAssociatedObject(task, &kOfflineKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return response;
+    }
     SGOfflineResponse *state = [SGOfflineResponse new];
-    state.enabled = isOfflineConfig(url) && SGOfflineCompanionLoaded();
+    state.enabled = SGOfflineCompanionLoaded();
     state.url = url;
     objc_setAssociatedObject(task, &kOfflineKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (state.enabled) {
@@ -597,7 +609,7 @@ static void complete(id<NSURLSessionDataDelegate> delegate, NSURLSession *sessio
     NSString *host = url.host.lowercaseString ?: @"", *path = url.path.lowercaseString ?: @"";
     BOOL spotify = has(host, @"spotify") || has(host, @"spclient");
     // EeveeSpotifyReincarnated 350aa15, with Hide ads independent of Spoof Premium.
-    if ((ads && isAd(url, path)) ||
+    if ((ads && (taskKind(self, url) & kAd)) ||
         (premium && spotify && elapsed() > 30 &&
          (has(path, @"deletetoken") || has(path, @"signup/public") || has(path, @"pses/screenconfig")
           || isCustomize(path) || has(host, @"apresolve")))) {

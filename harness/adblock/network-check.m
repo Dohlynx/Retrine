@@ -92,6 +92,52 @@ __attribute__((constructor(101))) static void installTransport(void) {
 
 #include "AdNetwork.m"
 
+// Count matcher entries without adding instrumentation to the production chunk path.
+static _Thread_local NSUInteger adMatches;
+__attribute__((no_instrument_function)) void __cyg_profile_func_enter(void *fn, void *caller) {
+    if (fn == (void *)isAd) adMatches++;
+}
+__attribute__((no_instrument_function)) void __cyg_profile_func_exit(void *fn, void *caller) {}
+
+static NSUInteger offlineAllocations;
+@implementation SGOfflineResponse (AllocationProbe)
++ (instancetype)allocWithZone:(NSZone *)zone {
+    offlineAllocations++;
+    return [super allocWithZone:zone];
+}
+@end
+
+static int chunkCosts(void) {
+    ProbeTask *task = class_createInstance(ProbeTask.class, 0);
+    task.current = [NSURLRequest requestWithURL:[NSURL URLWithString:@"https://audio.example/track"]];
+    SPTCoreURLSessionDataDelegate *delegate = [SPTCoreURLSessionDataDelegate new];
+    NSURLResponse *reply = [[NSHTTPURLResponse alloc] initWithURL:task.current.URL statusCode:200
+                                                     HTTPVersion:@"HTTP/2" headerFields:nil];
+    adMatches = 0;
+    offlineAllocations = 0;
+    [task resume];
+    NSURLSession *session = NSURLSession.sharedSession;
+    // This suite has no offline companion; exercise its response hook's decision explicitly.
+    [delegate URLSession:session dataTask:(id)task didReceiveResponse:responseFor(task, reply)
+       completionHandler:^(NSURLSessionResponseDisposition d) {}];
+    NSData *chunk = [@"x" dataUsingEncoding:NSUTF8StringEncoding];
+    for (int i = 0; i < 32; i++) [delegate URLSession:session dataTask:(id)task didReceiveData:chunk];
+    NSUInteger matches = adMatches, allocations = offlineAllocations;
+    if (matches != 1 || allocations || delegate.body.length != 32) {
+        NSLog(@"FAIL 32 audio chunks: %lu matches, %lu offline allocations, %lu bytes",
+              matches, allocations, delegate.body.length);
+        return 1;
+    }
+    // Redirecting the same task must invalidate the negative result.
+    task.current = [NSURLRequest requestWithURL:[NSURL URLWithString:@"https://ads.spotify.com/fetch"]];
+    [delegate URLSession:session dataTask:(id)task didReceiveData:chunk];
+    if (adMatches != 2 || delegate.body.length != 32) {
+        NSLog(@"FAIL redirected audio task: %lu matches, %lu bytes", adMatches, delegate.body.length);
+        return 1;
+    }
+    return 0;
+}
+
 // A real Foundation session, with its final network boundary handled locally.
 @interface LocalProtocol : NSURLProtocol
 @end
@@ -243,6 +289,7 @@ int main(void) {
             return result || delegates || fallbacks;
         }
         BOOL hideAds = SGHidden(SGKeyHideAds), spoof = SGHidden(SGKeyFakePremium);
+        if (hideAds) failures += chunkCosts();
         for (NSString *path in @[@"/ads", @"/v3/ads?slot=1", @"/ADS", @"/ads/v2/config",
                                 @"/esperanto/com.spotify.ads.v1/Get", @"/esperanto/ad_slot/get"]) {
             for (NSNumber *fallback in @[@NO, @YES])
