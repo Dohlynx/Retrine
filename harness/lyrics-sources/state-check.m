@@ -156,6 +156,9 @@ static OSStatus emptySpicyKey(CFDictionaryRef query, CFTypeRef *data) { return e
 #define kKeptTracks kSpicyKeptTracks
 #import "Shared/LyricsSources/SpicyLyrics.m"
 #undef kKeptTracks
+#define keyQuery deezerKeyQuery
+#import "Shared/LyricsSources/Deezer.m"
+#undef keyQuery
 #undef SecItemCopyMatching
 #undef SecItemDelete
 #undef SGLyricsGetJSONReplyIn
@@ -166,7 +169,7 @@ static NSString *sg_providerTrack;
 static SGLyricsRequestContext *sg_providerContext;
 SGLyricsAsk SGMusixmatchAsk = ^(SGLyricsQuery *q, void (^done)(SGLyricsResult *)) { sg_providerReply = done; sg_providerTrack = q.trackID; sg_providerContext = q.requestContext; };
 SGLyricsAsk SGBiniLyricsAsk, SGUnisonAsk, SGNetEaseAsk, SGQQMusicAsk, SGKuGouAsk;
-SGLyricsAsk SGBugsAsk, SGGenieAsk, SGLyricsPlusAsk, SGDeezerAsk, SGImportedLRCAsk, SGGeniusAsk;
+SGLyricsAsk SGBugsAsk, SGGenieAsk, SGLyricsPlusAsk, SGImportedLRCAsk, SGGeniusAsk;
 SGLyricsAsk SGPetitLyricsAsk;
 NSString *const SGImportedLRCKey = @"importedlrc";
 @implementation SGSource
@@ -1003,6 +1006,35 @@ static NSDictionary *recoveryDisk(NSString *track) {
     });
     pumpUntil(^BOOL { return loaded; });
     return value;
+}
+
+static void checkCredentialFallback(void) {
+    RecoveryFixture *fixture = [RecoveryFixture new];
+    SGLyricsProvider *spicy = SGLyricsProviderFor(SGSpicyLyricsKey);
+    SGLyricsSetOrder(@[SGSpicyLyricsKey, @"deezer", @"musixmatch"]);
+    for (NSUInteger rejected = 0; rejected <= 1; rejected++) {
+        NSString *track = rejected ? @"0123456789abcdefghijkR" : @"0123456789abcdefghijkU";
+        spicy.ask = SGSpicyLyricsAsk;
+        if (rejected) spicy.ask = ^(SGLyricsQuery *q, void (^done)(SGLyricsResult *)) {
+            SGSpicyLyricsAskWith(@"sl_pk_fixture", q, done);
+        };
+        SGLyricsPlaybackChanged(track);
+        SGKaraokeRequestLyrics(track);
+        if (rejected) {
+            pumpUntil(^BOOL { return sg_spicyReply != nil; });
+            sg_spicyReply(nil, [[NSHTTPURLResponse alloc] initWithURL:[NSURL URLWithString:@"https://fixture.invalid"]
+                statusCode:401 HTTPVersion:nil headerFields:nil]);
+            sg_spicyReply = nil;
+        }
+        pumpUntil(^BOOL { return fixture.held[[track stringByAppendingString:@"musixmatch"]] != nil; });
+        [fixture reply:@"musixmatch" track:track result:madeUpLyrics(@"Fallback", SGKaraokeTimingLine) failed:NO];
+        CHECK([SGKaraokeLineText(SGKaraokeLinesForTrack(track).firstObject) isEqual:@"Fallback"]);
+        SGLyricsResult *answer = SGLyricsKeptAnswer(track);
+        CHECK(answer && answer.provisional == rejected);
+        CHECK(rejected ? !recoveryDisk(track) : [recoveryDisk(track)[@"text"] isEqual:@"Fallback"]);
+    }
+    SGSpicyLyricsForgetKey();
+    [fixture restore];
 }
 
 static void checkSoundtrackRetry(void) {
@@ -3371,6 +3403,7 @@ int main(void) {
         checkLiveTranslations();
         checkMissingRecovery();
         checkSpicyCancellation();
+        checkCredentialFallback();
         checkCompletedBounds();
         checkImportedDelivery();
         checkSongImport();

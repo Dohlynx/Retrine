@@ -479,7 +479,8 @@ Shared:
                   sequentially for word timing; In order and All at once follow the rules above.
                   Automatic answers remain provisional while outstanding work or a failed eligible source
                   could change the selection. Each provider invocation carries its own failure outcome,
-                  including search/fetch subrequests; a normal missing-lyrics reply is not a failure.
+                  including search/fetch subrequests. Missing lyrics and an unconfigured Spicy Lyrics or Deezer
+                  credential are not failures; a credential read error or rejection is.
                   Each adapter (including a pinned LRCLIB lookup) has one five-second deadline across
                   its subrequests. Expiry cancels tracked tasks, falls through and ignores late delivery.
                   Sequential modes hedge an unanswered source after two seconds, showing a usable later
