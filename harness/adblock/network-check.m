@@ -10,8 +10,9 @@ BOOL SGHidden(NSString *key) {
     return value && atoi(value);
 }
 void SGRequireClasses(NSArray<NSString *> *names) {}
-void SGAdBlockCountOne(NSString *label) {}
-void SGAdBlockSawOne(NSString *label) {}
+static NSUInteger blockedRequests, seenRequests;
+void SGAdBlockCountOne(NSString *label) { if ([label isEqual:@"Requests"]) blockedRequests++; }
+void SGAdBlockSawOne(NSString *label) { if ([label isEqual:@"Requests"]) seenRequests++; }
 NSData *SGPatchCustomize(NSData *data) { return data; }
 NSData *SGPatchBootstrap(NSData *data) { return data; }
 NSData *SGPatchAccountAttributes(NSData *data) { return data; }
@@ -118,6 +119,7 @@ static int delegateSessions(void) {
         configuration.protocolClasses = @[LocalProtocol.class];
         NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration delegate:delegate delegateQueue:delegate.queue];
         NSURLSessionDataTask *task = [session dataTaskWithURL:[NSURL URLWithString:@"https://spclient.wg.spotify.com/ads"]];
+        NSUInteger blocked = blockedRequests, seen = seenRequests;
         [task resume];
         BOOL completed = dispatch_semaphore_wait(delegate.completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) == 0;
         [session finishTasksAndInvalidate];
@@ -125,6 +127,8 @@ static int delegateSessions(void) {
         NSData *expected = SGHidden(SGKeyHideAds) ? [NSData data] : [@"ok" dataUsingEncoding:NSUTF8StringEncoding];
         BOOL passed = completed && invalidated && delegate.correctQueue && delegate.status == 200 && !delegate.error &&
             [delegate.body isEqual:expected] && [delegate.events isEqual:@[@"response", @"data", @"complete"]];
+        if (SGHidden(SGKeyHideAds))
+            passed &= blockedRequests - blocked == 1 && seenRequests - seen == 1;
         if (!passed) {
             NSLog(@"FAIL delegate %@: status=%ld events=%@ data=%@ error=%@ queue=%d completed=%d invalidated=%d",
                   cls, (long)delegate.status, delegate.events, delegate.body, delegate.error,
