@@ -291,7 +291,22 @@
 "settings.appearance.amoled_background.title" = "AMOLED 배경";
 "settings.appearance.hide_explicit.subtitle" = "콘텐츠 제한이나 VoiceOver를 변경하지 않고 E 표시를 숨깁니다";
 "settings.appearance.hide_explicit.title" = "E 표시 숨기기";
-"settings.appearance.plain_checkmark.subtitle" = "원 없이 강조 색상으로 표시되는 저장된 노래의 체크표시";
+"settings.appearance.glass_material.clear" = "투명";
+"settings.appearance.glass_material.regular" = "기본";
+"settings.appearance.glass_material.subtitle" = "투명은 버튼 뒤가 더 많이 비쳐 보입니다. iOS 26에서 적용됩니다";
+"settings.appearance.glass_material.title" = "유리 재질";
+"settings.appearance.glass_tint.dark" = "어둡게";
+"settings.appearance.glass_tint.light" = "밝게";
+"settings.appearance.glass_tint.none" = "없음";
+"settings.appearance.glass_tint.subtitle" = "유리에 밝거나 어두운 색조를 더합니다. iOS 26에서 적용됩니다";
+"settings.appearance.glass_tint.title" = "유리 색조";
+"settings.appearance.glass_touch.subtitle" = "손가락이 닿으면 유리가 반응합니다. 버튼은 어느 쪽이든 그대로 작동합니다";
+"settings.appearance.glass_touch.title" = "유리 터치 반응";
+"settings.appearance.saved_mark.dot" = "점";
+"settings.appearance.saved_mark.plain_checkmark" = "단순 체크표시";
+"settings.appearance.saved_mark.spotify" = "Spotify 기본";
+"settings.appearance.saved_mark.subtitle" = "저장된 노래의 표시: Spotify의 원 안 체크표시, 또는 강조 색상의 체크표시나 점";
+"settings.appearance.saved_mark.title" = "저장 표시";
 "settings.appearance.play_page_color.subtitle" = "재생 버튼의 기호와 글자가 페이지 색상을 따릅니다. 끄면 강조 색상을 따릅니다";
 "settings.appearance.play_page_color.title" = "페이지 색상의 재생 버튼";
 "settings.appearance.round_artist_play.subtitle" = "아티스트 페이지에서 재생 버튼이 기호만 있는 원형 버튼으로 표시됩니다";
@@ -302,7 +317,6 @@
 "settings.appearance.scrolled_title.title" = "스크롤 시 페이지 제목";
 "settings.appearance.page_zoom.title" = "커버에서 페이지 열기";
 "settings.appearance.page_zoom.subtitle" = "누른 커버에서 앨범과 플레이리스트가 펼쳐지고, 뒤로 가면 커버로 돌아갑니다. 다시 시작하면 적용됩니다";
-"settings.appearance.plain_checkmark.title" = "단순 체크표시";
 "settings.appearance.title" = "화면 모양";
 
 "settings.appicon.choice.default" = "기본";

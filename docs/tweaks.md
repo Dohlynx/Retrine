@@ -1732,7 +1732,7 @@ Redesigned:
                   it, the row's arranged views held in before it as for a row without the add button, the title and
                   its mark ending at the star (12 pt short of it beside the lyrics' thumbnail), and the ⋯ menu leaves
                   out its add item (issue #44; harness/player/title-style-check.sh, harness/system-menu `star`). In
-                  the player it wins over Plain checkmark, which
+                  the player it wins over Saved mark, which
                   keeps every other add button; a disabled player button goes back to Spotify's own glyph, which shows
                   it disabled, and gets the star again once enabled (SGRPlainCheck.x, which owns the add button's glyph
                   and finds the player's by the InformationElementsUnit its button answers to). A Free account gets it too: Spotify's Reinvented Free player mode, whose units none of
@@ -2401,7 +2401,42 @@ launch like the accent, so turning it on needs a relaunch too); while installed 
 tokens even when the user switches back to Spotify's green, so the accent can return live. A launch with Spotify's
 green and Follow the cover off installs nothing, and choosing an accent then takes effect after a relaunch (the page's
 restart note). With Spotify's green and Follow the cover on, the tokens resolve to Spotify's own colors everywhere
-but the player's controls, which follow the cover (harness/appearance-accent/). Hide explicit badge
+but the player's controls, which follow the cover (harness/appearance-accent/). After the accent the redesign's
+list has its glass, every glass the redesign makes: the glass behind its buttons that Redesigned/Kit/SGRGlass.m makes
+(SGRGlassInside, SGRGlassCapsuleInside, SGRShowGlass), the glass tab bar's platters, main and split, expanded and
+minimized (Redesigned/Navbar/TabBar.x hands each platter UIKit draws to SGRGlassRestyle, which gives it the
+listener's glass through `-[UIView _setGlassEffect:]` only when they chose other than Regular, None and on, since any
+glass handed over comes out with UIKit's smoothness 6 lost), the now playing card's glass and its Jam strip's
+(Redesigned/NowPlayingBar/NowPlayingBar.x) and the glass behind both bars' stand-ins while the player opens and closes
+(BarTransition.x) and the search field's (Redesigned/Navbar/SearchField.x, once per pane), all through SGRGlassEffect().
+Search's category cards keep their Clear glass in the category's color, and the full screen lyrics page's
+(Redesigned/Lyrics/LyricsPage.x) stays Core's regular glass, for the words' legibility. The choices are each read once as the redesign starts (a constructor, not the first glass made,
+so a launch under Reduce Transparency that changes them and then switches it off still waits for a restart): Glass material (`spotifyglass.redesign.glass.material`,
+Regular or Clear, UIGlassEffect's two styles), Glass tint (`spotifyglass.redesign.glass.tint`, None, Light or Dark,
+white at 30% or black at 45% as the glass's tint color) and Glass touch response
+(`spotifyglass.redesign.glass.interactive`, on until switched off: interactive glass). Nothing stored is Regular, None
+and on, and a stored material or tint that is none of the choices reads as Regular or None. Under Reduce Transparency a
+shape is the solid fill whatever is chosen, and the bars keep UIKit's own opaque treatment of their glass (iOS 26.5
+simulator: Clear and Dark show no page through either bar), and below iOS 26 the dark blur stays as it was: the three
+apply to the iOS 26 glass only. The tab bar's platters answer touches as UIKit's do, and switched off their glass stays
+still while the tabs still take their taps; the card's glass takes no touch, its own press stays its answer
+(harness/tabbar glass-check.py). A shape takes no touch, the control it sits in does; interactive glass gives under the touches of the view
+UIKit asks `-_flexInteractionGestureView` for, so the shape (SGRGlassShape) names its control, as UIKit's own glass
+background behind a button names the button: the control SGRGlassBacks gave it, else the control it sits in (Home's
+pill keeps its glass in a holder beside the buttons, and Redesigned/Home/HomeHeader.x gives it the Filter button), and the glass answers the control's touches while the control keeps them,
+with its action, highlight and VoiceOver; a disabled control names nothing and its glass stays still. A shape that took
+touches itself left its button without a tap (iOS 26.5 simulator). Switched off, the glass is not interactive and the
+control works as ever. Saved mark (`spotifyglass.redesign.savedMark`; Spotify's, Plain checkmark or Dot) replaced the
+Plain checkmark switch: a saved song's circled tick stays Spotify's, becomes a plain checkmark in the accent, or a filled
+dot in the accent in the same place, only while the button is selected (saved), the unsaved plus always Spotify's
+(SGRPlainCheck.x, SGRAddGlyphFor). With nothing stored, or a value that is none of the three, it follows the old switch
+(`spotifyglass.redesign.plainCheck`: Plain checkmark when on, Spotify's when not; SGRSavedMarkFrom), which is read and
+never written or removed. The Player page's Star add button still wins in the player. The button's action, its selected
+state, size and accessibility label stay Spotify's, and the mark follows the selected state on every set and layout, so
+a reused row or a song unsaved gets the right glyph back. Checked against harness/appearance-page/ (rows-check: the
+defaults, out of range values, the old switch carried over and left alone), harness/player-refinements/ (`dot`) and
+harness/glass-choices/ (an iOS 26 simulator: each material and tint, touch response on and off judged from screenshots
+held against at rest, Reduce Transparency, and Dot over a list scrolled for reuse, unsaved and saved again). Hide explicit badge
 (off) ends either look's list (spotifyglass.hideExplicit native, spotifyglass.redesign.hideExplicit redesigned;
 Native/Appearance/ExplicitBadge.x, Redesigned/Kit/SGRExplicitBadge.x): a transparent mask over Spotify's own badge views,
 Components.UI.ExplicitIcon and the retrieval row's ExplicitBadge class, never an E label found by its text, so the layout,
