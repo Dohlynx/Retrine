@@ -645,6 +645,24 @@ static void checkPreviewSurvivesUnlock(void) {
     clearFixture(root);
     SGLyricsDeleteSavedTranslations();
 }
+// Runs in its own process before anything opens the store: a failed startup pass leaves abandoned
+// import stages, and the next maintenance chance must still reclaim them.
+static void checkStartupReclaimRetry(void) {
+    NSURL *root = SGLyricsTestCacheRoot();
+    CHECK([[NSData data] writeToURL:root options:0 error:nil]);
+    __block BOOL listed = NO;
+    SGSavedRecords(nil, ^(NSArray *records, NSString *next, NSDictionary *summary, NSString *warning) { CHECK(warning.length); listed = YES; });
+    waitFor(^BOOL { return listed; });
+    CHECK([NSFileManager.defaultManager removeItemAtURL:root error:nil]);
+    NSURL *abandoned = [[root URLByAppendingPathComponent:@"TranslationImports"] URLByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    CHECK([NSFileManager.defaultManager createDirectoryAtURL:abandoned withIntermediateDirectories:YES attributes:nil error:nil]);
+    [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationProtectedDataDidBecomeAvailable object:nil];
+    listed = NO;
+    SGSavedRecords(nil, ^(NSArray *records, NSString *next, NSDictionary *summary, NSString *warning) { CHECK(!warning); listed = YES; });
+    waitFor(^BOOL { return listed; });
+    CHECK(![NSFileManager.defaultManager fileExistsAtPath:abandoned.path]);
+    clearFixture(root);
+}
 static void checkMigrationWarningPersists(void) {
     SGLyricsDeleteSavedTranslations();
     SGLyricsSavedAI(@"notes", @"barrier", @"ko");
