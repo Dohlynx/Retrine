@@ -1159,6 +1159,8 @@
 "settings.localfiles.imported.value.none" = "None";
 "settings.localfiles.title" = "Local files";
 
+"settings.locallyrics.clipboard.empty" = "The clipboard has no text.";
+"settings.locallyrics.embedded.credit" = "From the file";
 "settings.locallyrics.error.deletefailed" = "Could not delete the file";
 "settings.locallyrics.error.importfailed" = "Could not import the file";
 "settings.locallyrics.error.nothing" = "There is nothing to import.";
@@ -1166,21 +1168,21 @@
 "settings.locallyrics.error.pastefailed" = "Could not import the lyrics";
 "settings.locallyrics.error.storage" = "The lyrics could not be saved. The ones it had are unchanged.";
 "settings.locallyrics.error.toolarge" = "The lyrics are larger than 1 MB.";
+"settings.locallyrics.error.type" = "Choose an LRC, TTML, XML or TXT file.";
 "settings.locallyrics.error.unreadable" = "The lyrics could not be read as text.";
 "settings.locallyrics.error.unreadablefile" = "The file could not be read.";
 "settings.locallyrics.files.empty" = "No imported files";
 "settings.locallyrics.files.header" = "Files";
-"settings.locallyrics.footer" = "Import for current track links the file to the local file playing, whatever its tags say. Paste keeps the clipboard's lyrics for it. Import lyrics… keeps a file for any track whose title and artist match its [ti:] and [ar:] tags, or its name as \"Artist - Title\". A file may be TTML, LRC or plain text: what it holds is read from its content. Swipe left on a file to delete it.";
 "settings.locallyrics.importbyname.subtitle" = "Matched by title and artist";
 "settings.locallyrics.importbyname.title" = "Import lyrics…";
-"settings.locallyrics.importfortrack.defaulttitle" = "The local file playing";
-"settings.locallyrics.importfortrack.notplaying" = "Start playing a local track first";
 "settings.locallyrics.importfortrack.title" = "Import for current track…";
 "settings.locallyrics.linked.message" = "%@ now gives the lyrics for %@.";
-"settings.locallyrics.linked.thislocalfile" = "this local file";
 "settings.locallyrics.linked.title" = "Lyrics linked";
 "settings.locallyrics.paste.name" = "Pasted lyrics";
 "settings.locallyrics.paste.title" = "Paste";
+"settings.locallyrics.song.footer" = "Import or paste lyrics for the song playing. For local files, Import lyrics… can also match by title and artist. Swipe left on a file to delete it.";
+"settings.locallyrics.song.notplaying" = "Play a song first";
+"settings.locallyrics.song.remove" = "Remove lyrics for current track";
 "settings.locallyrics.title" = "Imported lyrics files";
 "settings.locallyrics.viewer.empty" = "This lyrics file has no lines to show.";
 "settings.locallyrics.viewer.loading" = "Loading lyrics…";

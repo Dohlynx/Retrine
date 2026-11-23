@@ -821,12 +821,15 @@ Shared:
                   with no source switched on, of LRCLIB alone, which then gets the file's title, artist, album and
                   length. A rename gives a new key (a cover alone does not), asked for at once while the file plays.
                   A miss is asked again a few times, in case it was a lost request. The user's own lyrics files
-                  (LocalLyrics.m, the Imported lyrics files page under Lyrics' sources), .lrc, .ttml or plain text and
-                  kept as UTF-8 in Documents/Retrine/Lyrics, come before any source: a file linked to the local file
-                  playing (Import for current track, or Paste for the clipboard's lyrics) is its lyrics whatever its
-                  tags say, and any other is matched by
-                  [ti:] and [ar:], or a name of "Artist - Title", folded; an import or a delete has the engine forget
-                  what it kept for local files and ask again. What a file holds is decided by its content, never by
+                  (LocalLyrics.m, Imported lyrics files under Lyrics' sources) accept .lrc, .ttml, .xml and .txt
+                  and stay as UTF-8 in Documents/Retrine/Lyrics. Import or paste links lyrics to the URI of the
+                  song playing when the listener taps. For Automatic, that link precedes offline and online
+                  lyrics without overwriting the ordinary offline copy. Replacing or deleting refreshes the
+                  affected track. Only local files can also match by folded [ti:]/[ar:] or "Artist - Title".
+                  Before that name match, the engine tries the playing file's `local_file_path`, off main:
+                  ID3v2.2 ULT/SLT, v2.3/2.4 USLT/SYLT, FLAC LYRICS/UNSYNCEDLYRICS, or M4A ©lyr.
+                  Timed lyrics take precedence over plain text; SYLT with MPEG-frame timestamps is skipped.
+                  An unreachable file or absent tag continues the ordinary lookup. What a file holds is decided by its content, never by
                   its name — a TTML document with timed lines, else LRC's stamped lines, else one untimed line after
                   another — and it is kept under the extension of what it turned out to be. A file or a paste over
                   1,048,576 bytes of text, an empty one, bytes that are neither UTF-8 nor UTF-16 with a BOM, or a
@@ -1388,8 +1391,8 @@ Native:
                   the cover's room are checked in the simulator against harness/native-player/
     Lyrics/       the full screen lyrics page on glass, and a tap on the lyrics' footer opening the pages a credit
                   links to (LyricsPage.x)
-    LocalFiles/   a lyrics button on the player's footer for a local file with an imported lyrics file linked to
-                  it, a fifth of the
+    LocalFiles/   a lyrics button on the player's footer for a song with a linked import, or a local file with
+                  embedded or name-matched lyrics. The viewer honors provider picks. The button sits a fifth of the
                   way in from the leading edge, which opens a page of lines on black. Player reports update the page
                   on track changes, seeks and resume; only advancing timed lyrics arm a line deadline, capped at a
                   quarter second because speed can change between reports
