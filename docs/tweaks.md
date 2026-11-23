@@ -2174,7 +2174,11 @@ Redesigned:
                   line against Spotify's mocked sheet, are checked on the Mac by harness/ui-refinements/). A stored switch migrates: on or unset is In the row, off is
                   Off, and the key stays readable. Count source (spotifyglass.redesign.album.playCounts.source, 0 Your plays
                   unless set, 1 Spotify plays; the page's preview follows it) picks the numbers, apart from the place. Your
-                  plays are Listening stats', matched by the album's and the track's names. Spotify plays
+                  plays are Listening stats', matched by the album's and the track's names. Track numbers
+                  (`spotifyglass.redesign.album.trackNumbers`, off unless set, read at launch) uses the
+                  position in each disc's metadata track array. A loaded row's menu supplies the track URI;
+                  only a row without one can match an exact, unique title. Missing metadata leaves no number.
+                  Spotify plays
                   (AlbumSpotifyCounts.m, AlbumRows.x, over Shared/SpotifyMetadata/) are what Spotify's own metadata gives for
                   the album: one JSON GET for its track URIs (the metadata/4/album path, market from_token) and one batched
                   extended-metadata POST for all their play counts (extension 185), per miss, never one request per track and

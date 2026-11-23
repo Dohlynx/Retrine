@@ -256,6 +256,7 @@
 "settings.album.notes.off" = "끔";
 "settings.album.notes.open" = "전체 앨범 소개 읽기";
 "settings.album.notes.title" = "앨범 소개";
+"settings.album.track_numbers" = "트랙 번호";
 "settings.album.notes.under_play" = "재생 버튼 아래";
 "settings.album.notes.under_tracks" = "트랙 아래";
 "settings.album.play_counts.choice.in_menu" = "메뉴에";

@@ -178,6 +178,7 @@
 "settings.album.queue.one_song" = "1 song";
 "settings.album.queue.songs_format" = "%lu songs";
 "settings.album.title" = "Albums";
+"settings.album.track_numbers" = "Track numbers";
 "settings.album.tracks.header" = "Tracks";
 
 "settings.appearance.accent.choice.custom" = "Custom";
