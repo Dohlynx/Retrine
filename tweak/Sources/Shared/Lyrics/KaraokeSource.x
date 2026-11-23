@@ -178,9 +178,20 @@ void SGLyricsSetRouteOffsetMs(NSInteger ms) {
     offsetsChanged();
 }
 
+// spclient's global name, or the regional one Spotify talks to instead on some accounts
+// ("guc3-spclient.spotify.com" on a 9.2.0 phone, which never asked the global name at all).
+static BOOL isSpclientHost(NSString *host) {
+    host = host.lowercaseString;
+    if ([host isEqualToString:@"spclient.wg.spotify.com"]) return YES;
+    NSString *suffix = @"-spclient.spotify.com";
+    if (![host hasSuffix:suffix] || host.length == suffix.length) return NO;
+    NSString *region = [host substringToIndex:host.length - suffix.length];
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789"];
+    return [region rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound;
+}
+
 static void rememberHeaders(NSURLSession *session, NSURLRequest *request) {
-    if (![request.URL.scheme.lowercaseString isEqualToString:@"https"] ||
-        ![request.URL.host.lowercaseString isEqualToString:@"spclient.wg.spotify.com"]) return;
+    if (![request.URL.scheme.lowercaseString isEqualToString:@"https"] || !isSpclientHost(request.URL.host)) return;
     NSMutableDictionary<NSString *, NSString *> *all = [NSMutableDictionary dictionary];
     [session.configuration.HTTPAdditionalHeaders enumerateKeysAndObjectsUsingBlock:^(id key, id value, BOOL *stop) {
         if ([key isKindOfClass:NSString.class] && [value isKindOfClass:NSString.class]) all[[key lowercaseString]] = value;

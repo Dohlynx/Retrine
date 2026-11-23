@@ -2983,8 +2983,17 @@ static void checkHeaderOrigin(void) {
         @[@"https://spclient.wg.spotify.com/color-lyrics/v2/track/check", @"trusted", @"trusted"],
         @[@"https://spclient.evil.example/color-lyrics/v2/track/check", @"untrusted-host", @"trusted"],
         @[@"https://evilspclient.wg.spotify.com.example/color-lyrics/v2/track/check", @"untrusted-suffix", @"trusted"],
+        @[@"https://guc3-spclient.spotify.com.evil.com/", @"untrusted-regional-suffix", @"trusted"],
+        @[@"https://spclient.spotify.com.x/", @"untrusted-domain", @"trusted"],
+        @[@"https://evil-spclient.spotify.co/", @"untrusted-tld", @"trusted"],
         @[@"http://spclient.wg.spotify.com/color-lyrics/v2/track/check", @"insecure", @"trusted"],
         @[@"HTTPS://SPCLIENT.WG.SPOTIFY.COM/color-lyrics/v2/track/check", @"case-insensitive", @"case-insensitive"],
+        // The regional name some accounts use instead of the global one (9.2.0 phone).
+        @[@"https://guc3-spclient.spotify.com/remote-config-resolver/v3/configuration", @"regional", @"regional"],
+        @[@"https://-spclient.spotify.com/", @"untrusted-empty-region", @"regional"],
+        @[@"https://a.b-spclient.spotify.com/", @"untrusted-dotted-region", @"regional"],
+        @[@"https://guc3_x-spclient.spotify.com/", @"untrusted-region-character", @"regional"],
+        @[@"https://GUC3-SPCLIENT.SPOTIFY.COM/", @"regional-case", @"regional-case"],
     ];
     for (NSArray<NSString *> *row in cases) {
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:row[0]]];
@@ -3003,7 +3012,7 @@ static void checkHeaderOrigin(void) {
     }
     sg_spclientHeaders = previousHeaders;
     sg_headersWaiting = previousWaiting;
-    puts("header origin: exact HTTPS host, case-insensitivity, malicious hosts and HTTP rejection passed");
+    puts("header origin: exact HTTPS global or regional host, case-insensitivity, malicious hosts and HTTP rejection passed");
 }
 
 static void checkBackgroundTimedDelivery(void) {
