@@ -1185,6 +1185,8 @@ static void loadLyrics(void) {
             HARNESS_CHECK(SGRNowPlayingArtwork(NULL,NULL));
             [host layoutIfNeeded]; // Consume only an invalidation caused by artwork arrival.
             HARNESS_CHECK(SGRPlayerTwoColumns());
+            [self expectFooterRowWithQueueStandIn:YES];
+            HARNESS_CHECK(!self->_failures);
             NSLog(@"[harness] late-wide passed"); exit(0);
         });
         return YES;
@@ -6140,9 +6142,35 @@ static NSUInteger footerBandsIn(UIView *player) {
     return bands;
 }
 
+- (void)expectFooterRowWithQueueStandIn:(BOOL)standIn {
+    UIView *queue = SGRFindByIdentifier(_host, @"QueueButtonNowPlaying", NULL);
+    UIViewController *unit = unitOf(queue.superview.superview);
+    UIView *footer = unit.view;
+    CGRect ordinary = footer.bounds;
+    CGPoint center = queue.center;
+    // Labs' Agent button adds space below the row, not inside it.
+    for (NSNumber *extra in @[@44, @0]) {
+        CGRect bounds = ordinary;
+        bounds.size.height += extra.doubleValue;
+        footer.bounds = bounds;
+        queue.center = CGPointMake(center.x, center.y + (extra.doubleValue ? 0.25 : 0));
+        [unit viewDidLayoutSubviews];
+        UIView *lyrics = firstOfClass(footer, @"SGRGlyphButton");
+        UIView *placedQueue = SGRFindByIdentifier(footer, @"retrine.player.queue", NULL);
+        BOOL aligned = lyrics && lyrics != placedQueue && lyrics.center.y == 22;
+        if (standIn) aligned = aligned && placedQueue && placedQueue.center.y == lyrics.center.y;
+        [self expect:aligned step:extra.doubleValue ? @"Footer glyphs stay on the row above the prompt" : @"Footer glyphs stay centered without the prompt"
+              detail:[NSString stringWithFormat:@"Lyrics y %.2f, queue stand-in %@, footer height %.1f", lyrics.center.y,
+                      placedQueue ? @(placedQueue.center.y) : @"absent", bounds.size.height]];
+    }
+}
+
 - (void)runLook {
     UIImage *second = secondArtwork();
-    after(3, ^{ [self expectFooterTouches:@"a track"]; });
+    after(3, ^{
+        [self expectFooterTouches:@"a track"];
+        [self expectFooterRowWithQueueStandIn:NO];
+    });
     after(8, ^{
         serve(imageURI(@"ffff"), second, 0.25, NO);
         [self playTrack:@"spotify:track:harnessF" image:imageURI(@"ffff")];
