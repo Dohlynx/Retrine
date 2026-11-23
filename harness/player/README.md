@@ -320,6 +320,16 @@ come late, out of order, or not at all.
   Spotify's High), and the native look's badge as it was (Spotify's word, centered on the times). The log ends with
   `timerow checks: n of 13 right -- PASS` or `FAIL`; on the sources before the time row's change it read 3 of 10.
 
+- `sponsorblock` is SponsorBlock's marks on the `timerow` mock of Spotify's bar as the redesign draws it
+  (`PlayerControls.x`, `Shared/SponsorBlock/SponsorBlockMarkers.m`), run by `../sponsorblock/markers-check.m`: the
+  engine's real session plays a song and two fixture episodes, and the drawn window is compared with the same bar
+  unmarked. It checks each mark's color and extent on Spotify's episode bar and on the slider's own track, the Off
+  and too-short segments left out, a next episode and a longer duration on the notification alone, a narrower bar,
+  right to left, the scrubbed track's height, touches and accessibility unchanged, and nothing left by a song.
+  `sponsorblock-off` checks that nothing is drawn with the switch off. `HARNESS_SHOTS=<dir>` (as
+  `SIMCTL_CHILD_HARNESS_SHOTS`) receives `redesign-ltr.png` and `redesign-rtl.png`. The log ends with
+  `sponsorblock redesign checks: n of 17 right -- PASS` or `FAIL`.
+
 - `volumebar` is the volume row (`PlayerVolume.m`) beside the progress bar as the redesign draws it (the `timerow`
   mock), the Music app's two bars alike. On the row's Connect slider at half (the simulator does not draw
   MPVolumeView's) it checks the track 7pt as the progress bar's, the same fill and track colors, the fill's end square
