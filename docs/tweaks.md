@@ -202,6 +202,8 @@ Shared:
                   Labs also offers AI badges and its dependent Likely AI badges, both off by default
                   (unlike Chroma). They enable Spotify's own classification badges on artists, search and rows;
                   off leaves the server's values alone. They use the forced-flag registry and require a restart.
+                  Mod › Storage uses that registry for ios-settings-connectivitypageplugin-impl.show_cache_limit_item
+                  (on by default, off after a reset). It exposes Spotify's control without setting a limit.
                   the provider pins 9.1.88's ios-reprise-liquid-glass-override.mode to default in both looks (after an All flags
                   override) and logs the server's own value once, as a force_disabled would take the glass off the redesign.
                   It also pins 9.1.90's ios-navigationui-tabbar-impl.is_liquid_glass_tab_bar_enabled off in both looks.
@@ -716,7 +718,8 @@ Shared:
                   failed write is not retried; every request hands back a ticket, SGMotionTicket.h, and the tickets asking
                   for one file share its transfer: cancelling the last stops it, unless the size is known and more than half
                   of it is in, when it finishes into the store anyway; a cancelled ticket's completion never runs, a dropped
-                  one's still does), on iOS 26 the lock screen's full-screen
+                  one's still does). The store trims its own clips to 40 files and 300 MB (decimal), oldest modification
+                  first, skipping clips still in use and trimming again on release. On iOS 26 the lock screen's full-screen
                   artwork (LockScreenMotion.x). With Every song, a song with neither gets the selected background
                   as a gentle 4 s 3:4 loop, using the shared lyric encoder without text (SGFluidClip.m).
                   Cache keys include cover content, background settings and output size. Pending presentations
@@ -2554,7 +2557,9 @@ six-hour cache once; an older cached release contributes neither its date nor it
 from the releases Release Please cuts, with Check now, the release to get, all the releases and Tell
 me when one is out, the sheet a newer release brings up a few seconds after Spotify opens), the
 build and Spotify's version, the site and the repo, What's New and the welcome tour again, Clear Keychain and Reset all
-settings. A flag switch on a page forces that one flag and off leaves Spotify's own value, so the All
+settings. Mod › Storage links to Spotify's own storage settings (`spotify:config:storage`). Choose a cache
+size there: Spotify saves the limit and trims its cache itself, not downloads. With a small cache Pixie
+may need to download a streamed track before export. A flag switch on a page forces that one flag and off leaves Spotify's own value, so the All
 flags page is where a flag goes back to Auto. Spotify ships its newer design behind several flags at
 once, and the redesign is built on it (the glass navigation bar, the new player slider, the sheet style
 player, the queue and Connect sheets, the redesigned player header, the sleep timer's options sheet):

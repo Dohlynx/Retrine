@@ -1684,6 +1684,10 @@
 "settings.mod.share_diagnostics.title" = "Share diagnostics";
 "settings.mod.spotify_version.likely_works" = ", likely works";
 "settings.mod.spotify_version.made_for" = "%@, made for %@";
+"settings.mod.storage.footer" = "Spotify trims its cache to the size you choose and keeps your downloads. With a small cache, Pixie may need to download a streamed track before exporting it.";
+"settings.mod.storage.limit" = "Show cache size limit";
+"settings.mod.storage.open" = "Open Spotify storage settings";
+"settings.mod.storage.title" = "Storage";
 "settings.mod.title" = "Mod";
 "settings.mod.tour.title" = "Welcome tour";
 "settings.mod.update.all_releases.subtitle" = "Every version, this one and the ones before it";

@@ -1709,6 +1709,10 @@
 "settings.mod.language.english" = "English";
 "settings.mod.language.korean" = "한국어";
 "settings.mod.language.footer" = "Spotify를 다시 시작하면 적용됩니다.";
+"settings.mod.storage.title" = "저장 공간";
+"settings.mod.storage.limit" = "캐시 크기 제한 표시";
+"settings.mod.storage.open" = "Spotify 저장 공간 설정 열기";
+"settings.mod.storage.footer" = "Spotify가 설정한 크기에 맞춰 캐시를 정리하고 다운로드한 곡은 그대로 둡니다. 캐시가 작으면 Pixie가 스트리밍으로 들은 곡을 내보내기 전에 다시 다운로드해야 할 수 있습니다.";
 "settings.mod.keychain.action.clear" = "키체인 비우기";
 "settings.mod.keychain.alert.message" = "Gemini, Claude, OpenAI 호환, DeepL API 키와 Spicy Lyrics 키, Deezer ARL이 이 iPhone에서 삭제됩니다. 설정은 그대로 남습니다.";
 "settings.mod.keychain.alert.title" = "키체인을 비울까요?";
