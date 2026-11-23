@@ -1362,7 +1362,7 @@ Redesigned:
                   animated cover still filling the hero, and a playlist Full screen; a stored choice wins; SGRPageFullCover in
                   SGRHeaderInfo.m). Under the cover the title is Title 2 bold, the creator Title 3 regular and the kind and
                   date or length Caption 1 semibold in the secondary color (the Music app's sizes, capped at Extra Large;
-                  SGRHeaderInfo.m infoFont); the artist page's name is Large Title bold at the leading edge (largeTitle).
+                  SGRHeaderInfo.m infoFont); the artist page's name is Large Title bold, centred like the album's (largeTitle).
                   The first read of either carries the global switch of before (spotifyglass.redesign.fullBleedCovers) into both
                   where they have no value of their own and sets spotifyglass.redesign.fullBleedCovers.migrated; the old key is
                   left alone for a downgrade and never read again. In Card an album's animated cover still fills the hero.
