@@ -1,5 +1,16 @@
 # Artist harness
 
+**Hold Play (live Spotify, not the mock).** With Premium enabled on iOS 26.5, holding Play from a paused
+album on The Weeknd's page (9.1.90) and Queen's page (9.2.0) changed `SGPlayerState().contextURI` to
+the displayed artist's popular-release context and set `options.shufflingContext`. A tap paused; holding
+with shuffle already on resumed. Repeating the hold while playing did not pause, including after turning
+shuffle off manually. Holding for 0.8 s then dragging outside before lift left playback and shuffle alone.
+Neither artist header offered a Smart Shuffle step. On 9.2.0 the Korean custom action `셔플` was invoked
+through its registered target and selector; it declined a missing or disabled source and started shuffled
+playback with both sources available. This was not a spoken VoiceOver or physical vibration test.
+9.1.78 and 9.1.88 rely on the existing artist header identifiers and Spotify's Encore accessibility strings;
+an unrecognized control state leaves the hold inactive.
+
 Spotify's artist page mocked under its own class names and accessibility identifiers (from
 `trees/clean/artist/01.txt` and `05.txt`, recorded 2026-09-16), so `Redesigned/Artist/` can be laid out and
 looked at on the Mac without the phone.

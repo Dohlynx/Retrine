@@ -2186,7 +2186,11 @@ Redesigned:
                   the count and the ⋯'s mark read its RetrievalRowKit TitleView and SubtitleView, and the artist line's change,
                   which needs the Granular wrapper the explicit badge sits beside, leaves such a row alone. A podcast's episode page is the same template, so it is given the same field, and what it
                   paints over it is taken off. Laid out on the Mac against harness/album/
-    Artist/       the artist page on the same field and header (Artist.h lists its files), its Music / Video / Merch
+    Artist/       Hold Play on the redesigned artist header, or use its Shuffle accessibility action, to play
+                  the displayed artist shuffled. A hold released outside the button does not act. The header's
+                  own Shuffle and Play controls supply the state and actions; an artist already playing is not
+                  paused. A normal tap stays Spotify's. See harness/artist/README.md for simulator coverage.
+                  The artist page on the same field and header (Artist.h lists its files), its Music / Video / Merch
                   strip gone so the Music list is the page, and off that list its videos (on until switched off) and,
                   off until switched on, the Artist pick, the Release Countdown and About
                   (spotifyglass.redesign.artist.hide.pick, .countdown, .about). Each is told apart by the identifier

@@ -37,6 +37,7 @@
 #import "Redesigned/Album/Album.h"
 #import "Artist.h"
 #import "ArtistArtwork.h"
+#import "ArtistShuffleHold.h"
 
 // A picture shorter than this is one mid load.
 static const CGFloat kMinHero = 120;
@@ -443,6 +444,7 @@ static void applyContent(UIView *header, UIView *container, SGRHeaderInfo *info,
     // with the photo: pinned there it is the same button in the same place on the album and the playlist,
     // and the page keeps it however far down the list one is (issue #57).
     UIView *more = SGRFindByIdentifier(header, @"Components.UI.ContextMenuButton*", &kMoreKey);
+    artistBindHold(info, header, play, shuffle, more.accessibilityIdentifier);
     SGRPinnedMore(SGRArtistPageOf(container), &kMoreButtonKey, more);
 
     // The buttons arrive after the header has laid out, in a row that keeps its size and so lays nothing out

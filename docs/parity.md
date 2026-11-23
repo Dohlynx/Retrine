@@ -203,6 +203,7 @@ refinements and the page previews.
 | The line being sung under the cover: a long line shrinks and then splits into portions of whole words, read on a one-shot timer aimed at the next portion or line, and standing down where Spotify's own lyric preview shows | Done (Redesigned/Player/PlayerLyricFit.m, PlayerLyricLine.x); harness/player-lyric-line/ |
 | Album editorial notes from Apple Music's catalog, under Play, under the tracks or off | Done (Redesigned/Album/AlbumNotes.m, AlbumSections.x; SGMotionCatalog.m's SGMotionAlbumNotesIn): exact artist, edition, count, year and rating only; harness/album-notes/ |
 | Artist page: Apple Music's artist photo and animated artist artwork | Done (Redesigned/Artist/ArtistArtwork.m, ArtistHeader.x; SGMotionArtistMatch): two agreeing releases and one namesake only; harness/artist-artwork/ |
+| Hold Play to shuffle the displayed artist | Done (Redesigned/Artist/ArtistHeader.x, ArtistShuffleHold.h); Spotify artist-context playback checked on 9.1.90 and 9.2.0. |
 | The player's time digits rolling only the characters that changed, and the add button as a star | Done (Redesigned/Kit/SGRRefinements.m, SGRRollingDigits.m, SGRPlainCheck.x, PlayerControls.x, PlayerSettings.m); harness/player-refinements/ |
 | A live preview at the top of the redesign's page settings, following the switches as they are flipped | Done (Redesigned/Kit/SGRPagePreview.m in the Playlists, Home, Search, Albums and Artists pages); harness/page-previews/ |
 
