@@ -2700,8 +2700,12 @@
 "settings.playlist.cover.header" = "Cover";
 "settings.playlist.cover_layout" = "Cover layout";
 "settings.playlist.cover_viewer.cover" = "Playlist cover";
+"settings.playlist.creator_line" = "Creator and length";
+"settings.playlist.creator_picture" = "Creator picture";
+"settings.playlist.description" = "Description";
 "settings.playlist.full_screen_cover.subtitle" = "Tap the picture at the top of a playlist to zoom in or share it";
 "settings.playlist.header" = "Header";
+"settings.playlist.header_details" = "Playlist details";
 "settings.playlist.hide.add_to_library.title" = "Add to library";
 "settings.playlist.hide.artwork.title" = "Cover artwork";
 "settings.playlist.hide.creator.title" = "Creator and collaborators";

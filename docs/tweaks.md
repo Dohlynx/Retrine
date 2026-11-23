@@ -2092,7 +2092,9 @@ Redesigned:
                   prominent Play capsule taking its glyph and its word from Spotify's own button, add; Play on the
                   middle of the page, and download, where a playlist has both, pinned beside ⋯), the find bar
                   and the curation pills gone, and the track rows on the field with a hairline between them
-                  (Playlist.h lists its files). Sort and Mix, the two of those pills the ⋯ menu does not already offer,
+                  (Playlist.h lists its files). Playlists › Playlist details has three launch-read switches,
+                  all on unless set: Creator and length, Creator picture (beside the tappable name), and Description.
+                  Sort and Mix, the two of those pills the ⋯ menu does not already offer,
                   are put on that menu's own sheet instead, above Spotify's rows, and fire Spotify's own buttons.
                   The chip row 9.2.0 gives the playlists Spotify makes itself (Video, Duplicate, Sort, Select; a view
                   beside the list, not a cell) stays, since Duplicate and Select are nowhere else, but goes with the list:
