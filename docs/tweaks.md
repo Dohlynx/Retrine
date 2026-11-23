@@ -2439,8 +2439,8 @@ beside it), Cut-out Play (`spotifyglass.redesign.artist.cutOutPlay`, off, only w
 or in the accent with Accent Play button, `spotifyglass.redesign.accentPlay`, off, its glyph cut out by an alpha mask
 redrawn only when the glyph, bounds or font change; Kit/SGRActionRow.m, harness/artist/cutout-check.sh), and Header:
 Picture-aware photo and Monthly listeners in About (`spotifyglass.redesign.artist.listenersInAbout`, off: the line
-under the name goes once the page's own diffable data source has configured Spotify's About card for this artist,
-which carries the count itself; without About, or with About hidden, it stays; ArtistSections.x,
+under the name is omitted from the first layout when enabled, since Spotify's About already shows the count.
+Turning on Hide About keeps the line under the name; ArtistSections.x,
 harness/artist/listeners-check.py). The Player page leads with a pinned miniature of the whole player showing the
 current or last song (480 pt, shrinking to 236 pt as the page scrolls, opaque above the rows; with Star add button on,
 the star before the ⋯ as the player draws it), whose Without a clip

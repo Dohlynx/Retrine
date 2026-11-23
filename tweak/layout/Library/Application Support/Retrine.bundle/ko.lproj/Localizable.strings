@@ -344,7 +344,7 @@
 "settings.artist.hide_in_header.header" = "헤더에서 숨기기";
 "settings.artist.hide_on_page.header" = "아티스트 페이지에서 숨기기";
 "settings.artist.hide_on_page.note" = "Spotify가 영어로 설정되어 있을 때만 작동합니다.";
-"settings.artist.listeners_in_about.subtitle" = "아티스트에게 정보 섹션이 있으면 이름 아래에 표시하지 않습니다";
+"settings.artist.listeners_in_about.subtitle" = "월별 리스너 수는 Spotify의 정보 섹션에 표시됩니다. 정보 섹션을 숨기면 아티스트 이름 아래에 그대로 표시됩니다.";
 "settings.artist.listeners_in_about.title" = "정보에 월별 청취자 표시";
 "settings.artist.logos.subtitle" = "아티스트 페이지에서 이름 대신 표시";
 "settings.artist.logos.title" = "아티스트 로고";

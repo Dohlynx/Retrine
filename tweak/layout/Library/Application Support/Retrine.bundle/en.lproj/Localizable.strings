@@ -247,7 +247,7 @@
 "settings.artist.hide_in_header.header" = "Hide in the header";
 "settings.artist.hide_on_page.header" = "Hide on an artist's page";
 "settings.artist.hide_on_page.note" = "Works only with Spotify in English.";
-"settings.artist.listeners_in_about.subtitle" = "Not under the name when the artist has About";
+"settings.artist.listeners_in_about.subtitle" = "Spotify’s About shows the count. Hide About to keep it under the artist’s name.";
 "settings.artist.listeners_in_about.title" = "Monthly listeners in About";
 "settings.artist.logos.subtitle" = "In place of the name on an artist's page";
 "settings.artist.logos.title" = "Artist logos";

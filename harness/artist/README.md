@@ -53,10 +53,8 @@ and on with About hidden:
 The check allocates an isolated build directory and a simulator and runs all three cases. It removes
 its builds and simulator afterwards. Existing `harness/artist/build/` is untouched.
 
-About membership is learned from a diffable source's completed cell configuration, bound to its item
-identifier and artist. Layout only confirms that receipt against the current snapshot; it cannot stamp
-a previously unseen cell. The fixture uses UIKit's real snapshot reconfiguration with a retained cell,
-including configuration before the header pass and a stale cell with no valid artist. The header
-remains until a matching configuration is confirmed. Evidence survives
-scrolling/reuse, but not a new artist, data-source replacement, reload, or collection transaction.
-No About UI or native localized listener count is changed.
+With the option on, the header drops the listeners line from its first layout, for every artist; with
+About hidden too it keeps the line, since nothing else on the page would show the count. The page's
+cells are never inspected: Spotify's artist list is a Swift diffable data source that never calls the
+Objective-C cell provider an earlier receipt design hooked (iPhone 13 Pro, 1.0.0). No About UI or
+native localized listener count is changed.
