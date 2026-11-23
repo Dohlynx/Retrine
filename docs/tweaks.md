@@ -1857,7 +1857,7 @@ Redesigned:
                   fades and reinsertions, update the cover without a player layout or lyric clock. With the line on,
                   only visible chip content requires clearance. An empty strip leaves
                   the line directly above the title, with the same row budget and cover floor.
-                  The identified switch need not expose painted pixels; anonymous views still do. A changed
+                  The identified switch need not expose painted pixels; anonymous views still do. In driver builds a changed
                   floating-unit snapshot logs `lyrics unit:` even when nothing wins. The numbered parts
                   show the title top, stack frame, reserved natural side (zero if none), search area,
                   chosen top and view (`*`), and a bounded view/layer tree with default attributes omitted, never
