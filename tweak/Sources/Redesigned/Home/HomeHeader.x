@@ -21,6 +21,8 @@
 // so it follows the app's language.
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Redesigned/Kit/SGRMotionBudget.h"
+#import "Redesigned/Player/Player.h"
 #import "Home.h"
 
 // Tries at finding the tab's name before settling for the English one: a miss walks the window.
@@ -223,10 +225,15 @@ static SGRHomePillButtons *buttonsIn(UIView *header) {
     return buttons;
 }
 
+@interface SGRHomeGlassHolder : UIView
+@property BOOL resigning;
+- (void)ringPolicyChanged:(NSNotification *)note;
+@end
+
 static UIView *glassIn(UIView *header) {
     UIView *glass = objc_getAssociatedObject(header, &kGlassKey);
     if (!glass) {
-        glass = [UIView new];
+        glass = [SGRHomeGlassHolder new];
         glass.userInteractionEnabled = NO;
         objc_setAssociatedObject(header, &kGlassKey, glass, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -263,8 +270,6 @@ static void place(UIView *view, CGRect frame) {
 // pill's material as the title row scrolls away (riseGlass); the next layout after midnight hides it, and Reduce Motion
 // stops its turn as soon as it goes on. A turn of 6 s needs no more than 30 frames a second.
 static char kFridayKey;
-// The pill's ring, for the Reduce Motion observer: Home has one header at a time (sg_header).
-static __weak CALayer *sg_ring;
 static const CGFloat kFridayRing = 1.5;
 static const CFTimeInterval kFridayTurn = 6;
 static const float kFridayMinFPS = 10, kFridayMaxFPS = 30;
@@ -283,7 +288,11 @@ static BOOL isFriday(void) {
 static void turnRing(CALayer *ring) {
     CALayer *colors = ring.sublayers.firstObject;
     if (!colors) return;
-    if (ring.hidden || !sg_glassShown || !isFriday() || SGRReduceMotion()) {
+    SGRHomeGlassHolder *holder = (id)ring.superlayer.delegate;
+    UIWindow *window = holder.window;
+    if (!window || holder.resigning || UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
+        CGRectContainsRect(SGRSettledPlayerRect(window), [holder convertRect:holder.bounds toView:window]) ||
+        ring.hidden || !sg_glassShown || !isFriday() || SGRReduceMotion() || SGRMotionHeldForPowerOrHeat()) {
         [colors removeAnimationForKey:@"turn"];
         return;
     }
@@ -298,18 +307,22 @@ static void turnRing(CALayer *ring) {
     [colors addAnimation:turn forKey:@"turn"];
 }
 
-// Reduce Motion switched while the ring is up stops or resumes its turn at once, not at the next layout. One observer
-// for the process, added with the first ring.
-static void watchReduceMotion(void) {
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        [NSNotificationCenter.defaultCenter addObserverForName:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil
-            queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-            CALayer *ring = sg_ring;
-            if (ring) turnRing(ring);
-        }];
-    });
+@implementation SGRHomeGlassHolder
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    turnRing(objc_getAssociatedObject(self, &kFridayKey));
 }
+- (void)ringPolicyChanged:(NSNotification *)note {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self ringPolicyChanged:note]; });
+        return;
+    }
+    if ([note.name isEqual:UIApplicationDidBecomeActiveNotification]) self.resigning = NO;
+    else if ([note.name isEqual:UIApplicationWillResignActiveNotification] ||
+             [note.name isEqual:UIApplicationDidEnterBackgroundNotification]) self.resigning = YES;
+    turnRing(objc_getAssociatedObject(self, &kFridayKey));
+}
+@end
 
 static void layoutFriday(UIView *holder, CGSize size) {
     CALayer *ring = objc_getAssociatedObject(holder, &kFridayKey);
@@ -338,8 +351,11 @@ static void layoutFriday(UIView *holder, CGSize size) {
         ring.zPosition = 101;
         ring.opacity = sg_glassShown ? 1 : 0;
         objc_setAssociatedObject(holder, &kFridayKey, ring, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        sg_ring = ring;
-        watchReduceMotion();
+        for (NSNotificationName name in @[UIAccessibilityReduceMotionStatusDidChangeNotification,
+                 NSProcessInfoPowerStateDidChangeNotification, NSProcessInfoThermalStateDidChangeNotification,
+                 UIApplicationWillResignActiveNotification, UIApplicationDidEnterBackgroundNotification,
+                 UIApplicationDidBecomeActiveNotification, SGRPlayerVisibilityDidChangeNotification])
+            [NSNotificationCenter.defaultCenter addObserver:holder selector:@selector(ringPolicyChanged:) name:name object:nil];
     }
     colors = (CAGradientLayer *)ring.sublayers.firstObject;
     if (ring.superlayer != holder.layer) [holder.layer addSublayer:ring];

@@ -113,10 +113,15 @@ static id animationValue(CAAnimation *animation, NSString *slot, id value) {
     return source ? resolved(source, nil) : value;
 }
 
+static BOOL isColorValue(id value) {
+    return value && CFGetTypeID((__bridge CFTypeRef)value) == CGColorGetTypeID();
+}
+
 // Only UIKit's complete tint operation establishes image ownership. Arbitrary renderer callbacks
 // can also draw through CoreGraphics, so neither their output nor sampled pixels establish ownership.
 static UIImage *markImage(UIImage *image, SGRAccentToken *source, UIImage *base) {
     if (image == base || image.renderingMode == UIImageRenderingModeAlwaysTemplate) return image;
+    if (!source && !SGRAccentImageSource(image)) return image;
     objc_setAssociatedObject(image, &imageSourceKey, source, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(image, &imageBaseKey, source ? base : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return image;
@@ -252,6 +257,10 @@ static void refreshPaint(void) {
 %hook CAShapeLayer
 - (void)setFillColor:(CGColorRef)color {
     SGRAccentToken *source = SGRAccentCGSource(color);
+    if (!source && !objc_getAssociatedObject(self, &fillKey)) {
+        %orig;
+        return;
+    }
     objc_setAssociatedObject(self, &fillKey, source, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     id used = source ? resolved(source,nil) : (__bridge id)color;
     %orig((__bridge CGColorRef)used);
@@ -259,6 +268,10 @@ static void refreshPaint(void) {
 }
 - (void)setStrokeColor:(CGColorRef)color {
     SGRAccentToken *source = SGRAccentCGSource(color);
+    if (!source && !objc_getAssociatedObject(self, &strokeKey)) {
+        %orig;
+        return;
+    }
     objc_setAssociatedObject(self, &strokeKey, source, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     id used = source ? resolved(source,nil) : (__bridge id)color;
     %orig((__bridge CGColorRef)used);
@@ -268,6 +281,10 @@ static void refreshPaint(void) {
 %hook CALayer
 - (void)setBackgroundColor:(CGColorRef)color {
     SGRAccentToken *source = SGRAccentCGSource(color);
+    if (!source && !objc_getAssociatedObject(self, &backgroundKey)) {
+        %orig;
+        return;
+    }
     objc_setAssociatedObject(self, &backgroundKey, source, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     id used = source ? resolved(source,nil) : (__bridge id)color;
     %orig((__bridge CGColorRef)used);
@@ -282,14 +299,26 @@ static void refreshPaint(void) {
 %end
 %hook CABasicAnimation
 - (void)setFromValue:(id)value {
+    if (!isColorValue(value) && !isColorValue(self.fromValue)) {
+        %orig;
+        return;
+    }
     id used = animationValue(self,@"fromValue",value);
     %orig(used);
 }
 - (void)setToValue:(id)value {
+    if (!isColorValue(value) && !isColorValue(self.toValue)) {
+        %orig;
+        return;
+    }
     id used = animationValue(self,@"toValue",value);
     %orig(used);
 }
 - (void)setByValue:(id)value {
+    if (!isColorValue(value) && !isColorValue(self.byValue)) {
+        %orig;
+        return;
+    }
     id used = animationValue(self,@"byValue",value);
     %orig(used);
 }

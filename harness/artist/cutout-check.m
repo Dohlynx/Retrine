@@ -13,6 +13,7 @@
 // must leave alone, for a comparison against another build. With CUTOUT_PNG set, every drawing checked is written
 // there. Exits nonzero on the first failure (../harness-fail.h).
 #import <UIKit/UIKit.h>
+#import "../album/motion-player-double.h"
 #import "../harness-fail.h"
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"

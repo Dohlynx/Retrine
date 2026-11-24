@@ -12,6 +12,7 @@
 #import "SGRAccent.h"
 #import "SGRDownload.h"
 #import "SGRHeaderInfo.h"
+#import "Redesigned/Player/Player.h"
 #import "Shared/AlbumQueue/AlbumQueue.h"
 
 // The capsule: the glyph is Spotify's own 48pt canvas with the triangle small in the middle of it, so the
@@ -330,6 +331,8 @@ static void claimPinnedMore(SGRMirrorButton *button);
     NSTimeInterval _downloadInterval;
     BOOL _downloadInactive;
     BOOL _downloadWatching;
+    BOOL _downloadPaused;
+    NSHashTable *_downloadScrolls;
     // A two-state glyph drawn for Spotify (add-to, readState): 1 on, 0 off, -1 none drawn.
     NSInteger _stateShown;
 }
@@ -358,6 +361,7 @@ static void claimPinnedMore(SGRMirrorButton *button);
     [super layoutSubviews];
     CGRect bounds = self.bounds;
     // Until its state is known the button draws nothing: a guess would flash the wrong glyph first.
+    if (_downloadPaused) [self sgr_updateDownloadTimer];
     if (self.readState && _stateShown < 0) {
         ((UIView *)objc_getAssociatedObject(self, &kMirrorGlassKey)).hidden = YES;
         return;
@@ -401,12 +405,14 @@ static void claimPinnedMore(SGRMirrorButton *button);
     [super didMoveToWindow];
     // Read again on the way in -- the state may have moved on while the page was away -- and not at all
     // while out of the window.
-    if ([self sgr_downloadVisible] && self.source && (_download || _stateShown >= 0 || self.readState))
+    if (!_downloadPaused && [self sgr_downloadVisible] && self.source && (_download || _stateShown >= 0 || self.readState))
         [self feedFrom:self.source];
     [self sgr_updateDownloadTimer];
 }
 
 - (void)dealloc {
+    for (UIView *scroll in _downloadScrolls)
+        [scroll removeObserver:self forKeyPath:@"contentOffset" context:&_downloadScrolls];
     [_downloadTimer invalidate];
     [NSNotificationCenter.defaultCenter removeObserver:self];
 }
@@ -490,6 +496,11 @@ static void claimPinnedMore(SGRMirrorButton *button);
     BOOL watch = interval > 0;
     if (watch != _downloadWatching) {
         _downloadWatching = watch;
+        if (watch)
+            [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(sgr_updateDownloadTimer)
+                name:SGRPlayerVisibilityDidChangeNotification object:nil];
+        else
+            [NSNotificationCenter.defaultCenter removeObserver:self name:SGRPlayerVisibilityDidChangeNotification object:nil];
         __weak SGRMirrorButton *weakSelf = self;
         SGRObserveVisibility(self, watch ? ^{ [weakSelf sgr_updateDownloadTimer]; } : nil);
     }
@@ -500,7 +511,12 @@ static void claimPinnedMore(SGRMirrorButton *button);
     if (!self.window || _downloadInactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return NO;
     for (UIView *view = self; view; view = view.superview)
         if (view.hidden || view.alpha <= 0.01) return NO;
-    return YES;
+    return SGRViewInViewport(self, SGRSettledPlayerRect(self.window));
+}
+
+- (void)observeValueForKeyPath:(NSString *)path ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context == &_downloadScrolls) [self sgr_updateDownloadTimer];
+    else [super observeValueForKeyPath:path ofObject:object change:change context:context];
 }
 
 - (void)sgr_downloadResigned {
@@ -516,18 +532,40 @@ static void claimPinnedMore(SGRMirrorButton *button);
 
 - (void)sgr_updateDownloadTimer {
     NSTimeInterval interval = _downloadInterval;
-    if (interval <= 0 || ![self sgr_downloadVisible] || !self.source) {
+    BOOL run = interval > 0 && self.source && [self sgr_downloadVisible];
+    // Watch for a scroll back into view only when clipped out, never during ordinary visible polling.
+    if (!run && interval > 0 && self.window && CGRectIsEmpty(SGRVisibleRectInWindow(self))) {
+        if (!_downloadScrolls) _downloadScrolls = [NSHashTable weakObjectsHashTable];
+        SGRBindViewportScrolls(self, _downloadScrolls, self, &_downloadScrolls);
+    } else if (_downloadScrolls) {
+        for (UIView *scroll in _downloadScrolls)
+            [scroll removeObserver:self forKeyPath:@"contentOffset" context:&_downloadScrolls];
+        _downloadScrolls = nil;
+    }
+    if (!run) {
+        _downloadPaused = interval > 0;
         [_downloadTimer invalidate];
         _downloadTimer = nil;
         return;
+    }
+    if (_downloadPaused) {
+        _downloadPaused = NO;
+        [self feedFrom:self.source];
+        // The refreshed state may select a different polling interval.
+        interval = _downloadInterval;
+        if (!interval) return;
     }
     if (_downloadTimer.valid && fabs(_downloadTimer.timeInterval - interval) < 0.01) return;
     [_downloadTimer invalidate];
     __weak SGRMirrorButton *weakSelf = self;
     _downloadTimer = [NSTimer scheduledTimerWithTimeInterval:interval repeats:YES block:^(NSTimer *timer) {
         SGRMirrorButton *button = weakSelf;
-        if (!button || ![button sgr_downloadVisible] || !button.source) {
+        if (!button) {
             [timer invalidate];
+            return;
+        }
+        if (![button sgr_downloadVisible] || !button.source) {
+            [button sgr_updateDownloadTimer];
             return;
         }
         [button feedFrom:button.source];

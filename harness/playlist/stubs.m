@@ -1,4 +1,5 @@
 #import "../shared/redesigned-page-stubs.m"
+#import "../album/motion-player-double.h"
 
 // Shared/AlbumQueue/AlbumQueueMenu.x: the ⋯ menu's album queue is a part of a native menu, not of the page.
 void SGAlbumQueueMarkSource(UIView *view) {}

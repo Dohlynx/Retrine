@@ -5,13 +5,18 @@
 #import "harness-fail.h"
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Redesigned/Kit/SGRMotionBudget.h"
 #import "Home.h"
 
 // HomeHeader.x reads Reduce Motion from the harness, which switches it without touching the Mac's own setting.
 static BOOL sg_reduceMotion;
 static BOOL harnessReduceMotion(void) { return sg_reduceMotion; }
 #define SGRReduceMotion harnessReduceMotion
+static BOOL lowPower;
+static NSProcessInfoThermalState heat;
+#define SGRMotionHeldForPowerOrHeat() SGRMotionHeldFor(lowPower, heat)
 #include "HomeHeader.gen.m"
+#undef SGRMotionHeldForPowerOrHeat
 #undef SGRReduceMotion
 
 #pragma mark - helpers
@@ -171,7 +176,7 @@ static void scrollPillAwayAndBack(UIView *glass) {
 // pill's material as the title row scrolls, still while gone, and stopped and resumed by Reduce Motion as it is switched.
 static void checkFriday(void) {
     UIWindow *window = [(id)UIApplication.sharedApplication.delegate window];
-    UIView *glass = [[UIView alloc] initWithFrame:CGRectMake(200, 100, 100, 44)];
+    UIView *glass = [[SGRHomeGlassHolder alloc] initWithFrame:CGRectMake(200, 100, 100, 44)];
     [window addSubview:glass];
     // riseGlass fades a material; SGRGlassCapsuleInside, a test double here, makes none.
     objc_setAssociatedObject(glass, &kPillGlassKey, [UIView new], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -188,6 +193,35 @@ static void checkFriday(void) {
     CHECK(CGRectEqualToRect(ring.frame, CGRectMake(0, 0, 100, 44)));
     CABasicAnimation *turn = (CABasicAnimation *)ringTurn(ring);
     CHECK(turn.duration == 6 && turn.preferredFrameRateRange.maximum == 30);
+
+    extern __weak UIView *harnessSettledPlayerField;
+    UIView *cover = [[UIView alloc] initWithFrame:glass.frame];
+    [window addSubview:cover];
+    harnessSettledPlayerField = cover;
+    [NSNotificationCenter.defaultCenter postNotificationName:SGRPlayerVisibilityDidChangeNotification object:nil];
+    CHECK(!ringTurn(ring));
+    harnessSettledPlayerField = nil;
+    [cover removeFromSuperview];
+    [NSNotificationCenter.defaultCenter postNotificationName:SGRPlayerVisibilityDidChangeNotification object:nil];
+    CHECK(ringTurn(ring));
+    [glass removeFromSuperview];
+    CHECK(!ringTurn(ring));
+    [window addSubview:glass];
+    CHECK(ringTurn(ring));
+    [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+    CHECK(!ringTurn(ring));
+    [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+    CHECK(ringTurn(ring));
+    lowPower = YES;
+    [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
+    CHECK(!ringTurn(ring));
+    heat = NSProcessInfoThermalStateSerious;
+    lowPower = NO;
+    [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
+    CHECK(!ringTurn(ring));
+    heat = NSProcessInfoThermalStateFair;
+    [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoThermalStateDidChangeNotification object:nil];
+    CHECK(ringTurn(ring));
 
     riseGlass(glass, CGAffineTransformMakeTranslation(0, -40), 0);
     CHECK(ring.opacity == 0);
