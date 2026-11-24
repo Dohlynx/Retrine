@@ -580,16 +580,20 @@ static char kHoldKey, kBadgeGlassKey;
 
 static void watchHold(UIView *tilt) {
     SGRCoverHold *existing = objc_getAssociatedObject(tilt, &kHoldKey);
-    if (existing) {
-        existing.enabled = SGGestureHoldEnabled();
-        return;
+    SGRCoverHold *hold = existing.view == tilt ? existing : nil;
+    for (SGRCoverHold *attached in tilt.gestureRecognizers) {
+        if (![attached isKindOfClass:SGRCoverHold.class]) continue;
+        if (!hold) hold = attached;
+        else if (attached != hold) [tilt removeGestureRecognizer:attached];
     }
-    SGRCoverHold *hold = [[SGRCoverHold alloc] initWithTarget:nil action:nil];
+    if (!hold) {
+        hold = [[SGRCoverHold alloc] initWithTarget:nil action:nil];
+        [hold addTarget:hold action:@selector(sgr_held)];
+        hold.minimumPressDuration = 0.35;
+        [tilt addGestureRecognizer:hold];
+    }
     hold.enabled = SGGestureHoldEnabled();
-    [hold addTarget:hold action:@selector(sgr_held)];
-    hold.minimumPressDuration = 0.35;
-    [tilt addGestureRecognizer:hold];
-    objc_setAssociatedObject(tilt, &kHoldKey, hold, OBJC_ASSOCIATION_ASSIGN);
+    if (existing != hold) objc_setAssociatedObject(tilt, &kHoldKey, hold, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 // Where the cover of a player's tilt view stands in it, its paused shrink left out; CGRectNull for any other tilt view.

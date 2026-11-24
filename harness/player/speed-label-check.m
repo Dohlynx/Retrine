@@ -106,6 +106,27 @@ static BOOL tapsButton(Controls c, CGPoint point) {
 }
 
 static void run(UIWindow *window) {
+    // Keep the labels through a button replacement. Their layout callback must neither
+    // hold the old button alive nor keep fitting to it once the labels have moved.
+    UIStackView *reused;
+    __weak UIView *old;
+    @autoreleasepool {
+        Controls c = build(window, 402, NO);
+        old = c.button;
+        reused = c.labels;
+        [reused removeFromSuperview];
+        [c.host removeFromSuperview];
+    }
+    check(!old, @"reused labels release the old button");
+    UIView *replacement = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 48, 48)];
+    replacement.accessibilityIdentifier = @"Components.UI.SpeedControlButtonNowPlaying";
+    UIView *host = [UIView new];
+    [host addSubview:replacement];
+    [replacement addSubview:reused];
+    SGRPlayerFitSpeedLabel(host);
+    reused.axis = UILayoutConstraintAxisVertical;
+    [reused layoutSubviews];
+    check(reused.axis == UILayoutConstraintAxisHorizontal, @"reused labels still refit after a layout");
     NSArray<NSString *> *speeds = @[@"0.5", @"0.75", @"1", @"1.25", @"1.5", @"1.75", @"2", @"2.5", @"3", @"3.5"];
     for (NSNumber *hostWidth in @[@402, @375]) {
         for (int direction = 0; direction < 2; direction++) {

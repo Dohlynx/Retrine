@@ -638,14 +638,20 @@ static NSString *const kSliderID = @"SPTNowPlayingSliderV2";
 static void watchSlider(UIView *host) {
     UISlider *slider = (UISlider *)SGRFindByIdentifier(host, kSliderID, &kSliderKey);
     if (![slider isKindOfClass:UISlider.class]) return;
-    SGRSeekTap *tap = objc_getAssociatedObject(host, &kSeekTapKey);
+    SGRSeekTap *existing = objc_getAssociatedObject(host, &kSeekTapKey);
+    SGRSeekTap *tap = existing.view == host ? existing : nil;
+    for (SGRSeekTap *attached in host.gestureRecognizers) {
+        if (![attached isKindOfClass:SGRSeekTap.class]) continue;
+        if (!tap) tap = attached;
+        else if (attached != tap) [host removeGestureRecognizer:attached];
+    }
     if (!tap) {
         tap = [[SGRSeekTap alloc] initWithTarget:nil action:nil];
         [tap addTarget:tap action:@selector(sgr_seek)];
         [host addGestureRecognizer:tap];
-        objc_setAssociatedObject(host, &kSeekTapKey, tap, OBJC_ASSOCIATION_ASSIGN);
         SGLog(@"redesign player: a tap around the progress bar seeks");
     }
+    if (existing != tap) objc_setAssociatedObject(host, &kSeekTapKey, tap, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     tap.slider = slider;
 }
 

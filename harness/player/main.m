@@ -63,6 +63,7 @@
 #import <dlfcn.h>
 #import "Redesigned/Kit/SGRTokens.h"
 #import "../harness-fail.h"
+#import "recognizer-reuse-check.h"
 #import "../sponsorblock/markers-check.h"
 #import <objc/runtime.h>
 #import <Metal/Metal.h>
@@ -5291,6 +5292,11 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
 // slider is the mock's, given Spotify's identifier, with the two times beside it. A tap is the recognizer's
 // action with its starting point set, since the harness cannot make a touch.
 - (void)runSeekChecks {
+    UIView *otherTilt = [[_tilt.class alloc] initWithFrame:_tilt.frame];
+    [otherTilt addSubview:[[UIView alloc] initWithFrame:otherTilt.bounds]];
+    [_tilt.superview addSubview:otherTilt];
+    checkRecognizerReuse(_tilt, otherTilt, @"SGRCoverHold", ^{ [self->_tilt layoutSubviews]; }, ^{ [otherTilt layoutSubviews]; });
+    [otherTilt removeFromSuperview];
     __block NSUInteger right = 0, checks = 0;
     void (^check)(NSString *, BOOL, NSString *) = ^(NSString *step, BOOL ok, NSString *detail) {
         checks++;
@@ -5319,6 +5325,13 @@ static NSRange drawnColumns(NSArray<NSNumber *> *columns) {
     [unit addSubview:remaining];
     [durationUnit viewDidLayoutSubviews];
     [SGPlayerState() setValue:@200 forKey:@"duration"];
+    UIViewController *otherUnit = [durationUnit.class new];
+    UISlider *otherSlider = [[UISlider alloc] initWithFrame:slider.frame];
+    otherSlider.accessibilityIdentifier = slider.accessibilityIdentifier;
+    [otherUnit.view addSubview:otherSlider];
+    checkRecognizerReuse(unit, otherUnit.view, @"SGRSeekTap", ^{ [durationUnit viewDidLayoutSubviews]; },
+                        ^{ [otherUnit viewDidLayoutSubviews]; });
+    HARNESS_CHECK([onlyRecognizer(otherUnit.view, NSClassFromString(@"SGRSeekTap")) valueForKey:@"slider"] == otherSlider);
 
     UIGestureRecognizer *tap = nil;
     for (UIGestureRecognizer *recognizer in unit.gestureRecognizers) {

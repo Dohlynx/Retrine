@@ -186,6 +186,8 @@ static UIImageView *backgroundImage(UIViewController *controller, UIWindow *wind
     return SGBackdropImageView(controller.view.subviews.firstObject);
 }
 
+#import "../player/recognizer-reuse-check.h"
+
 static void runArtworkChecks(UIWindow *window) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     [store setBool:YES forKey:SGKeyGestures];
@@ -193,6 +195,12 @@ static void runArtworkChecks(UIWindow *window) {
     _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView *player = [_TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView new];
     _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView *album = [_TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView new];
     [cell addSubview:player];
+    player.frame = CGRectMake(0, 0, 354, 354);
+    [player layoutSubviews];
+    UIView *other = [[player.class alloc] initWithFrame:player.frame];
+    [cell addSubview:other];
+    checkRecognizerReuse(player, other, @"SGCoverHold", ^{ [player layoutSubviews]; }, ^{ [other layoutSubviews]; });
+    [other removeFromSuperview];
     [player handleTap];
     [album handleTap];
     HARNESS_CHECK(!player.inspected);
