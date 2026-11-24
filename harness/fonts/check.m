@@ -48,12 +48,13 @@ SGAppFont SGAppFontChosen(void) { return (SGAppFont)[NSUserDefaults.standardUser
 NSArray<NSString *> *SGAppFontNames(void) { return @[]; }
 NSArray<NSString *> *SGAppFontFamilies(void) { return @[]; }
 
-static void pumpUntil(BOOL (^done)(void)) {
+static void pumpUntilAt(BOOL (^done)(void), int line) {
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
     while (!done() && deadline.timeIntervalSinceNow > 0)
         [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.005]];
-    HARNESS_CHECK(done());
+    if (!done()) HARNESS_FAIL(@"condition at check.m:%d did not become true", line);
 }
+#define pumpUntil(...) pumpUntilAt(__VA_ARGS__, __LINE__)
 
 // A reader can submit registration on the next main-queue turn. Don't park main waiting for it.
 static void awaitRegistrations(unsigned count) {

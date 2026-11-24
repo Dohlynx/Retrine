@@ -17,6 +17,9 @@ void harnessImport(NSURL *url, dispatch_block_t done) { import(@[url], done); }
 
 void harnessRejectedImport(NSURL *invalid, void (^done)(BOOL)) {
     NSUInteger before = notices;
-    import(@[invalid], ^{ done(notices == before + 1); });
-    removeImported(@{}, ^{}); // swipe for a previous file; current import remains installed
+    __block BOOL notified = NO;
+    import(@[invalid], ^{ notified = notices == before + 1; });
+    // Both operations publish on main in submission order. The next fixture needs the
+    // stale swipe to have cleared its pending flag before it requests registration.
+    removeImported(@{}, ^{ done(notified); });
 }
