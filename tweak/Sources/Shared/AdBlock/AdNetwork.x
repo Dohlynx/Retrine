@@ -764,8 +764,8 @@ static void installRequestFactories(void) {
     });
 }
 
-static void installOfflineHooks(void) {
-    if (!SGOfflineCompanionLoaded()) return;
+static BOOL installOfflineHooks(void) {
+    if (!SGOfflineCompanionLoaded()) return NO;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         // The store is initialized under cacheLock before any delegate hook is published.
@@ -782,6 +782,7 @@ static void installOfflineHooks(void) {
         if (own && own != class_getInstanceMethod(NSURLSession.class, selector)) %init(OfflineLocalCompletionRequests);
         %init(OfflineDelegates);
     });
+    return YES;
 }
 
 static void offlineImageAdded(const struct mach_header *image, intptr_t slide) {
@@ -811,7 +812,9 @@ static void offlineImageAdded(const struct mach_header *image, intptr_t slide) {
         %init(TaskRequests);
         if (premium) installRequestFactories();
     }
-    offlineInstallQueue = dispatch_queue_create("com.retrine.offline-loader", DISPATCH_QUEUE_SERIAL);
-    installOfflineHooks();
-    _dyld_register_func_for_add_image(offlineImageAdded);
+    // A verified provider is pinned. Only a miss needs replay and future add-image notifications.
+    if (!installOfflineHooks()) {
+        offlineInstallQueue = dispatch_queue_create("com.retrine.offline-loader", DISPATCH_QUEUE_SERIAL);
+        _dyld_register_func_for_add_image(offlineImageAdded);
+    }
 }

@@ -556,9 +556,14 @@ static BOOL resumeSourceRetries(NSString *trackID) {
 
 // Whether a loaded image has this file name; EeveeSpotify's Reincarnated fork also loads EeveeSwiftProtobuf.
 static BOOL imageLoaded(NSString *wanted) {
+    const char initial = wanted.UTF8String[0]; // Both known image names start with an ASCII capital.
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
         const char *image = _dyld_get_image_name(i);
-        if (image && [@(image).lastPathComponent caseInsensitiveCompare:wanted] == NSOrderedSame) return YES;
+        if (!image) continue;
+        const char *slash = strrchr(image, '/');
+        unsigned char first = (slash ? slash + 1 : image)[0];
+        if (first && first < 128 && first != initial && first != initial + ('a' - 'A')) continue;
+        if ([@(image).lastPathComponent caseInsensitiveCompare:wanted] == NSOrderedSame) return YES;
     }
     return NO;
 }

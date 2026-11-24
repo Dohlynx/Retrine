@@ -46,6 +46,7 @@ static const double kShortest = 2, kLongest = 8;
 @property (nonatomic) SGLyricsBackgroundStyle background;
 @property (nonatomic) CGSize size;
 @property (nonatomic) NSUInteger generation;
+@property (nonatomic) NSUInteger prefetchGeneration; // zero for system requests
 @property (nonatomic) BOOL stillPending;  // under sg_lock; only one ordinary-artwork miss per snapshot
 @end
 
@@ -96,6 +97,7 @@ static UIImage *sg_cover;      // the cover named by this track's metadata, neve
 static NSURL *sg_coverURL;     // attempted once per track/source, including a failed load
 static NSString *sg_coverKey;  // content identity, including no-cover, in both disk and preview keys
 static NSUInteger sg_coverGeneration, sg_renderGeneration, sg_settingsRevision;
+static NSUInteger sg_prefetchGeneration = 1; // under sg_lock
 static BOOL sg_settingsPending;
 static NSString *sg_shownID;   // the artwork handed over last, nil for none; read on sg_queue too
 static MPMediaItemArtwork *sg_stillArtwork; // main thread: one ordinary artwork for sg_shownID, including ready-frame resends
@@ -113,8 +115,13 @@ static NSURL *folder(void) {
     return [SGDataRoot(NSCachesDirectory) URLByAppendingPathComponent:@"Lyrics" isDirectory:YES];
 }
 
+static BOOL currentLineLocked(SGLockLine *line) {
+    return line.generation == sg_renderGeneration
+        && (!line.prefetchGeneration || line.prefetchGeneration == sg_prefetchGeneration);
+}
+
 static BOOL currentLine(SGLockLine *line) {
-    @synchronized (sg_lock) { return line.generation == sg_renderGeneration; }
+    @synchronized (sg_lock) { return currentLineLocked(line); }
 }
 
 static void invalidateRenders(void) {
@@ -193,12 +200,14 @@ static CGImageRef newBackdrop(SGLockLine *line, CGSize size) CF_RETURNS_RETAINED
 static UIImage *previewFor(NSString *artworkID, SGLockLine *line, CGSize size) {
     if (!currentLine(line)) return nil;
     UIImage *preview = [sg_previews objectForKey:artworkID];
+    BOOL miss = !preview;
     if (!preview) {
         BOOL tryMotion = line.motion && !motionFailed(line.motion);
         CGImageRef frame = tryMotion ? SGLyricsClipMotionFrame(line.motion, line.previous, line.line, line.translation, line.next, line.from,
                                                                line.seconds, line.layout) : NULL;
-        if (tryMotion && !frame) markMotionFailed(line.motion, artworkID);
         if (!frame) {
+            if (!currentLine(line)) return nil;
+            if (tryMotion) markMotionFailed(line.motion, artworkID);
             CGImageRef backdrop = newBackdrop(line, size);
             frame =SGLyricsClipFrameWithLayout(backdrop, line.cover.CGImage, line.previous, line.line, line.translation, line.next, size,
                                                 line.layout);
@@ -206,10 +215,10 @@ static UIImage *previewFor(NSString *artworkID, SGLockLine *line, CGSize size) {
         }
         if (frame) preview = [UIImage imageWithCGImage:frame];
         CGImageRelease(frame);
-        if (preview && currentLine(line)) [sg_previews setObject:preview forKey:artworkID];
     }
     @synchronized (sg_lock) {
-        if (line.generation != sg_renderGeneration) return nil;
+        if (!currentLineLocked(line)) return nil;
+        if (miss && preview) [sg_previews setObject:preview forKey:artworkID];
         // Even a late outgoing frame is a usable synchronous fallback when this generation has none yet.
         if (preview && (!sg_stillPreview || [artworkID isEqual:sg_shownID])) sg_stillPreview = preview;
     }
@@ -251,8 +260,11 @@ static void drawAhead(NSString *artworkID, SGLockLine *line) {
     if (NSProcessInfo.processInfo.lowPowerModeEnabled) return;
     CFAbsoluteTime time = CFAbsoluteTimeGetCurrent();
     CGSize size = line.size;
-    if (time - sg_previewAskedAt <= 15) dispatch_async(sg_previewQueue, ^{ previewFor(artworkID, line, size); });
-    if (time - sg_askedAt <= 15) enqueueClip(^{ writeClip(artworkID, line, size); }, YES);
+    @synchronized (sg_lock) {
+        line.prefetchGeneration = sg_prefetchGeneration;
+        if (time - sg_previewAskedAt <= 15) dispatch_async(sg_previewQueue, ^{ previewFor(artworkID, line, size); });
+        if (time - sg_askedAt <= 15) enqueueClip(^{ writeClip(artworkID, line, size); }, YES);
+    }
 }
 
 API_AVAILABLE(ios(26.0))
@@ -698,6 +710,16 @@ static void tick(void) {
         sg_previews = [NSCache new];
         sg_failedMotion = [NSMutableOrderedSet orderedSet];
         sg_previews.countLimit = 4;
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:nil
+            usingBlock:^(NSNotification *note) {
+                // Keep the displayed still and outstanding system requests, not speculative lines.
+                @synchronized (sg_lock) {
+                    sg_prefetchGeneration++;
+                    sg_askedAt = sg_previewAskedAt = 0;
+                    sg_prefetch = nil;
+                    [sg_previews removeAllObjects];
+                }
+            }];
         static SGLyricsArtwork *observer;
         observer = [SGLyricsArtwork new];
         SGAddPlayerStateObserver(observer);
