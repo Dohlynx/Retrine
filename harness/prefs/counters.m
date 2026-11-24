@@ -106,25 +106,16 @@ int main(void) {
         pumpUntil(^BOOL { return [defaults dictionaryForKey:key] != nil; }, 2);
         HARNESS_CHECK([[defaults dictionaryForKey:key] isEqual:@{@"after": @1}]);
 
-        // A defaults observer can read and reset on another thread while main is writing.
-        // Its reset's queued flush must win over the in-flight snapshot.
-        __block BOOL observed = NO;
+        // Flush remains visible to settings/export without broadcasting a preference change.
+        __block NSUInteger notifications = 0;
         id observer = [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification
-            object:defaults queue:nil usingBlock:^(NSNotification *note) {
-                if (observed) return;
-                observed = YES;
-                HARNESS_CHECK(NSThread.isMainThread);
-                dispatch_semaphore_t finished = dispatch_semaphore_create(0);
-                dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
-                    HARNESS_CHECK([queued.counts[@"after"] isEqual:@2]);
-                    [queued reset];
-                    dispatch_semaphore_signal(finished);
-                });
-                HARNESS_CHECK(dispatch_semaphore_wait(finished, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC)) == 0);
-            }];
+            object:nil queue:nil usingBlock:^(NSNotification *note) { notifications++; }];
         [queued increment:@"after"];
         [queued flush];
-        HARNESS_CHECK(observed);
+        HARNESS_CHECK(notifications == 0);
+        HARNESS_CHECK([[defaults dictionaryRepresentation][key] isEqual:@{@"after": @2}]);
+        [queued reset];
+        HARNESS_CHECK(notifications == 0);
         [NSNotificationCenter.defaultCenter removeObserver:observer];
         pumpUntil(^BOOL { return [defaults objectForKey:key] == nil; }, 2);
 

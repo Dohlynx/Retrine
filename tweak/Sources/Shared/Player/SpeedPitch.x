@@ -573,7 +573,8 @@ static void applyOutputControl(Output *output, AudioUnitRenderActionFlags *flags
     if (settings.threshold == INFINITY) output->outputEnvelope.limiter = 1;
     output->controlledMusic = musicBuffer;
     float from = output->outputEnvelope.gain, step = (settings.gain - from) / frames;
-    BOOL starting = atomic_exchange(&output->sleepStarting, false);
+    BOOL starting = atomic_load_explicit(&output->sleepStarting, memory_order_relaxed) &&
+                    atomic_exchange(&output->sleepStarting, false);
     float target = loadFloat(&sg_sleepLevelBits);
     float sleepFrom = starting || beginsMusic ? target : output->sleepGain;
     float most = (float)(frames / (kGainSlew * rate));

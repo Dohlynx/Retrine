@@ -42,8 +42,8 @@ public final class SGOnDeviceTranslation: NSObject {
     }
 
     // A line's language when the recognizer is sure of it; short lines ("yeah") guess wildly otherwise.
-    private static func languageOf(_ line: String) -> Locale.Language? {
-        let recognizer = NLLanguageRecognizer()
+    private static func languageOf(_ line: String, using recognizer: NLLanguageRecognizer) -> Locale.Language? {
+        recognizer.reset()
         recognizer.processString(line)
         guard let (found, chance) = recognizer.languageHypotheses(withMaximum: 1).first, chance >= 0.8 else { return nil }
         return Locale.Language(identifier: found.rawValue)
@@ -53,13 +53,14 @@ public final class SGOnDeviceTranslation: NSObject {
     // half in English is Korean; else the whole song's.
     private static func sourceLanguage(_ lines: [String], target: Locale.Language) -> Locale.Language? {
         var counts: [String: (Locale.Language, Int)] = [:]
+        let recognizer = NLLanguageRecognizer()
         // Each line once, so a repeated chorus does not outvote the verses.
         for line in Set(lines.map { $0.lowercased() }) where !line.isEmpty {
-            guard let language = languageOf(line), !same(language, target), let code = language.languageCode?.identifier else { continue }
+            guard let language = languageOf(line, using: recognizer), !same(language, target), let code = language.languageCode?.identifier else { continue }
             counts[code] = (counts[code]?.0 ?? language, (counts[code]?.1 ?? 0) + 1)
         }
         if let most = counts.values.max(by: { $0.1 < $1.1 }) { return most.0 }
-        let recognizer = NLLanguageRecognizer()
+        recognizer.reset()
         recognizer.processString(Set(lines).joined(separator: "\n"))
         guard let found = recognizer.dominantLanguage, found != .undetermined else { return nil }
         return Locale.Language(identifier: found.rawValue)
@@ -161,9 +162,10 @@ public final class SGOnDeviceTranslation: NSObject {
             }
             // Lines already in the target language are left as they are, not run through the other language.
             var kept = [String](repeating: "", count: lines.count)
+            let recognizer = NLLanguageRecognizer()
             let requests: [TranslationSession.Request] = lines.enumerated().compactMap { index, line in
                 if line.trimmingCharacters(in: .whitespaces).isEmpty || line == "♪" { return nil }
-                if languageOf(line).map({ same($0, target) }) == true {
+                if languageOf(line, using: recognizer).map({ same($0, target) }) == true {
                     kept[index] = line
                     return nil
                 }

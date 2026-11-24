@@ -181,10 +181,10 @@ NSUInteger SGAdBlockChecked(NSString *label) {
 
 // Spotify leaving the screen writes what was counted since the last write.
 __attribute__((constructor)) static void saveChecksOnLeaving(void) {
-    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) {
-        [counter() flush];
-    }];
+    for (NSNotificationName name in @[UIApplicationWillResignActiveNotification, UIApplicationWillTerminateNotification])
+        [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+            [counter() flush];
+        }];
 }
 
 NSArray<NSString *> *SGAdBlockLabels(void) {
