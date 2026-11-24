@@ -730,12 +730,17 @@ func (e *Engine) serveCONNECT(c net.Conn, r *bufio.Reader, authenticated func())
 	e.pipe(c, r, upstream)
 }
 
+type streamProgress struct {
+	last     atomic.Int64
+	watching atomic.Bool // this direction has a write deadline or has sent FIN
+}
+
 type countingWriter struct {
 	dst   net.Conn
 	n     *atomic.Int64
 	start time.Time
-	last  *atomic.Int64
-	other *atomic.Int64
+	self  *streamProgress
+	peer  *streamProgress
 }
 
 const streamIdleTimeout = 30 * time.Second
@@ -743,7 +748,9 @@ const streamIdleTimeout = 30 * time.Second
 func (cw countingWriter) Write(p []byte) (int, error) {
 	// A blocked write can hide its reader's FIN. Bound that write, not the
 	// wait for the next byte on a healthy open stream.
-	deadline := time.Now().Add(streamIdleTimeout)
+	cw.self.watching.Store(true)
+	defer cw.self.watching.Store(false)
+	deadline := cw.start.Add(time.Since(cw.start) + streamIdleTimeout)
 	written := 0
 	for {
 		if err := cw.dst.SetWriteDeadline(deadline); err != nil {
@@ -752,17 +759,23 @@ func (cw countingWriter) Write(p []byte) (int, error) {
 		n, err := cw.dst.Write(p[written:])
 		written += n
 		cw.n.Add(int64(n))
-		if n > 0 {
-			cw.last.Store(int64(time.Since(cw.start)))
+		// Only a concurrent blocked write or half-close drain needs this
+		// completion time. A later watcher starts its own full idle window.
+		if n > 0 && (err != nil || cw.peer.watching.Load()) {
+			cw.self.last.Store(int64(time.Since(cw.start)))
+		}
+		if err == nil {
+			return written, nil
 		}
 		var timeout net.Error
 		if !errors.As(err, &timeout) || !timeout.Timeout() {
 			return written, err
 		}
-		deadline = cw.start.Add(time.Duration(max(cw.last.Load(), cw.other.Load())) + streamIdleTimeout)
-		if !time.Now().Before(deadline) {
+		until := time.Duration(max(cw.self.last.Load(), cw.peer.last.Load())) + streamIdleTimeout
+		if time.Since(cw.start) >= until {
 			return written, err
 		}
+		deadline = cw.start.Add(until)
 	}
 }
 
@@ -777,12 +790,13 @@ func (e *Engine) pipe(c net.Conn, r *bufio.Reader, upstream net.Conn) {
 	e.active.Add(1)
 	defer e.active.Add(-1)
 	start := time.Now()
-	var last [2]atomic.Int64
+	var progress [2]streamProgress
 	done := make(chan error, 2)
 	copyStream := func(i int, dst net.Conn, reader io.Reader, counter *atomic.Int64) {
 		// r may already hold bytes the client sent right after the request.
-		_, err := io.Copy(countingWriter{dst, counter, start, &last[i], &last[1-i]}, reader)
+		_, err := io.Copy(countingWriter{dst, counter, start, &progress[i], &progress[1-i]}, reader)
 		if err == nil {
+			progress[i].watching.Store(true)
 			if half, ok := dst.(interface{ CloseWrite() error }); ok {
 				err = half.CloseWrite()
 			}
@@ -807,7 +821,7 @@ func (e *Engine) pipe(c net.Conn, r *bufio.Reader, upstream net.Conn) {
 			}
 		case <-drain:
 			elapsed := time.Since(start)
-			left := streamIdleTimeout + time.Duration(max(last[0].Load(), last[1].Load())) - elapsed
+			left := streamIdleTimeout + time.Duration(max(progress[0].last.Load(), progress[1].last.Load())) - elapsed
 			if left > 0 {
 				timer.Reset(left)
 				continue

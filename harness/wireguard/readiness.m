@@ -6,7 +6,20 @@
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 static BOOL keychainUnlocked;
+static NSData *savedItem;
+static OSStatus fixtureUpdate(CFDictionaryRef query, CFDictionaryRef attributes) {
+    if (!getenv("SGWG_TEST_SAVE_PASSWORD") && !getenv("SGWG_TEST_IMPORT_PROFILE")) return errSecParam;
+    savedItem = [(__bridge NSDictionary *)attributes objectForKey:(__bridge id)kSecValueData];
+    return errSecSuccess;
+}
 static OSStatus fixtureItem(CFDictionaryRef query, CFTypeRef *result) {
+    if (getenv("SGWG_TEST_SAVE_PASSWORD") || getenv("SGWG_TEST_IMPORT_PROFILE")) {
+        NSData *data = savedItem;
+        if (!data && getenv("SGWG_TEST_IMPORT_PROFILE")) data = [@"offline" dataUsingEncoding:NSUTF8StringEncoding];
+        if (!data) return errSecItemNotFound;
+        *result = CFBridgingRetain(data);
+        return errSecSuccess;
+    }
     if (!getenv("SGWG_TEST_LOCKED_PROXY")) return SecItemCopyMatching(query, result);
     NSDictionary *attributes = (__bridge NSDictionary *)query;
     if (![attributes[(__bridge id)kSecAttrAccount] isEqual:@"proxy-password"]) return errSecItemNotFound;
@@ -16,13 +29,38 @@ static OSStatus fixtureItem(CFDictionaryRef query, CFTypeRef *result) {
     return errSecSuccess;
 }
 #define SecItemCopyMatching fixtureItem
+#define SecItemUpdate fixtureUpdate
 static dispatch_source_t recoveryTimer;
+static dispatch_queue_t gQueue;
 static dispatch_block_t tick;
+static dispatch_time_t nextFire = DISPATCH_TIME_FOREVER;
+static uint64_t repeat;
+static dispatch_source_t fixtureSource(dispatch_source_type_t type, uintptr_t handle, unsigned long mask, dispatch_queue_t queue) {
+    dispatch_source_t source = dispatch_source_create(type, handle, mask, queue);
+    if (type == DISPATCH_SOURCE_TYPE_TIMER && queue == gQueue) recoveryTimer = source;
+    return source;
+}
+static void fixtureTimer(dispatch_source_t source, dispatch_time_t first, uint64_t interval, uint64_t leeway) {
+    if (source != recoveryTimer) {
+        dispatch_source_set_timer(source, first, interval, leeway);
+        return;
+    }
+    nextFire = first;
+    repeat = interval;
+}
+// Advance to the next scheduled deadline without waiting for wall time.
+static unsigned fireRecovery(void) {
+    if (!tick || nextFire == DISPATCH_TIME_FOREVER) return 0;
+    if (repeat == DISPATCH_TIME_FOREVER) nextFire = DISPATCH_TIME_FOREVER;
+    tick();
+    return 1;
+}
 static void fixtureHandler(dispatch_source_t source, dispatch_block_t handler) {
     if (source == recoveryTimer) tick = [handler copy];
     else dispatch_source_set_event_handler(source, handler);
 }
-#define dispatch_source_set_timer(source, ...) (recoveryTimer = (source))
+#define dispatch_source_set_timer fixtureTimer
+#define dispatch_source_create fixtureSource
 #define dispatch_source_set_event_handler fixtureHandler
 static int fixtureDup(int fd) {
     static int failed;
@@ -35,15 +73,20 @@ static int fixtureDup(int fd) {
 #import "Shared/WireGuard/SGWGCore.m"
 #undef nw_path_monitor_start
 #undef dispatch_source_set_timer
+#undef dispatch_source_create
 #undef dispatch_source_set_event_handler
 #undef dup
 #undef SecItemCopyMatching
+#undef SecItemUpdate
 
 static unsigned notices, rebinds;
+static BOOL presenterAvailable;
+static dispatch_block_t presentedNotice;
 static BOOL admitted = YES, patches = YES;
 static atomic_bool sharedImageLoaded;
 static atomic_uint starts, stops, transports, nativeScans, admissions;
 static dispatch_semaphore_t handoff, releaseHandoff;
+static dispatch_semaphore_t oldProfileRead, finishOldAttempt;
 static int sessionPort;
 static CreateSocksFn realCreateSocks;
 static void *recordSocksEndpoint(void *endpoint) {
@@ -73,10 +116,21 @@ NSArray *SGWGNativeReportLines(void) { return @[]; }
 NSArray *SGWGTransportReportLines(void) { return @[]; }
 NSArray *SGWGScanTransportClasses(void) { return @[]; }
 NSArray *SGWGAdmissionReportLines(void) { return @[]; }
-void SGWGNotifyRecovery(void) { notices++; CHECK(!SGWGReady()); }
+void SGWGNotifyRecovery(void) {
+    notices++;
+    CHECK(!SGWGReady());
+    if (presenterAvailable) {
+        presentedNotice = SGWGRecoveryPresentationCompletion();
+        CHECK(presentedNotice);
+        presentedNotice();
+    }
+}
 int SGWGRebind(void) { rebinds++; return 0; }
 static void unexpected(void) { fputs("FAIL unexpected profile/Go status access\n", stderr); exit(1); }
-char *SGWGInspect(char *text) { unexpected(); return NULL; }
+char *SGWGInspect(char *text) {
+    if (getenv("SGWG_TEST_IMPORT_PROFILE") && !strcmp(text, "working")) return strdup("{\"ok\":true}");
+    unexpected(); return NULL;
+}
 enum SGWGStartResult SGWGStart(char *text, char *user, char *pass, int fd) {
     if (!getenv("SGWG_TEST_DELAY_ADMISSION")) unexpected();
     struct sockaddr_in address;
@@ -84,8 +138,14 @@ enum SGWGStartResult SGWGStart(char *text, char *user, char *pass, int fd) {
     CHECK(getsockname(fd, (struct sockaddr *)&address, &size) == 0);
     CHECK(ntohs(address.sin_port) == sessionPort && fd != gListenerFD);
     unsigned attempt = ++starts;
+    if (getenv("SGWG_TEST_IMPORT_PROFILE"))
+        CHECK(!strcmp(text, attempt == 1 ? "offline" : "working"));
     CHECK(!ProxyAdmitted());
-    if ((attempt == 1 && !getenv("SGWG_TEST_FD_LIMIT")) || getenv("SGWG_TEST_INVALID")) {
+    if (attempt == 1 && oldProfileRead) {
+        dispatch_semaphore_signal(oldProfileRead);
+        dispatch_semaphore_wait(finishOldAttempt, DISPATCH_TIME_FOREVER);
+    }
+    if ((attempt == 1 && !getenv("SGWG_TEST_FD_LIMIT") && !getenv("SGWG_TEST_OLD_SUCCEEDS")) || getenv("SGWG_TEST_INVALID")) {
         close(fd);
         return getenv("SGWG_TEST_INVALID") ? SGWGStartRefused : SGWGStartNetworkUnavailable;
     }
@@ -200,8 +260,11 @@ static void checkLyricsRouting(void) {
 @end
 
 static id (*fixtureSessionPredecessor)(id, SEL, id, id, id);
+static unsigned directSessions;
 static id fixtureSession(id receiver, SEL selector, NSURLSessionConfiguration *config, id delegate, id queue) {
     if (objc_getAssociatedObject(config, &kLyricsDirectConfiguration)) {
+        directSessions++;
+        CHECK(!config.URLCache && !config.HTTPCookieStorage && !config.URLCredentialStorage && !config.HTTPShouldSetCookies);
         CHECK(config.connectionProxyDictionary.count == 0);
         CHECK([((id (*)(id, SEL))objc_msgSend)(config, sProxyConfigurations) count] == 0);
         config.protocolClasses = @[LyricsOriginFixture.class];
@@ -246,6 +309,7 @@ static void checkLyricsSessions(void) {
         }
     }
     [session invalidateAndCancel];
+    CHECK(directSessions == 1);
     origSessionDelegate = fixtureSessionPredecessor;
     if (saved) [defaults setObject:saved forKey:@"spotifyglass.wireguard"];
     else [defaults removeObjectForKey:@"spotifyglass.wireguard"];
@@ -304,6 +368,10 @@ int main(int argc, char **argv) {
             CHECK(sessionPort > 1);
             handoff = dispatch_semaphore_create(0);
             releaseHandoff = dispatch_semaphore_create(0);
+            if (getenv("SGWG_TEST_INFLIGHT_IMPORT")) {
+                oldProfileRead = dispatch_semaphore_create(0);
+                finishOldAttempt = dispatch_semaphore_create(0);
+            }
             sharedImageLoaded = true;
             dispatch_async(gQueue, ^{
                 PathUpdated(@"wifi", YES);
@@ -312,7 +380,13 @@ int main(int argc, char **argv) {
                 gStartRetries = MaxStartRetries;
                 StartEngine();
             });
-            waitFor(^BOOL{ return !gStarting; });
+            if (oldProfileRead) {
+                CHECK(!dispatch_semaphore_wait(oldProfileRead, dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC)));
+                CHECK(SGWGCurrentState() == SGWGStateStarting && SGWGImportProfile(@"working", nil));
+                drain();
+                CHECK(gStarting && starts == 1);
+                dispatch_semaphore_signal(finishOldAttempt);
+            } else waitFor(^BOOL{ return !gStarting; });
             if (getenv("SGWG_TEST_INVALID")) {
                 SGWGRequestRebind(@"fixture path");
                 drain();
@@ -321,11 +395,16 @@ int main(int argc, char **argv) {
                 puts("PASS invalid profile refuses existing configurations and never retries");
                 return 0;
             }
-            CHECK(gRetryStart && !SGWGReady() && gListenerFD >= 0);
-            if (getenv("SGWG_TEST_SAME_PATH")) {
-                dispatch_async(gQueue, ^{ PathUpdated(@"wifi", YES); });
-            } else {
-                [NSNotificationCenter.defaultCenter postNotificationName:@"UIApplicationWillEnterForegroundNotification" object:nil];
+            if (!oldProfileRead) {
+                CHECK(gRetryStart && !SGWGReady() && gListenerFD >= 0);
+                if (getenv("SGWG_TEST_IMPORT_PROFILE")) {
+                    CHECK(SGWGCurrentState() == SGWGStateFailed);
+                    CHECK(SGWGImportProfile(@"working", nil));
+                } else if (getenv("SGWG_TEST_SAME_PATH")) {
+                    dispatch_async(gQueue, ^{ PathUpdated(@"wifi", YES); });
+                } else {
+                    [NSNotificationCenter.defaultCenter postNotificationName:@"UIApplicationWillEnterForegroundNotification" object:nil];
+                }
             }
             CHECK(!dispatch_semaphore_wait(handoff, dispatch_time(DISPATCH_TIME_NOW, 2*NSEC_PER_SEC)));
             drain();
@@ -339,9 +418,14 @@ int main(int argc, char **argv) {
             }
             dispatch_semaphore_signal(releaseHandoff);
             waitFor(^BOOL{ return !gStarting && (!gBlockAll || stops != 0); });
-            CHECK(starts == (getenv("SGWG_TEST_FD_LIMIT") ? 1 : 2) && NSURLSession.sharedSession == early);
+            CHECK(starts == ((getenv("SGWG_TEST_FD_LIMIT") || getenv("SGWG_TEST_OLD_SUCCEEDS")) ? 1 : 2) && NSURLSession.sharedSession == early);
             CHECK(SGWGReady() == admitted);
             if (admitted) {
+                dispatch_sync(gQueue, ^{ CHECK(fireRecovery() == 0); });
+                EngineChanged(SGWGEngineUnavailable);
+                dispatch_sync(gQueue, ^{ CHECK(!SGWGReady() && fireRecovery() == 1); });
+                EngineChanged(SGWGEngineAvailable);
+                dispatch_sync(gQueue, ^{ CHECK(SGWGReady() && fireRecovery() == 0); });
                 dispatch_sync(gQueue, ^{ RefuseListener(); });
                 waitFor(^BOOL{ return stops != 0; });
             }
@@ -351,46 +435,90 @@ int main(int argc, char **argv) {
         }
         if (argc == 2 && !strcmp(argv[1], "--external-proxy")) {
             CHECK([gKind isEqualToString:SGWGKindSOCKS5]);
+            NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+            id previousSettings = [defaults objectForKey:kDefaultsKey];
             if (getenv("SGWG_TEST_DELAY_ADMISSION")) {
                 CHECK(!SGWGReady() && !transports);
-                if (getenv("SGWG_TEST_LOCKED_PROXY")) {
+                if (getenv("SGWG_TEST_LOCKED_PROXY") || getenv("SGWG_TEST_SAVE_PASSWORD")) {
                     [NSUserDefaults.standardUserDefaults setVolatileDomain:@{kDefaultsKey:
                         @{@"host": @"127.0.0.1", @"port": @"1080", @"username": @"fixture"}} forName:NSArgumentDomain];
                 }
                 sharedImageLoaded = true;
-                dispatch_sync(gQueue, tick);
+                dispatch_sync(gQueue, ^{ CHECK(fireRecovery() == 1); });
             }
             if (getenv("SGWG_TEST_REFUSED")) {
                 drain();
                 CHECK(SGWGActiveThisLaunch() && SGWGGuardsInstalled() && !SGWGReady());
                 unsigned scans = nativeScans, checks = admissions;
-                dispatch_sync(gQueue, tick);
+                dispatch_sync(gQueue, ^{ fireRecovery(); });
                 CHECK(nativeScans == scans && admissions == checks && !transports);
                 CHECK(SGWGCurrentState() == SGWGStateBlocked);
                 puts("PASS refused proxy stays guarded without periodic image scans");
                 return 0;
             }
-            if (getenv("SGWG_TEST_LOCKED_PROXY")) {
+            if (getenv("SGWG_TEST_SAVE_PASSWORD")) {
+                CHECK(SGWGCurrentState() == SGWGStateBlocked && !gBlockAll && gCredentialStatus == errSecItemNotFound);
+                CHECK(SGWGSaveConnection(gKind, @"127.0.0.1", @"1080", @"fixture", @"replacement", nil));
+                drain();
+                if (previousSettings) [defaults setObject:previousSettings forKey:kDefaultsKey];
+                else [defaults removeObjectForKey:kDefaultsKey];
+                CHECK(SGWGReady() && gCredentialStatus == errSecSuccess && gProxyPass && !strcmp(gProxyPass, "replacement"));
+            } else if (getenv("SGWG_TEST_LOCKED_PROXY")) {
                 CHECK(SGWGCurrentState() == SGWGStateWaitingProfile && !SGWGReady() && !gProxyPass);
                 CHECK(gCredentialStatus == errSecInteractionNotAllowed);
                 keychainUnlocked = YES;
-                [NSNotificationCenter.defaultCenter postNotificationName:@"UIApplicationProtectedDataDidBecomeAvailable" object:nil];
+                if (getenv("SGWG_TEST_TIMER_UNLOCK"))
+                    dispatch_sync(gQueue, ^{ CHECK(fireRecovery() == 1); });
+                else
+                    [NSNotificationCenter.defaultCenter postNotificationName:@"UIApplicationProtectedDataDidBecomeAvailable" object:nil];
                 drain();
                 CHECK(gCredentialStatus == errSecSuccess && gProxyUser && !strcmp(gProxyUser, "fixture"));
                 CHECK(gProxyPass && !strcmp(gProxyPass, "unlock-test"));
             }
             CHECK(gListenerFD == -1 && SGWGReady() && SGWGCurrentState() == SGWGStateExternalProxy && transports == 1);
+            if (getenv("SGWG_TEST_ACTIVE_NOTICE")) {
+                patches = NO;
+                ImageChanged(NULL, 0);
+                dispatch_sync(gQueue, ^{ for (unsigned i = 0; i < 4; i++) CHECK(fireRecovery()); });
+                [NSNotificationCenter.defaultCenter postNotificationName:@"UIApplicationDidBecomeActiveNotification" object:nil];
+                dispatch_sync(gQueue, ^{
+                    for (unsigned i = 0; i < 2; i++) {
+                        presenterAvailable = i == 1;
+                        unsigned before = notices;
+                        CHECK(nextFire <= dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+                        CHECK(fireRecovery() && notices == before + 1);
+                    }
+                    CHECK(presentedNotice);
+                    unsigned shown = notices;
+                    for (unsigned i = 0; i < 2; i++) {
+                        CHECK(nextFire > dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+                        CHECK(fireRecovery() && notices == shown); // repair only
+                    }
+                    patches = YES;
+                    SGWGRefreshReadiness();
+                    CHECK(SGWGReady() && !fireRecovery());
+                    patches = NO;
+                    SGWGRefreshReadiness();
+                    presentedNotice(); // late completion from the previous outage
+                    CHECK(nextFire <= dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+                    CHECK(fireRecovery() && notices == shown + 1);
+                    patches = YES;
+                    SGWGRefreshReadiness();
+                });
+                puts("PASS presentation failure retries, shown outage has no notice wakes, new outage re-arms");
+            }
             dispatch_sync(gQueue, ^{
+                CHECK(fireRecovery() == 0);
                 // A Foundation ABI mismatch cannot be repaired by native slot scans.
                 gSessionGuards = NO;
                 patches = NO;
                 SGWGRefreshReadiness();
                 patches = YES;
                 unsigned scans = nativeScans;
-                tick();
+                CHECK(fireRecovery() == 1);
                 CHECK(nativeScans > scans && !SGWGGuardsInstalled());
                 scans = nativeScans;
-                tick();
+                fireRecovery();
                 CHECK(nativeScans == scans && !SGWGReady());
             });
             puts("PASS external proxy start; periodic scans limited to incomplete native slots");

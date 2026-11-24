@@ -567,7 +567,7 @@ func halfPair() (halfConn, halfConn) {
 
 func TestPipeDrainsEitherDirection(t *testing.T) {
 	for _, reverse := range []bool{false, true} {
-		for _, mode := range []string{"silent", "blocked writer", "payload before FIN", "progress", "progress with upload open"} {
+		for _, mode := range []string{"silent", "blocked writer", "payload before FIN", "progress", "progress with upload open", "progress with blocked writer"} {
 			t.Run(mode, func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
 					client, local := halfPair()
@@ -581,14 +581,14 @@ func TestPipeDrainsEitherDirection(t *testing.T) {
 						client, peer = peer, client
 					}
 					if mode == "progress with upload open" {
-						time.Sleep(2 * streamIdleTimeout)
+						time.Sleep(60 * time.Second)
 						go client.Write([]byte{42})
 						var b [1]byte
 						if _, err := io.ReadFull(peer, b[:]); err != nil || b[0] != 42 {
 							t.Fatal("open idle stream no longer forwards data")
 						}
 					}
-					if mode == "payload before FIN" {
+					if mode == "payload before FIN" || mode == "progress with blocked writer" {
 						if _, err := client.Write([]byte{1}); err != nil {
 							t.Fatal("payload not consumed")
 						}
@@ -597,18 +597,38 @@ func TestPipeDrainsEitherDirection(t *testing.T) {
 						client.CloseWrite()
 					}
 					var b [1]byte
-					if mode != "payload before FIN" && mode != "progress with upload open" {
+					if mode != "payload before FIN" && mode != "progress with blocked writer" && mode != "progress with upload open" {
 						if _, err := peer.Read(b[:]); err != io.EOF {
 							t.Fatal("FIN not forwarded")
 						}
 					}
 					switch mode {
-					case "progress", "progress with upload open":
+					case "progress", "progress with upload open", "progress with blocked writer":
 						for i := 0; i < 4; i++ {
 							time.Sleep(12 * time.Second)
 							go peer.Write([]byte{byte(i)})
 							if _, err := io.ReadFull(client, b[:]); err != nil || b[0] != byte(i) {
 								t.Fatal("progressing stream truncated")
+							}
+						}
+						if mode == "progress with blocked writer" {
+							// FIN is still behind the blocked payload. Once
+							// progress stops, allow precisely the remaining idle budget.
+							synctest.Wait()
+							time.Sleep(30*time.Second - time.Nanosecond)
+							synctest.Wait()
+							select {
+							case <-done:
+								t.Fatal("blocked writer ignored last reverse-direction progress")
+							default:
+							}
+							time.Sleep(time.Nanosecond)
+							synctest.Wait()
+							select {
+							case <-done:
+								return
+							default:
+								t.Fatal("blocked writer exceeded idle deadline")
 							}
 						}
 						peer.CloseWrite()

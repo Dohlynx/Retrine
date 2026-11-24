@@ -635,11 +635,13 @@ static NSString *ErrorText(NSError *error) {
 
 @end
 
-static BOOL sg_recoveryPending, sg_recoveryShown;
+static BOOL sg_recoveryPending;
+extern dispatch_block_t SGWGRecoveryPresentationCompletion(void);
 
 static void PresentPendingRecovery(void) {
         if (!sg_recoveryPending) return;
-        if (SGWGReady() || !SGWGActiveThisLaunch() || sg_recoveryShown) {
+        dispatch_block_t presented = SGWGRecoveryPresentationCompletion();
+        if (!presented || !SGWGActiveThisLaunch()) {
             sg_recoveryPending = NO;
             return;
         }
@@ -661,8 +663,7 @@ static void PresentPendingRecovery(void) {
             style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { SGWGSetSettingEnabled(NO); }]];
         [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.wireguard.later", @"Later") style:UIAlertActionStyleCancel handler:nil]];
         SGPresentDark(alert);
-        [presenter presentViewController:alert animated:YES completion:nil];
-        sg_recoveryShown = YES;
+        [presenter presentViewController:alert animated:YES completion:presented];
         sg_recoveryPending = NO;
 }
 

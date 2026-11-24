@@ -38,12 +38,13 @@ static atomic_bool gActive;       // armed before checking any capability
 static atomic_bool gReady, gGuardsReady, gNativeGuardsReady, gEngineReady;
 static atomic_bool gHandedOff;
 // Start ownership and retry tickets belong to gQueue.
-static BOOL gStarting, gRetryStart;
+static BOOL gStarting, gRetryStart, gProfileChangedDuringStart;
 static unsigned gStartRetries;
 enum { MaxStartRetries = 5 };
 static uint64_t gRetryTicket;
 static os_unfair_lock gReadinessLock = OS_UNFAIR_LOCK_INIT;
 static uint64_t gReadinessGeneration;
+static uint64_t gOutage = 1, gPresentedOutage; // protected by gReadinessLock
 static BOOL gEngineAvailable;    // unvalidated engine event, protected by gReadinessLock
 static BOOL gSessionGuards;
 static int gPort = -1;            // fixed before session hooks are installed
@@ -51,6 +52,14 @@ static int gListenerFD = -1;      // process-lifetime reservation once published
 static BOOL gPortPublished;       // serialized with definitive refusal
 static char gUser[33], gPass[33]; // per-launch random proxy credentials
 static dispatch_queue_t gQueue;
+static char kQueueKey;
+static dispatch_source_t gRecovery;  // timer state belongs exclusively to gQueue
+static BOOL gAppActive;
+static dispatch_time_t gRecoveryWake, gRepairDeadline;
+static unsigned gRecoveryDelay;
+enum { InitialRecoverySeconds = 5, MaxRecoverySeconds = 60 };
+static atomic_bool gAdmissionPending;
+static void CredentialsChanged(NSString *kind);
 
 static atomic_uint gConfigsProxied, gSessionsProxied, gBackgroundConfigs, gSharedReplaced;
 static atomic_uint gProxyFailures, gBlockedRequests, gHTTP3Cleared, gDataURLFetches;
@@ -250,9 +259,28 @@ static NSURLSessionConfiguration *CopyRoutingConfiguration(NSURLSessionConfigura
     return copy;
 }
 
+static NSURLSession *LyricsDirectSession(void) {
+    static NSURLSession *session;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSURLSessionConfiguration *config = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+        objc_setAssociatedObject(config, &kLyricsDirectConfiguration, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        config.connectionProxyDictionary = @{};
+        config.HTTPCookieStorage = nil;
+        config.URLCredentialStorage = nil;
+        config.URLCache = nil;
+        config.HTTPShouldSetCookies = NO;
+        if (sSetProxyConfigurations)
+            ((void (*)(id, SEL, id))objc_msgSend)(config, sSetProxyConfigurations, @[]);
+        config.protocolClasses = @[];
+        session = [NSURLSession sessionWithConfiguration:config delegate:nil delegateQueue:nil];
+    });
+    return session;
+}
+
 @interface SGWGLyricsDirectProtocol : NSURLProtocol <NSURLSessionDataDelegate>
-@property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSURLSessionDataTask *task;
+@property (nonatomic, strong) dispatch_source_t deadline;
 @property (nonatomic) BOOL stopped;
 @end
 @implementation SGWGLyricsDirectProtocol
@@ -266,20 +294,21 @@ static NSURLSessionConfiguration *CopyRoutingConfiguration(NSURLSessionConfigura
             [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]];
             return;
         }
-            NSURLSessionConfiguration *config = [NSURLSessionConfiguration ephemeralSessionConfiguration];
-            objc_setAssociatedObject(config, &kLyricsDirectConfiguration, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            config.connectionProxyDictionary = @{};
-            config.HTTPCookieStorage = nil;
-            config.URLCredentialStorage = nil;
-            config.URLCache = nil;
-            config.HTTPShouldSetCookies = NO;
-            config.timeoutIntervalForRequest = self.request.timeoutInterval;
-            config.timeoutIntervalForResource = self.request.timeoutInterval;
-            if (sSetProxyConfigurations)
-                ((void (*)(id, SEL, id))objc_msgSend)(config, sSetProxyConfigurations, @[]);
-            config.protocolClasses = @[];
-            self.session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
-        self.task = [self.session dataTaskWithRequest:self.request];
+        self.task = [LyricsDirectSession() dataTaskWithRequest:self.request];
+        self.task.delegate = self;
+        // The request carries its inactivity timeout. Preserve its former
+        // resource deadline too, even if a slow origin keeps sending bytes.
+        self.deadline = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+        dispatch_source_set_timer(self.deadline, dispatch_time(DISPATCH_TIME_NOW, self.request.timeoutInterval * NSEC_PER_SEC),
+                                  DISPATCH_TIME_FOREVER, 0);
+        dispatch_source_set_event_handler(self.deadline, ^{
+            @synchronized (self) {
+                if (self.stopped) return;
+                [self stopLoading];
+                [self.client URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil]];
+            }
+        });
+        dispatch_resume(self.deadline);
         [self.task resume];
     }
 }
@@ -287,9 +316,9 @@ static NSURLSessionConfiguration *CopyRoutingConfiguration(NSURLSessionConfigura
     @synchronized (self) {
         self.stopped = YES;
         [self.task cancel];
-        [self.session invalidateAndCancel];
+        if (self.deadline) dispatch_source_cancel(self.deadline);
+        self.deadline = nil;
         self.task = nil;
-        self.session = nil;
     }
 }
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task
@@ -761,6 +790,7 @@ BOOL SGWGSaveConnection(NSString *kind, NSString *host, NSString *port, NSString
     NSMutableDictionary *d = [SettingsDict() mutableCopy];
     [d addEntriesFromDictionary:@{@"kind": kind, @"host": host, @"port": port, @"username": username}];
     [[NSUserDefaults standardUserDefaults] setObject:d forKey:kDefaultsKey];
+    CredentialsChanged(kind);
     return YES;
 }
 
@@ -813,6 +843,7 @@ BOOL SGWGImportProfile(NSString *text, NSString **reason) {
         if (reason) *reason = [NSString stringWithFormat:@"Keychain error %d", (int)status];
         return NO;
     }
+    CredentialsChanged(SGWGKindWireGuard);
     return YES;
 }
 
@@ -835,6 +866,13 @@ NSDictionary *SGWGEngineStatus(void) {
 
 static void RefuseListener(void);
 
+static uint64_t PendingRecoveryNotice(void) {
+    os_unfair_lock_lock(&gReadinessLock);
+    uint64_t outage = !SGWGReady() && gPresentedOutage != gOutage ? gOutage : 0;
+    os_unfair_lock_unlock(&gReadinessLock);
+    return outage;
+}
+
 static void EngineChanged(int state) {
     if (state == SGWGEngineDestinationFailed) return;
     BOOL available = state == SGWGEngineAvailable;
@@ -847,7 +885,7 @@ static void EngineChanged(int state) {
         atomic_store(&gState, available ? SGWGStateRunning : SGWGStateFailed);
     if (state == SGWGEngineStopped) gHandedOff = false;
     os_unfair_lock_unlock(&gReadinessLock);
-    if (!available && !gBlockAll) SGWGNotifyRecovery();
+    if (!available && !gBlockAll && PendingRecoveryNotice()) SGWGNotifyRecovery();
     dispatch_async(gQueue, ^{
         if (state == SGWGEngineStopped && !gBlockAll && gListenerFD >= 0) RefuseListener();
         SGWGRefreshReadiness();
@@ -894,7 +932,7 @@ static void RefuseListener(void) {
 static int ProxyAdmitted(void) { return SGWGReady(); }
 static void StartEngine(void);
 static void StartExternalProxy(void);
-static void ObserveLifecycle(void);
+static void ObservePath(void);
 
 static BOOL PrepareStart(void) {
     if (gBlockAll) return NO;
@@ -907,24 +945,32 @@ static BOOL PrepareStart(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         SGWGInstallTransportPatches();
-        ObserveLifecycle();
+        if ([gKind isEqualToString:SGWGKindWireGuard]) ObservePath();
     });
     return YES;
 }
 
+static void RetryBootstrap(void);
+
 static void FinishStart(enum SGWGStartResult result) {
+    BOOL profileChanged = gProfileChangedDuringStart;
+    gProfileChangedDuringStart = NO;
     gStarting = NO;
     if (gBlockAll) {
         if (result == SGWGStarted) dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ SGWGStop(); });
         return;
     }
     if (result == SGWGStarted) {
+        // A successful handoff follows the normal running-route import policy:
+        // the importer offers a restart; never hot-swap an admitted listener.
         os_unfair_lock_lock(&gReadinessLock);
         gReadinessGeneration++;
         gHandedOff = true;
         atomic_store(&gState, gEngineAvailable ? SGWGStateRunning : SGWGStateFailed);
         os_unfair_lock_unlock(&gReadinessLock);
         SGWGRefreshReadiness();
+    } else if (profileChanged) {
+        RetryBootstrap();
     } else if (result == SGWGStartNetworkUnavailable) {
         atomic_store(&gState, SGWGStateFailed);
         gRetryStart = YES;
@@ -967,6 +1013,12 @@ static void StartEngine(void) {
     });
 }
 
+static void RetryBootstrap(void) {
+    gStartRetries = 0;
+    ++gRetryTicket;
+    StartEngine();
+}
+
 void SGWGRequestRebind(NSString *reason) {
     if (!gActive) return;
     dispatch_async(gQueue, ^{
@@ -975,9 +1027,7 @@ void SGWGRequestRebind(NSString *reason) {
             // A trigger can race the final, still-offline DNS result.
             gStartRetries = 0;
         } else if (gRetryStart) {
-            gStartRetries = 0;
-            ++gRetryTicket;
-            StartEngine();
+            RetryBootstrap();
         } else if (gHandedOff && SGWGAdmissionReady()) {
             SGWGRebind();
             atomic_fetch_add(&gRebinds, 1);
@@ -1035,6 +1085,31 @@ static void PathUpdated(NSString *signature, BOOL satisfied) {
     lastSignature = signature;
 }
 
+static void RetryPendingStart(BOOL credentialsChanged) {
+    SGWGState state = SGWGCurrentState();
+    if (credentialsChanged && state == SGWGStateFailed && gRetryStart) {
+        RetryBootstrap();
+        return;
+    }
+    if (state != SGWGStateWaitingProfile &&
+        !(state == SGWGStateBlocked && !gBlockAll && !gEngineReady &&
+          (credentialsChanged || !gCredentialStatus) && SGWGIsSupportedOS())) return;
+    if ([gKind isEqualToString:SGWGKindWireGuard]) StartEngine();
+    else StartExternalProxy();
+}
+
+static void CredentialsChanged(NSString *kind) {
+    if (!gActive) return;
+    dispatch_async(gQueue, ^{
+        // Saved settings do not hot-swap a running route or undo a refusal.
+        if (gBlockAll || ![kind isEqual:gKind] || ![SGWGSettingKind() isEqual:gKind]) return;
+        if (gStarting) gProfileChangedDuringStart = YES;
+        else RetryPendingStart(YES);
+    });
+}
+
+static void UpdateRecoveryTimer(void);
+
 static void ObserveLifecycle(void) {
     // UIKit notification names as strings: this file is Foundation-only so the
     // same core also runs in the macOS test harness.
@@ -1043,17 +1118,30 @@ static void ObserveLifecycle(void) {
     // interruptions of a playing stream.
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     BOOL tunnel = [gKind isEqualToString:SGWGKindWireGuard];
+    for (NSString *name in @[@"UIApplicationDidBecomeActiveNotification", @"UIApplicationWillResignActiveNotification"]) {
+        [center addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
+            dispatch_async(gQueue, ^{
+                gAppActive = [note.name isEqual:@"UIApplicationDidBecomeActiveNotification"];
+                UpdateRecoveryTimer();
+            });
+        }];
+    }
     [center addObserverForName:@"UIApplicationProtectedDataDidBecomeAvailable" object:nil queue:nil usingBlock:^(NSNotification *note) {
         dispatch_async(gQueue, ^{
-            if (SGWGCurrentState() != SGWGStateWaitingProfile) return;
-            if (tunnel) StartEngine();
-            else StartExternalProxy();
+            if (SGWGCurrentState() == SGWGStateWaitingProfile) RetryPendingStart(NO);
         });
     }];
-    if (!tunnel) return;
     [center addObserverForName:@"UIApplicationWillEnterForegroundNotification" object:nil queue:nil usingBlock:^(NSNotification *note) {
-        SGWGRequestRebind(@"foreground");
+        dispatch_async(gQueue, ^{
+            if (SGWGCurrentState() == SGWGStateWaitingProfile || SGWGCurrentState() == SGWGStateBlocked)
+                RetryPendingStart(NO);
+            else if (tunnel) SGWGRequestRebind(@"foreground");
+            if (!gNativeGuardsReady || gAdmissionPending) SGWGRefreshReadiness();
+        });
     }];
+}
+
+static void ObservePath(void) {
     static nw_path_monitor_t monitor;
     monitor = nw_path_monitor_create();
     nw_path_monitor_set_queue(monitor, gQueue);
@@ -1103,6 +1191,66 @@ static void StartExternalProxy(void) {
     SGWGRefreshReadiness();
 }
 
+// A one-shot source with no deadline does not wake the queue. While unready,
+// keep retrying the notice too: UIKit may not yet have an eligible presenter.
+static void UpdateRecoveryTimer(void) {
+    if (!gRecovery) return;
+    if (SGWGReady()) {
+        if (gRecoveryWake)
+            dispatch_source_set_timer(gRecovery, DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, 0);
+        gRecoveryWake = gRepairDeadline = 0;
+        gRecoveryDelay = InitialRecoverySeconds;
+    } else {
+        if (!gRepairDeadline) gRepairDeadline = dispatch_time(DISPATCH_TIME_NOW, gRecoveryDelay * (int64_t)NSEC_PER_SEC);
+        dispatch_time_t wake = gRepairDeadline;
+        if (gAppActive && PendingRecoveryNotice()) {
+            // Retrying presentation must neither advance the repair scan nor
+            // postpone an earlier notice already waiting for its presenter.
+            dispatch_time_t notice = dispatch_time(DISPATCH_TIME_NOW, InitialRecoverySeconds * (int64_t)NSEC_PER_SEC);
+            wake = MIN(wake, notice);
+            if (gRecoveryWake) wake = MIN(wake, gRecoveryWake);
+        }
+        if (wake != gRecoveryWake) {
+            gRecoveryWake = wake;
+            dispatch_source_set_timer(gRecovery, wake, DISPATCH_TIME_FOREVER, NSEC_PER_SEC);
+        }
+    }
+}
+
+// UIKit calls this block after presentation, not when presentation is requested.
+dispatch_block_t SGWGRecoveryPresentationCompletion(void) {
+    uint64_t outage = PendingRecoveryNotice();
+    if (!outage) return nil;
+    return ^{
+        os_unfair_lock_lock(&gReadinessLock);
+        BOOL current = outage == gOutage && !SGWGReady();
+        if (current) gPresentedOutage = outage;
+        os_unfair_lock_unlock(&gReadinessLock);
+        if (current) dispatch_async(gQueue, ^{ UpdateRecoveryTimer(); });
+    };
+}
+
+static void InstallRecoveryTimer(void) {
+    gRecovery = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, gQueue);
+    dispatch_source_set_timer(gRecovery, DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, 0);
+    dispatch_source_set_event_handler(gRecovery, ^{
+        if (!gRecoveryWake) return;
+        BOOL repairDue = gRecoveryWake == gRepairDeadline || dispatch_time(DISPATCH_TIME_NOW, 0) >= gRepairDeadline;
+        gRecoveryWake = 0;
+        if (!SGWGReady() && repairDue) {
+            gRepairDeadline = 0;
+            gRecoveryDelay = MIN(2 * gRecoveryDelay, MaxRecoverySeconds);
+            if (!gNativeGuardsReady || gAdmissionPending) SGWGRefreshReadiness();
+            RetryPendingStart(NO);
+        }
+        if (PendingRecoveryNotice()) SGWGNotifyRecovery();
+        UpdateRecoveryTimer();
+    });
+    dispatch_resume(gRecovery);
+    gRecoveryDelay = InitialRecoverySeconds;
+    UpdateRecoveryTimer();
+}
+
 void SGWGRefreshReadiness(void) {
     BOOL tunnel = [gKind isEqualToString:SGWGKindWireGuard];
     os_unfair_lock_lock(&gReadinessLock);
@@ -1118,6 +1266,9 @@ void SGWGRefreshReadiness(void) {
     os_unfair_lock_lock(&gReadinessLock);
     BOOL current = generation == gReadinessGeneration;
     if (current) {
+        // Completing an outage invalidates even a UIKit completion still in flight.
+        if (ready && !gReady) ++gOutage;
+        gAdmissionPending = pending;
         atomic_store(&gNativeGuardsReady, native);
         atomic_store(&gGuardsReady, guards);
         atomic_store(&gEngineReady, available);
@@ -1126,6 +1277,8 @@ void SGWGRefreshReadiness(void) {
     os_unfair_lock_unlock(&gReadinessLock);
     if (current && !admitted && !pending && !gBlockAll)
         RefuseListener();
+    if (dispatch_get_specific(&kQueueKey)) UpdateRecoveryTimer();
+    else dispatch_async(gQueue, ^{ UpdateRecoveryTimer(); });
 }
 
 static void ImageChanged(const struct mach_header *header, intptr_t slide) {
@@ -1140,6 +1293,7 @@ static void ImageChanged(const struct mach_header *header, intptr_t slide) {
 __attribute__((constructor)) static void SGWGInit(void) {
     @autoreleasepool {
         gQueue = dispatch_queue_create("retrine.wireguard", DISPATCH_QUEUE_SERIAL);
+        dispatch_queue_set_specific(gQueue, &kQueueKey, &kQueueKey, NULL);
         if (!SGWGSettingEnabled()) return;
         atomic_store(&gActive, true);
         gKind = SGWGSettingKind();
@@ -1156,26 +1310,8 @@ __attribute__((constructor)) static void SGWGInit(void) {
         SGWGRefreshReadiness();
         _dyld_register_func_for_add_image(ImageChanged);
         _dyld_register_func_for_remove_image(ImageChanged);
-        static dispatch_source_t recovery;
-        recovery = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, gQueue);
-        dispatch_source_set_timer(recovery, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), 5 * NSEC_PER_SEC, NSEC_PER_SEC);
-        dispatch_source_set_event_handler(recovery, ^{
-            // Foundation ABI failures cannot be repaired by rescanning dyld.
-            if (!atomic_load(&gNativeGuardsReady)) SGWGRefreshReadiness();
-            if (SGWGCurrentState() == SGWGStateWaitingProfile) {
-                if ([gKind isEqualToString:SGWGKindWireGuard]) StartEngine();
-                else StartExternalProxy();
-            } else if (SGWGCurrentState() == SGWGStateBlocked && !gBlockAll &&
-                       !atomic_load(&gEngineReady) && !atomic_load(&gCredentialStatus) &&
-                       SGWGIsSupportedOS()) {
-                if (tunnel) StartEngine();
-                else StartExternalProxy();
-            }
-#ifndef SGWG_TESTING
-            if (!SGWGReady()) SGWGNotifyRecovery();
-#endif
-        });
-        dispatch_resume(recovery);
+        ObserveLifecycle();
+        dispatch_async(gQueue, ^{ InstallRecoveryTimer(); });
         if (!supported) {
             atomic_store(&gState, SGWGStateUnsupported);
             return;

@@ -153,8 +153,12 @@ static void UnitChecks(void) {
     task.fixtureResponse = [[NSHTTPURLResponse alloc] initWithURL:task.fixtureRequest.URL statusCode:403 HTTPVersion:@"HTTP/1.1" headerFields:nil];
     SPTCoreURLSessionDataDelegate *events = [SPTCoreURLSessionDataDelegate new];
     [events URLSession:nil dataTask:task didReceiveData:[NSMutableData dataWithLength:12]];
+    [events URLSession:nil dataTask:task didReceiveData:[NSMutableData dataWithLength:13]];
+    task.fixtureRequest = [NSURLRequest requestWithURL:[NSURL URLWithString:@"https://api.spotify.com/test"]];
+    [events URLSession:nil dataTask:task didReceiveData:[NSMutableData dataWithLength:7]];
+    CHECK([SGWGTransportReportLines() containsObject:@"spotify.received-bytes: media 25 api 7"], "in-flight byte accounting");
     [events URLSession:nil task:task didCompleteWithError:[NSError errorWithDomain:NSURLErrorDomain code:-1005 userInfo:nil]];
-    CHECK(events.calls == 1 && events.bytes == 12, "delegate forwarding");
+    CHECK(events.calls == 1 && events.bytes == 32, "delegate forwarding");
     SPTDataLoaderService *wrong = [SPTDataLoaderService new];
     CHECK([wrong URLSession:nil task:task didCompleteWithError:nil] == 73 && wrong.calls == 1, "wrong observer ABI changed");
     NSString *report = SGWGDiagnosticsReport(@{});
