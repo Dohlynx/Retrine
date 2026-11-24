@@ -9,6 +9,30 @@
 static int failures;
 static BOOL renderingOnly;
 static NSUInteger backgrounds;
+// Only instrument the synchronous injected call, not other renderer work.
+static _Thread_local NSUInteger refusedAllocationIndex;
+static _Thread_local BOOL watchingOverlay;
+static _Thread_local NSInteger liveBuffers;
+static _Thread_local CGImageRef liveWords;
+void *SGLyricsHarnessMalloc(size_t size) {
+    if (refusedAllocationIndex && !--refusedAllocationIndex) return NULL;
+    void *buffer = malloc(size);
+    if (watchingOverlay && buffer) liveBuffers++;
+    return buffer;
+}
+void SGLyricsHarnessFree(void *buffer) {
+    if (watchingOverlay && buffer) liveBuffers--;
+    free(buffer);
+}
+CGImageRef SGLyricsHarnessCrop(CGImageRef image, CGRect rect) {
+    CGImageRef crop = CGImageCreateWithImageInRect(image, rect);
+    if (watchingOverlay) liveWords = crop;
+    return crop;
+}
+void SGLyricsHarnessRelease(CGImageRef image) {
+    if (watchingOverlay && image == liveWords) liveWords = NULL;
+    CGImageRelease(image);
+}
 CGImageRef SGLyricsHarnessBackground(CGImageRef cover, CGSize size, SGLyricsBackgroundStyle style) {
     backgrounds++;
     return SGLyricsBackgroundCreate(cover, size, style);
@@ -110,7 +134,7 @@ static double linear(double v) { return v <= .04045 ? v / 12.92 : pow((v + .055)
 
 int main(int argc, char **argv) {
     @autoreleasepool {
-        if (argc != 2) return 2;
+        if (argc != 3) return 2;
         renderingOnly = getenv("REVIEW_ONLY") != NULL;
         if (renderingOnly) puts("Reference rendering only; no regression checks run.");
         NSString *dir = [NSString stringWithUTF8String:argv[1]];
@@ -199,6 +223,37 @@ int main(int argc, char **argv) {
         if (motion) {
             save(motion, dir, @"motion-left-phone.png", YES);
         }
+#ifndef SG_BASELINE
+        if (!renderingOnly && written) {
+            NSURL *leased = [NSURL fileURLWithPath:@(argv[2])];
+            NSData *original = [@"leased clip" dataUsingEncoding:NSUTF8StringEncoding];
+            check([original writeToURL:leased atomically:YES], @"existing clip seeded");
+            BOOL replaced = SGLyricsClipWriteOverMotion(leased, video, nil, line, nil, nil, 0, 2, SGLyricsClipLeft, nil);
+            check(!replaced && [[NSData dataWithContentsOfURL:leased] isEqual:original] &&
+                  ![NSFileManager.defaultManager fileExistsAtPath:[leased URLByAppendingPathExtension:@"partial"].path],
+                  @"motion publish collision preserves the leased file and discards the partial");
+            [NSFileManager.defaultManager removeItemAtURL:leased error:nil];
+            for (NSNumber *layout in @[@(SGLyricsClipLeft), @(SGLyricsClipOverArtwork)]) {
+                for (NSUInteger index = 1; index <= 3; index++) {
+                    refusedAllocationIndex = index;
+                    watchingOverlay = YES;
+                    CGImageRef preview = SGLyricsClipMotionFrame(video, nil, line, nil, nil, 0, 2, layout.integerValue);
+                    watchingOverlay = NO;
+                    check(!liveWords && liveBuffers == 0, @"failed preview releases the words image and overlay buffers");
+                    check(!preview && !refusedAllocationIndex, @"missing overlay buffer yields no motion preview");
+                    CGImageRelease(preview);
+                    refusedAllocationIndex = index;
+                    watchingOverlay = YES;
+                    BOOL encoded = SGLyricsClipWriteOverMotion(leased, video, nil, line, nil, nil, 0, 2, layout.integerValue, nil);
+                    watchingOverlay = NO;
+                    check(!liveWords && liveBuffers == 0, @"failed encode releases the words image and overlay buffers");
+                    check(!encoded && !refusedAllocationIndex && ![NSFileManager.defaultManager fileExistsAtPath:leased.path] &&
+                          ![NSFileManager.defaultManager fileExistsAtPath:[leased URLByAppendingPathExtension:@"partial"].path],
+                          @"missing overlay buffer yields no motion clip or partial");
+                }
+            }
+        }
+#endif
         [NSFileManager.defaultManager removeItemAtURL:video error:nil];
 #ifndef SG_BASELINE
         check(SGLyricsClipOverArtwork == 5, @"new stored layout is appended at index 5");

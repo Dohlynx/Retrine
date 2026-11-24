@@ -52,3 +52,4 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi \
     -fobjc-arc -I ../../tweak/Sources -framework UIKit -framework Foundation -framework AVFoundation -framework CoreMedia \
     store-check.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionStore.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionTicket.m ../../tweak/Sources/Core/SGDataRoot.m -o "$OUT/store-check"
 "$OUT/store-check" "$OUT/store-data"
+"$OUT/store-check" missing-root

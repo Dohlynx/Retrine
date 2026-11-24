@@ -35,8 +35,10 @@ static dispatch_queue_t storeQueue(void) {
 // An existing cache can be over budget even if artwork is never requested this launch.
 __attribute__((constructor)) static void scheduleLaunchTrim(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), storeQueue(), ^{
+        NSURL *directory = folder();
+        if (!directory) return;
         // Local generators run synchronously on this queue; no partial here can be active.
-        for (NSURL *file in [NSFileManager.defaultManager contentsOfDirectoryAtURL:folder()
+        for (NSURL *file in [NSFileManager.defaultManager contentsOfDirectoryAtURL:directory
                includingPropertiesForKeys:nil options:NSDirectoryEnumerationSkipsHiddenFiles error:nil]) {
             if ([file.pathExtension isEqual:@"partial"] && ownedClip(file.URLByDeletingPathExtension))
                 unlink(file.fileSystemRepresentation);

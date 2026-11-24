@@ -8,6 +8,7 @@
 
 #define CHECK(value) do { if (!(value)) { fprintf(stderr, "FAIL %d: %s\n", __LINE__, #value); exit(1); } } while (0)
 static NSURL *root;
+static dispatch_semaphore_t missingRootTrim;
 static BOOL watch;
 BOOL SGFlag(NSString *key, BOOL fallback) { return fallback; }
 static void offMain(NSString *path) {
@@ -26,6 +27,14 @@ static void offMain(NSString *path) {
 @end
 @implementation NSFileManager (StoreCheck)
 - (NSArray *)testURLsForDirectory:(NSSearchPathDirectory)directory inDomains:(NSSearchPathDomainMask)domains {
+    if (directory == NSCachesDirectory && missingRootTrim) {
+        // The launch trim is resolving its folder. Queue a completion behind it.
+        SGMotionMakeFile(nil, ^BOOL { CHECK(NO); return NO; }, ^(BOOL ok) {
+            CHECK(!ok);
+            dispatch_semaphore_signal(missingRootTrim);
+        });
+        return @[];
+    }
     return directory == NSCachesDirectory ? @[root] : [self testURLsForDirectory:directory inDomains:domains];
 }
 - (BOOL)testExists:(NSString *)path { offMain(path); return [self testExists:path]; }
@@ -33,6 +42,7 @@ static void offMain(NSString *path) {
     offMain(url.path); return [self testCreate:url withIntermediateDirectories:parents attributes:attributes error:error];
 }
 - (NSArray *)testContents:(NSURL *)url includingPropertiesForKeys:(NSArray *)keys options:(NSDirectoryEnumerationOptions)options error:(NSError **)error {
+    CHECK(url != nil);
     offMain(url.path); return [self testContents:url includingPropertiesForKeys:keys options:options error:error];
 }
 @end
@@ -298,6 +308,11 @@ int main(int argc, const char **argv) {
         exchange(@selector(fileExistsAtPath:), @selector(testExists:));
         exchange(@selector(createDirectoryAtURL:withIntermediateDirectories:attributes:error:), @selector(testCreate:withIntermediateDirectories:attributes:error:));
         exchange(@selector(contentsOfDirectoryAtURL:includingPropertiesForKeys:options:error:), @selector(testContents:includingPropertiesForKeys:options:error:));
+        if (strcmp(argv[1], "missing-root") == 0) {
+            missingRootTrim = dispatch_semaphore_create(0);
+            CHECK(!dispatch_semaphore_wait(missingRootTrim, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)));
+            return 0;
+        }
         watch = YES;
         NSURL *made = SGMotionMadeFile(@"a generated clip");
         CHECK(made.lastPathComponent.length == 44);
