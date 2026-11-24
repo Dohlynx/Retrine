@@ -201,6 +201,15 @@ static void runArtworkChecks(UIWindow *window) {
     [cell addSubview:other];
     checkRecognizerReuse(player, other, @"SGCoverHold", ^{ [player layoutSubviews]; }, ^{ [other layoutSubviews]; });
     [other removeFromSuperview];
+    extern id harnessPlaybackController(void);
+    __attribute__((objc_precise_lifetime)) id controller = harnessPlaybackController();
+    HARNESS_CHECK(controller != nil);
+    [player handleTap]; // preference on, but no ancestor has installed the double tap
+    HARNESS_CHECK(player.inspected);
+    player.inspected = NO;
+    UIView *host = [_TtC35NowPlaying_ContentLayerPlatformImpl24AccessibleCollectionView new];
+    [host addSubview:cell];
+    [host layoutSubviews];
     [player handleTap];
     [album handleTap];
     HARNESS_CHECK(!player.inspected);

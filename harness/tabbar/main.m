@@ -263,8 +263,16 @@ static __weak UIView *sgJamStrip;
 // view's bottom, a stack as tall as the guide on the view's bottom, the tab bar as tall as the stack.
 // The page gets 49 pt more safe area on top of what the container has (0x10707bde4).
 @interface _TtC23NavigationUI_TabBarImpl19TabBarContainerImpl : UIViewController
++ (void)tapped:(UITapGestureRecognizer *)tap;
 @property (nonatomic, strong) UILayoutGuide *compactGuide;
 @property (nonatomic, strong) UIView *bar;
+@end
+// Both supported binaries dispatch the one-finger, single tap to -handleTap (v@:).
+@interface _TtC23NavigationUI_TabBarImpl19TabBarItemElementUI : NSObject
+@property (nonatomic, weak) UITapGestureRecognizer *tap;
+@end
+@implementation _TtC23NavigationUI_TabBarImpl19TabBarItemElementUI
+- (void)handleTap { [_TtC23NavigationUI_TabBarImpl19TabBarContainerImpl tapped:self.tap]; }
 @end
 @implementation _TtC23NavigationUI_TabBarImpl19TabBarContainerImpl
 - (UILayoutGuide *)compactTabBarHeightLayoutGuide { return self.compactGuide; }
@@ -292,7 +300,11 @@ static __weak UIView *sgJamStrip;
 
 static UIView *tab(Class cls, NSString *title, UIView *icon, BOOL active) {
     UIView *item = [cls new];
-    [item addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:_TtC23NavigationUI_TabBarImpl19TabBarContainerImpl.class action:@selector(tapped:)]];
+    _TtC23NavigationUI_TabBarImpl19TabBarItemElementUI *owner = [_TtC23NavigationUI_TabBarImpl19TabBarItemElementUI new];
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:owner action:@selector(handleTap)];
+    owner.tap = tap;
+    objc_setAssociatedObject(tap, @selector(handleTap), owner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [item addGestureRecognizer:tap];
     icon.frame = CGRectMake(0, 5.67, 24, 24);
     icon.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin;
     UILabel *label = [UILabel new];
@@ -353,6 +365,7 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
     }
 
     UIView *stack = [UIView new];
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"unsupported-tap"]) stack.layer.backgroundColor = UIColor.orangeColor.CGColor;
     stack.accessibilityIdentifier = @"TabBarContainer.stackView";
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:stack];
@@ -1283,6 +1296,33 @@ static void after(double seconds, dispatch_block_t block) {
     // `away` one there from the start sliding away at 1.5 s, `cycle` in at 1.5 s and out at 4.5 s.
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
     NSString *mode = args.count > 1 ? args[1] : @"none";
+    if ([mode isEqualToString:@"unsupported-tap"]) {
+        [chrome.view layoutIfNeeded];
+        UIView *bar = chrome.tabs.bar;
+        UIView *search = SGRowIn(bar).arrangedSubviews[1];
+        CGPoint point = [search convertPoint:CGPointMake(CGRectGetMidX(search.bounds), CGRectGetMidY(search.bounds)) toView:bar];
+        UIView *mirrorHit = [bar hitTest:point withEvent:nil];
+        HARNESS_CHECK(search.window && mirrorHit && ![mirrorHit isDescendantOfView:search]);
+        UIView *gradient = viewsNamed(chrome.tabs.view, @"_TtC23NavigationUI_TabBarImpl18TabBarGradientView").firstObject;
+        HARNESS_CHECK(gradient && gradient.alpha == 0 && !bar.superview.layer.backgroundColor);
+        gradient.alpha = 0.625; // Spotify changes its fade while the glass is still covering it.
+        HARNESS_CHECK(gradient.alpha == 0);
+        UITapGestureRecognizer *tap = (id)search.gestureRecognizers.firstObject;
+        HARNESS_CHECK([tap isKindOfClass:UITapGestureRecognizer.class]);
+        tap.numberOfTapsRequired = 2;
+        pickTab(chrome, 1); // changes after layout must also be checked at dispatch
+        HARNESS_CHECK(!stockLit(chrome, @"Search"));
+        [bar setNeedsLayout];
+        [bar layoutIfNeeded];
+        HARNESS_CHECK(CGRectIsNull(SGRTabBarGlassRow(bar)));
+        UIView *hit = [bar hitTest:[search convertPoint:CGPointMake(CGRectGetMidX(search.bounds), CGRectGetMidY(search.bounds))
+                                                 toView:bar] withEvent:nil];
+        HARNESS_CHECK(hit == search || [hit isDescendantOfView:search]);
+        HARNESS_CHECK(gradient.alpha == 0.625 && bar.superview.layer.backgroundColor &&
+                      CGColorEqualToColor(bar.superview.layer.backgroundColor, UIColor.orangeColor.CGColor));
+        puts("[harness] PASS unsupported forwarding keeps stock tab interactive");
+        exit(0);
+    }
     BOOL reparentFling = [mode isEqualToString:@"reparent-fling"];
     if (reparentFling || [mode isEqualToString:@"reparent-drag"]) {
         UIView *wrapper = [[UIView alloc] initWithFrame:CGRectMake(0, 100, 380, 560)];
@@ -1726,7 +1766,8 @@ static void after(double seconds, dispatch_block_t block) {
 
 int main(int argc, char *argv[]) {
     sgJam = argc > 1 && strcmp(argv[1], "jam") == 0;
-    sgColorful = argc > 1 && (strcmp(argv[1], "fade") == 0 || strcmp(argv[1], "navsettings") == 0 || strcmp(argv[1], "glass") == 0);
+    sgColorful = argc > 1 && (strcmp(argv[1], "fade") == 0 || strcmp(argv[1], "navsettings") == 0 ||
+                              strcmp(argv[1], "glass") == 0 || strcmp(argv[1], "unsupported-tap") == 0);
     sgGlyphs = argc > 1 && (strcmp(argv[1], "glyphs") == 0 || strcmp(argv[1], "symbols") == 0);
     sgSwiftIcons = sgGlyphs && argc > 2 && strcmp(argv[2], "swift") == 0;
     sgSearch = argc > 1 && strcmp(argv[1], "search") == 0;

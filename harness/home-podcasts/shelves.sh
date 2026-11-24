@@ -20,7 +20,7 @@ xcrun clang -target arm64-apple-ios17.0-macabi -fobjc-arc -g -O0 -isysroot "$SDK
 done
 xcrun swiftc -target arm64-apple-ios17.0-macabi -sdk "$SDK" \
     -F "$SDK/System/iOSSupport/System/Library/Frameworks" \
-    "$SRC/Redesigned/Home/HomeFeed.swift" "$HERE/ShelfFeedFixture.swift" "$OUT/"*.o \
+    "$SRC/Shared/AlbumQueue/AlbumPage.swift" "$SRC/Redesigned/Home/HomeFeed.swift" "$HERE/ShelfFeedFixture.swift" "$OUT/"*.o \
     -framework UIKit -framework QuartzCore -framework CoreGraphics -framework CoreText -framework Foundation \
     -o "$APP/Contents/MacOS/home-shelves-check"
 cat > "$APP/Contents/Info.plist" <<'PLIST'

@@ -28,6 +28,7 @@ run() {
 }
 
 run "PASS all glyphs" glyphs
+run "PASS unsupported forwarding" unsupported-tap
 run "PASS all glyphs" glyphs swift
 run "PASS all symbols" symbols
 run "PASS hold on Home only" symbols hold

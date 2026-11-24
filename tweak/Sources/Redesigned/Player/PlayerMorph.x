@@ -24,6 +24,7 @@
 // Skipped on a regular width (Spotify's iPad branch), with Reduce Motion on, or while the bar has no
 // card (hidden, not styled yet): Spotify's own transition then runs untouched.
 #import "Core/SGCore.h"
+#import "Shared/WireGuard/SGWGABI.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Redesigned/NowPlayingBar/NowPlayingBar.h"
 #import "Player.h"
@@ -467,9 +468,18 @@ static void runAtSpeed(CALayer *layer, float speed) {
 }
 @end
 
-static id ivarOf(id object, const char *name) {
-    Ivar ivar = class_getInstanceVariable(object_getClass(object), name);
-    return ivar ? object_getIvar(object, ivar) : nil;
+@interface SGStoredField : NSObject
++ (BOOL)supportsField:(NSString *)name on:(id)object ofClass:(Class)cls;
++ (id)field:(NSString *)name on:(id)object ofClass:(Class)cls;
+@end
+
+static UIView *ivarOf(id object, const char *name) {
+    return [SGStoredField field:@(name) on:object ofClass:UIView.class];
+}
+
+static BOOL hasSnapshotFields(id transition) {
+    return [SGStoredField supportsField:@"npbSnapshotView" on:transition ofClass:UIView.class] &&
+           [SGStoredField supportsField:@"tabBarSnapshotView" on:transition ofClass:UIView.class];
 }
 
 static char kFollowerKey;
@@ -488,7 +498,7 @@ static UICubicTimingParameters *musicTiming(BOOL velocityShaped) {
 }
 
 static void followTransition(id transition, id<UIViewControllerContextTransitioning> context) {
-    if (SGRReduceMotion() || !context) return;
+    if (SGRReduceMotion() || !context || !hasSnapshotFields(transition)) return;
     UIView *container = context.containerView;
     if (container.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular) return;
     UIViewController *to = [context viewControllerForKey:UITransitionContextToViewControllerKey];
@@ -531,17 +541,8 @@ static BOOL musicCloseSupportedOwner(id transition, id<UIViewControllerContextTr
     if (!sMusicCloseEnabled || !context ||
         [context viewControllerForKey:UITransitionContextToViewControllerKey].isBeingPresented || SGRReduceMotion() ||
         context.containerView.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular) return NO;
-    const char *fields[] = {"overlayView", "npbSnapshotView", "tabBarSnapshotView"};
-    for (NSUInteger i = 0; i < sizeof(fields) / sizeof(fields[0]); i++) {
-        Ivar field = class_getInstanceVariable(object_getClass(transition), fields[i]);
-        // Spotify's Swift classes give their ivars an empty type encoding (9.1.90's three fields here are object
-        // references, by name), Objective-C doubles give '@'; anything else is not the owner traced.
-        const char *type = field ? ivar_getTypeEncoding(field) : NULL;
-        if (!type || (type[0] != '@' && type[0] != '\0')) return NO;
-    }
-    if (![transition respondsToSelector:@selector(animateTransition:)] ||
-        ![transition respondsToSelector:@selector(startInteractiveTransition:)] ||
-        ![transition respondsToSelector:@selector(transitionDuration:)]) return NO;
+    if (!hasSnapshotFields(transition) ||
+        ![SGStoredField supportsField:@"overlayView" on:transition ofClass:UIView.class]) return NO;
     CGRect card = SGRNowPlayingCardFrameIn(context.containerView, NULL);
     return !CGRectIsNull(card) && !CGRectIsEmpty(card);
 }
@@ -565,6 +566,7 @@ static void compactTransition(id transition, id<UIViewControllerContextTransitio
     if (!claimed) followTransition(transition, context);
 }
 
+%group SGRCompactMorph
 %hook _TtC19MainUI_TabBarUIImpl24CompactOverlayTransition
 - (NSTimeInterval)transitionDuration:(id<UIViewControllerContextTransitioning>)context {
     if (musicCloseSupportedOwner(self, context)) return kMusicCloseDurationSeconds;
@@ -582,6 +584,7 @@ static void compactTransition(id transition, id<UIViewControllerContextTransitio
 }
 %end
 
+%end
 %group SGRMusicCloseHooks
 %hook UIViewPropertyAnimator
 - (id)initWithDuration:(NSTimeInterval)duration curve:(UIViewAnimationCurve)curve animations:(void (^)(void))animations {
@@ -662,8 +665,17 @@ static void compactTransition(id transition, id<UIViewControllerContextTransitio
 
 %ctor {
     if (!SGRedesignedUI()) return;
-    sMusicCloseEnabled = SGHidden(SGRKeyPlayerMusicClose);
+    Class compact = NSClassFromString(@"_TtC19MainUI_TabBarUIImpl24CompactOverlayTransition");
+    BOOL supported = SGWGMethodMatches(class_getInstanceMethod(compact, @selector(animateTransition:)), "v", @[@"@"]) &&
+        SGWGMethodMatches(class_getInstanceMethod(compact, @selector(startInteractiveTransition:)), "v", @[@"@"]) &&
+        SGWGMethodMatches(class_getInstanceMethod(compact, @selector(transitionDuration:)), "d", @[@"@"]);
+    sMusicCloseEnabled = supported && SGHidden(SGRKeyPlayerMusicClose);
     %init;
+    if (supported) {
+        %init(SGRCompactMorph);
+    } else {
+        SGLog(@"player morph: compact animator API unavailable");
+    }
     if (sMusicCloseEnabled) {
         %init(SGRMusicCloseHooks);
     }

@@ -18,6 +18,7 @@
 // (npbSnapshotView, tabBarSnapshotView); which of the two 9.1.78 runs is not known, so both are hooked
 // and the log says which fired.
 #import "Core/SGCore.h"
+#import "Shared/WireGuard/SGWGABI.h"
 #import "Redesigned/Kit/SGRGlass.h"
 
 @interface SPTBarOverlayPresentationTransition : NSObject
@@ -59,7 +60,7 @@ static UIVisualEffectView *copyPane(UIView *pane) {
 }
 
 static void backWithGlass(UIView *snapshot, UIView *source, NSString *what) {
-    if (![snapshot isKindOfClass:UIImageView.class] || !source) return;
+    if (![snapshot isKindOfClass:UIImageView.class] || ![source isKindOfClass:UIView.class]) return;
     UIImageView *image = (UIImageView *)snapshot;
     if (!image.image || image.subviews.count) return;
     NSMutableArray<UIView *> *panes = [NSMutableArray array];
@@ -87,6 +88,7 @@ static void backWithGlass(UIView *snapshot, UIView *source, NSString *what) {
     if (logged++ < 4) SGLog(@"player transition: %@ stand-in got %lu glass panes", what, (unsigned long)panes.count);
 }
 
+%group SGRObjCBarSnapshots
 %hook SPTBarOverlayPresentationTransition
 - (void)setBarSnapshotView:(UIView *)view {
     backWithGlass(view, [self bottomBarView], @"bar");
@@ -97,12 +99,17 @@ static void backWithGlass(UIView *snapshot, UIView *source, NSString *what) {
     %orig;
 }
 %end
+%end
 
-static id ivarNamed(id object, const char *name) {
-    Ivar ivar = class_getInstanceVariable(object_getClass(object), name);
-    return ivar ? object_getIvar(object, ivar) : nil;
+@interface SGStoredField : NSObject
++ (id)field:(NSString *)name on:(id)object ofClass:(Class)cls;
+@end
+
+static UIView *ivarNamed(id object, const char *name) {
+    return [SGStoredField field:@(name) on:object ofClass:UIView.class];
 }
 
+%group SGRCompactBarSnapshots
 %hook _TtC19MainUI_TabBarUIImpl24CompactOverlayTransition
 - (void)animateTransition:(id)context {
     %orig;
@@ -113,10 +120,21 @@ static id ivarNamed(id object, const char *name) {
     backWithGlass(ivarNamed(self, "tabBarSnapshotView"), ivarNamed(self, "tabBarView"), @"tab bar");
 }
 %end
+%end
 
 %ctor {
     if (!SGRedesignedUI()) return;
-    %init;
+    Class owner = NSClassFromString(@"SPTBarOverlayPresentationTransition");
+    if (SGWGMethodMatches(class_getInstanceMethod(owner, @selector(bottomBarView)), "@", @[]) &&
+        SGWGMethodMatches(class_getInstanceMethod(owner, @selector(tabBarView)), "@", @[]) &&
+        SGWGMethodMatches(class_getInstanceMethod(owner, @selector(setBarSnapshotView:)), "v", @[@"@"]) &&
+        SGWGMethodMatches(class_getInstanceMethod(owner, @selector(setTabBarSnapshotView:)), "v", @[@"@"])) {
+        %init(SGRObjCBarSnapshots);
+    }
+    Class compact = NSClassFromString(@"_TtC19MainUI_TabBarUIImpl24CompactOverlayTransition");
+    if (SGWGMethodMatches(class_getInstanceMethod(compact, @selector(animateTransition:)), "v", @[@"@"])) {
+        %init(SGRCompactBarSnapshots);
+    }
     SGRequireClasses(@[
         @"SPTBarOverlayPresentationTransition",
         @"_TtC19MainUI_TabBarUIImpl24CompactOverlayTransition",

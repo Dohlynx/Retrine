@@ -14,6 +14,8 @@
 #import "Shared/Player/PlayerSettings.h"
 #import "NowPlaying.h"
 
+extern BOOL SGGestureHandlesTap(UIView *cover);
+
 #pragma mark - hold to play faster
 
 // Holding either side of the cover plays at the chosen hold speed (Shared/Gestures/GestureHold.h) until the finger
@@ -149,7 +151,7 @@ static void watchHold(UIView *tilt) {
 // (SGKeyHideFullScreenCover) keeps it from Spotify too.
 %hook _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
 - (void)handleTap {
-    if ((SGFlag(SGKeyGestures, NO) || SGHidden(SGKeyHideFullScreenCover)) && SGInPlayerCover((UIView *)self)) return;
+    if ((SGGestureHandlesTap((UIView *)self) || SGHidden(SGKeyHideFullScreenCover)) && SGInPlayerCover((UIView *)self)) return;
     %orig;
 }
 - (void)layoutSubviews {

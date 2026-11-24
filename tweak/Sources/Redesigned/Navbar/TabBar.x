@@ -158,11 +158,26 @@ static id activeVariantOf(id icon) {
 // the filled one, and the view draws the filled one while isActive (simulator, 9.1.90: Home's view kept the same
 // Encore.Icon, glyphs f1b6 and f3b5, selected or not, its isActive following the selection). Known by the reference's
 // value, never followed. Nil for a view without one.
+static BOOL fitsWord(id owner, Ivar field) {
+    ptrdiff_t offset = ivar_getOffset(field);
+    size_t size = class_getInstanceSize(object_getClass(owner));
+    return offset >= 0 && size >= sizeof(uintptr_t) && (size_t)offset <= size - sizeof(uintptr_t);
+}
+
 static NSString *swiftIconKey(UIView *view) {
-    Ivar ivar = class_getInstanceVariable(view.class, "icon");
-    const char *type = ivar ? ivar_getTypeEncoding(ivar) : NULL;
-    if (!type || type[0] == '@') return nil;
-    uintptr_t value = *(const uintptr_t *)((const uint8_t *)(__bridge const void *)view + ivar_getOffset(ivar));
+    static char offsetKey;
+    Class cls = object_getClass(view);
+    NSNumber *cached = objc_getAssociatedObject(cls, &offsetKey);
+    if (!cached) {
+        Ivar ivar = class_getInstanceVariable(cls, "icon");
+        const char *type = ivar ? ivar_getTypeEncoding(ivar) : NULL;
+        cached = @(type && !*type && fitsWord(view, ivar) ? ivar_getOffset(ivar) : -1);
+        objc_setAssociatedObject(cls, &offsetKey, cached, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSInteger offset = cached.integerValue;
+    if (offset < 0) return nil;
+    uintptr_t value;
+    memcpy(&value, (const uint8_t *)(__bridge const void *)view + offset, sizeof(value));
     return value ? [NSString stringWithFormat:@"Encore.Icon %lx", (unsigned long)value] : nil;
 }
 
@@ -185,7 +200,8 @@ static UIImage *drawLive(UIView *live, BOOL active) {
     CGSize size = live.bounds.size;
     if (size.width < 2) return nil;
     SPTEncoreIconView *view = (SPTEncoreIconView *)live;
-    BOOL turn = swiftIconKey(live) && [view respondsToSelector:@selector(setIsActive:)] && view.isActive != active;
+    BOOL turn = swiftIconKey(live) && [view respondsToSelector:@selector(setIsActive:)] &&
+        [view respondsToSelector:@selector(isActive)] && view.isActive != active;
     if (turn) {
         view.isActive = active;
         [view layoutIfNeeded];
@@ -328,45 +344,110 @@ UIImage *SGRNavbarGlyph(NSDictionary *entry, BOOL active) {
 
 // NavigationUI_TabBarImpl's TabBarItemElementUI answers a tap recognizer (-handleTap), so the tap is
 // replayed through the recognizer's own target-action pairs, the same call a real touch ends in.
-static BOOL fireTapRecognizers(UIView *view) {
-    Ivar targetsIvar = class_getInstanceVariable(UIGestureRecognizer.class, "_targets");
-    if (!targetsIvar) return NO;
-    BOOL fired = NO;
-    for (UIGestureRecognizer *recognizer in view.gestureRecognizers) {
-        if (![recognizer isKindOfClass:UITapGestureRecognizer.class] || !recognizer.enabled) continue;
-        for (id pair in object_getIvar(recognizer, targetsIvar)) {
-            Ivar targetIvar = class_getInstanceVariable([pair class], "_target");
-            Ivar actionIvar = class_getInstanceVariable([pair class], "_action");
-            if (!targetIvar || !actionIvar) continue;
-            id target = object_getIvar(pair, targetIvar);
-            SEL action = *(SEL *)((char *)(__bridge void *)pair + ivar_getOffset(actionIvar));
-            if (!target || !action || ![target respondsToSelector:action]) continue;
-            SGLog(@"tab bar: tap -> %@ %@", NSStringFromClass([target class]), NSStringFromSelector(action));
-            ((void (*)(id, SEL, id))objc_msgSend)(target, action, recognizer);
-            fired = YES;
+@interface SGRTargetLayout : NSObject
+@property Ivar target;
+@property ptrdiff_t actionOffset;
+@end
+@implementation SGRTargetLayout
+@end
+
+static SGRTargetLayout *layoutOfPair(id pair) {
+    static char key;
+    Class cls = object_getClass(pair);
+    SGRTargetLayout *layout = objc_getAssociatedObject(cls, &key);
+    if (!layout) {
+        layout = [SGRTargetLayout new];
+        Ivar target = class_getInstanceVariable(cls, "_target"), action = class_getInstanceVariable(cls, "_action");
+        const char *t = target ? ivar_getTypeEncoding(target) : NULL, *a = action ? ivar_getTypeEncoding(action) : NULL;
+        if (t && *t == '@' && a && !strcmp(a, @encode(SEL)) && fitsWord(pair, action)) {
+            layout.target = target;
+            layout.actionOffset = ivar_getOffset(action);
         }
+        objc_setAssociatedObject(cls, &key, layout, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    return fired;
+    return layout;
 }
 
-static void forwardTap(UIView *item) {
-    __block BOOL sent = NO;
-    SGForEachView(item, ^(UIView *v) {
-        if (!sent) sent = fireTapRecognizers(v);
-    });
-    SGForEachView(item, ^(UIView *v) {
-        if (sent || ![v isKindOfClass:UIControl.class]) return;
-        SGLog(@"tab bar: tap -> control %@", NSStringFromClass(v.class));
-        [(UIControl *)v sendActionsForControlEvents:UIControlEventTouchUpInside];
-        sent = YES;
-    });
-    if (!sent) {
-        NSMutableString *out = [NSMutableString stringWithFormat:@"tab bar: nothing to tap in %@", NSStringFromClass(item.class)];
-        SGForEachView(item, ^(UIView *v) {
-            for (UIGestureRecognizer *r in v.gestureRecognizers) [out appendFormat:@"\n  %@ on %@", r, NSStringFromClass(v.class)];
-        });
-        SGLogLong(@"navbar", out);
+static BOOL navigationTarget(id target, SEL action) {
+    if (!target || action != NSSelectorFromString(@"handleTap")) return NO;
+    static char key;
+    Class cls = object_getClass(target);
+    NSNumber *valid = objc_getAssociatedObject(cls, &key);
+    if (!valid) {
+        NSString *name = @(class_getName(cls));
+        Method method = class_getInstanceMethod(cls, action);
+        char result[2] = {};
+        if (method) method_getReturnType(method, result, sizeof(result));
+        valid = @([name hasPrefix:@"_TtC23NavigationUI_TabBarImpl"] && [name hasSuffix:@"19TabBarItemElementUI"] &&
+                  result[0] == 'v' && method_getNumberOfArguments(method) == 2);
+        objc_setAssociatedObject(cls, &key, valid, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    return valid.boolValue;
+}
+
+static BOOL routeAtView(UIView *view, BOOL send) {
+    static Ivar targetsIvar;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Ivar field = class_getInstanceVariable(UIGestureRecognizer.class, "_targets");
+        const char *type = field ? ivar_getTypeEncoding(field) : NULL;
+        if (type && *type == '@') targetsIvar = field;
+    });
+    for (UITapGestureRecognizer *recognizer in view.gestureRecognizers) {
+        if (!targetsIvar || ![recognizer isKindOfClass:UITapGestureRecognizer.class] || !recognizer.enabled ||
+            recognizer.numberOfTapsRequired != 1 || recognizer.numberOfTouchesRequired != 1) continue;
+        id pairs = object_getIvar(recognizer, targetsIvar);
+        if (![pairs isKindOfClass:NSArray.class]) continue;
+        for (id pair in pairs) {
+            SGRTargetLayout *layout = layoutOfPair(pair);
+            if (!layout.target) continue;
+            id target = object_getIvar(pair, layout.target);
+            SEL action;
+            memcpy(&action, (char *)(__bridge void *)pair + layout.actionOffset, sizeof(action));
+            if (!navigationTarget(target, action)) continue;
+            if (send) ((void (*)(id, SEL))objc_msgSend)(target, action);
+            return YES;
+        }
+    }
+    UIControl *control = (UIControl *)view;
+    if (![control isKindOfClass:UIControl.class] || !control.enabled || !(control.allControlEvents & UIControlEventTouchUpInside)) return NO;
+    if (send) [control sendActionsForControlEvents:UIControlEventTouchUpInside];
+    return YES;
+}
+
+static BOOL routeTap(UIView *item, BOOL send) {
+    // A steady layout checks only the last routing view, not every descendant of every tab.
+    static NSMapTable<UIView *, UIView *> *hosts;
+    if (!hosts) hosts = [NSMapTable weakToWeakObjectsMapTable];
+    UIView *host = [hosts objectForKey:item];
+    if (host && [host isDescendantOfView:item] && routeAtView(host, send)) return YES;
+    // While on the stock row, recognizers can become available on an existing view.
+    // Rediscover descendants only when a child isn't in the last unsuccessful search.
+    static char missingKey;
+    NSHashTable<UIView *> *known = objc_getAssociatedObject(item, &missingKey);
+    if (known) {
+        BOOL changed = NO;
+        for (UIView *v in known) {
+            if (![v isDescendantOfView:item]) continue;
+            if (routeAtView(v, send)) {
+                [hosts setObject:v forKey:item];
+                objc_setAssociatedObject(item, &missingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                return YES;
+            }
+            for (UIView *child in v.subviews) if (![known containsObject:child]) { changed = YES; break; }
+        }
+        if (!changed) return NO;
+    }
+    __block UIView *found = nil;
+    known = [NSHashTable weakObjectsHashTable];
+    SGForEachView(item, ^(UIView *v) {
+        [known addObject:v];
+        if (!found && v != host && routeAtView(v, send)) found = v;
+    });
+    objc_setAssociatedObject(item, &missingKey, found ? nil : known, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (found) [hosts setObject:found forKey:item];
+    else [hosts removeObjectForKey:item];
+    return found != nil;
 }
 
 #pragma mark - the system bar
@@ -426,7 +507,10 @@ static UITabBarItem *itemOfButton(UITabBar *bar, UIView *button) {
     UIView *source = self.sources[index];
     if (!isOwnTab(source)) SGRNavbarForgetTab();
     // Home tapped while on Home pops Spotify's stack, which would take Mod Settings straight off it.
-    if (!self.holding) forwardTap(source);
+    if (!self.holding && !routeTap(source, YES)) {
+        syncBar(self.stockBar);
+        return;
+    }
     self.partner.selectedItem = nil;
     self.partner.shown = nil;
     // Spotify repaints its labels a moment later; a tap it did not take snaps the selection back.
@@ -768,9 +852,70 @@ static UIView *trailingTab(NSArray<UIView *> *sources, NSArray<UIView *> *apart)
 // (harness/tabbar, iPhone 17 Pro, iOS 27: a 72 pt bar got a 30 pt platter at x 21), so a split bar is
 // a 62 pt platter, a circle as tall as the bar's, per tab plus those insets, and the main bar runs under
 // its leading inset to leave 12 pt of glassless gap between the two platters.
+static char kStockAppearanceKey, kParentColorsKey, kGradientAlphaKey;
+static NSHashTable<UIView *> *stockGradients;
+
+static void mirrorGradient(UIView *gradient) {
+    UIView *bar = sg_stockBar;
+    BOOL mirror = objc_getAssociatedObject(bar, &kStockAppearanceKey) &&
+        [gradient isDescendantOfView:containerOf(bar).viewIfLoaded];
+    NSNumber *saved = objc_getAssociatedObject(gradient, &kGradientAlphaKey);
+    if (mirror && !saved) {
+        CGFloat alpha = gradient.alpha;
+        objc_setAssociatedObject(gradient, &kGradientAlphaKey, @(alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        gradient.alpha = alpha; // setAlpha: keeps Spotify's requested value and renders zero
+    } else if (!mirror && saved) {
+        objc_setAssociatedObject(gradient, &kGradientAlphaKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        gradient.alpha = saved.doubleValue;
+    }
+}
+
+static NSUInteger sg_barChange;
+static void handOver(void);
+
 static void syncBar(UIView *stockBar) {
     sg_stockBar = stockBar;
 
+    NSArray<UIView *> *sources = tabItems(stockBar);
+    BOOL canForward = sources.count != 0;
+    for (UIView *source in sources) {
+        if (!routeTap(source, NO)) { canForward = NO; break; }
+    }
+    NSMapTable<UIView *, NSArray<NSNumber *> *> *stockAppearance = objc_getAssociatedObject(stockBar, &kStockAppearanceKey);
+    NSMapTable<CALayer *, id> *parentColors = objc_getAssociatedObject(stockBar, &kParentColorsKey);
+    if (!canForward) {
+        if (stockAppearance) {
+            ++sg_barChange;
+            handOver();
+            sg_minimized = sg_keepApart = NO;
+            sg_rowApartCount = 0;
+            [objc_getAssociatedObject(stockBar, &kHostKey) removeFromSuperview];
+            [objc_getAssociatedObject(stockBar, &kFadeKey) removeFromSuperview];
+            for (UIView *sub in stockAppearance) {
+                NSArray<NSNumber *> *before = [stockAppearance objectForKey:sub];
+                sub.alpha = before[0].doubleValue;
+                sub.userInteractionEnabled = before[1].boolValue;
+            }
+            objc_setAssociatedObject(stockBar, &kStockAppearanceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            for (UIView *v in stockGradients) mirrorGradient(v);
+            for (CALayer *layer in parentColors) layer.backgroundColor = (__bridge CGColorRef)[parentColors objectForKey:layer];
+            objc_setAssociatedObject(stockBar, &kParentColorsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (sg_room > 0) {
+                UIViewController *container = containerOf(stockBar);
+                UIEdgeInsets extra = container.additionalSafeAreaInsets;
+                extra.bottom -= sg_room;
+                sg_room = 0;
+                container.additionalSafeAreaInsets = extra;
+            }
+            SGRNowPlayingBarFollowTabBar();
+        }
+        return;
+    }
+    if (!stockAppearance) {
+        stockAppearance = [NSMapTable weakToStrongObjectsMapTable];
+        objc_setAssociatedObject(stockBar, &kStockAppearanceKey, stockAppearance, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        for (UIView *v in stockGradients) mirrorGradient(v);
+    }
     SGRSystemTabBar *bar = objc_getAssociatedObject(stockBar, &kBarKey);
     if (!bar) {
         bar = makeBar(stockBar);
@@ -782,13 +927,22 @@ static void syncBar(UIView *stockBar) {
     UIView *host = objc_getAssociatedObject(stockBar, &kHostKey);
 
     for (UIView *sub in stockBar.subviews) {
-        if (sub == host || [sub isKindOfClass:SGRBarFade.class]) continue;
+        if (sub == host || [sub isKindOfClass:SGRBarFade.class] || [stockGradients containsObject:sub]) continue;
+        if (![stockAppearance objectForKey:sub])
+            [stockAppearance setObject:@[@(sub.alpha), @(sub.userInteractionEnabled)] forKey:sub];
         sub.alpha = 0;
         sub.userInteractionEnabled = NO;
     }
-    stockBar.superview.layer.backgroundColor = NULL;
+    CALayer *parent = stockBar.superview.layer;
+    if (parent.backgroundColor) {
+        if (!parentColors) {
+            parentColors = [NSMapTable weakToStrongObjectsMapTable];
+            objc_setAssociatedObject(stockBar, &kParentColorsKey, parentColors, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        [parentColors setObject:(__bridge id)parent.backgroundColor forKey:parent];
+        parent.backgroundColor = NULL;
+    }
 
-    NSArray<UIView *> *sources = tabItems(stockBar);
     // A bar minimized in a compact width expands when the width turns regular (an iPad's window widened), where it
     // could not have minimized (setMinimized).
     BOOL regular = stockBar.window && stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact;
@@ -796,7 +950,6 @@ static void syncBar(UIView *stockBar) {
         SGRSetTabBarMinimized(NO, NO);
         return;
     }
-    if (!sources.count) return;
     // An item with no title is drawn by UIKit as its glyph alone, centered, on a bar of the same height.
     BOOL hideLabels = SGHidden(SGRKeyNavbarHideLabels);
     SGRSystemTabBar *apartBar = objc_getAssociatedObject(stockBar, &kApartBarKey);
@@ -1241,11 +1394,9 @@ static void holdCircle(SGRHandOver *pending, CGFloat share) {
     [circleBar.layer addAnimation:hold forKey:kCircleHoldKey];
 }
 
-// Counts the bar's changes (setMinimized), so a change settles only while no later one has started.
-static NSUInteger sg_barChange;
-
 static void setMinimized(BOOL minimized, BOOL animated) {
     UIView *stockBar = sg_stockBar;
+    if (minimized && !objc_getAssociatedObject(stockBar, &kStockAppearanceKey)) return;
     if (minimized && tabItems(stockBar).count < kMinimumMinimizedTabs) minimized = NO;
     if (minimized == sg_minimized) return;
     // Spotify's regular width bar is not the glass one's row of tabs; it stays as it is.
@@ -1541,10 +1692,17 @@ static void itemDidLayOut(UIView *item) {
 %hook _TtC23NavigationUI_TabBarImpl18TabBarGradientView
 - (void)didMoveToWindow {
     %orig;
-    ((UIView *)self).alpha = 0;
+    UIView *gradient = (UIView *)self;
+    if (!stockGradients) stockGradients = [NSHashTable weakObjectsHashTable];
+    [stockGradients addObject:gradient];
+    mirrorGradient(gradient);
 }
 - (void)setAlpha:(CGFloat)alpha {
-    %orig(0);
+    if (objc_getAssociatedObject(self, &kGradientAlphaKey)) {
+        objc_setAssociatedObject(self, &kGradientAlphaKey, @(alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        alpha = 0;
+    }
+    %orig(alpha);
 }
 %end
 %end

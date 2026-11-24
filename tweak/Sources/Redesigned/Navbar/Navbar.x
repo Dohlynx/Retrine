@@ -22,6 +22,7 @@
 #import "Navbar.h"
 #import "Shared/Navigation/Links.h"
 #import "Shared/Navigation/TabIcons.h"
+#import "Shared/WireGuard/SGWGABI.h"
 #import <objc/message.h>
 
 static const CGFloat kIconSize = 24;
@@ -425,12 +426,22 @@ void SGRRefreshTabBar(void) {
 // spotify:internal:playlist-creation-container), each title the label under the tab's icon, so the pages the tabs
 // open are kept by those labels for Apple symbols (SGRNavbarStockURIs). The bar lays out again when they change, on the
 // main queue, as nothing says Spotify reads the list on the main thread.
+%group SGRStockItems
 %hook _TtC28NavigationUI_TabBarItemsImpl29TabBarItemsNavigationListImpl
 - (NSArray *)items {
     NSArray *items = %orig;
+    if (![items isKindOfClass:NSArray.class]) {
+        SGRSetNavbarStockURIs(@{});
+        return items;
+    }
     NSMutableString *out = [NSMutableString stringWithFormat:@"list read, %lu items", (unsigned long)items.count];
     NSMutableDictionary<NSString *, NSString *> *uris = [NSMutableDictionary dictionary];
     for (id item in items) {
+        if (![item respondsToSelector:@selector(title)] || ![item respondsToSelector:NSSelectorFromString(@"viewURI")]) {
+            static dispatch_once_t once;
+            dispatch_once(&once, ^{ SGLog(@"navbar: item title or viewURI unavailable"); });
+            continue;
+        }
         id title = [item valueForKey:@"title"], uri = [item valueForKey:@"viewURI"];
         [out appendFormat:@"\n  %@ · %@", title, uri];
         NSString *page = [uri isKindOfClass:NSURL.class] ? [uri absoluteString] : [uri isKindOfClass:NSString.class] ? uri : nil;
@@ -448,11 +459,18 @@ void SGRRefreshTabBar(void) {
     return items;
 }
 %end
+%end
 
 %ctor {
     if (!SGRedesignedUI()) return;
     SGRMigrateNavbarSplit();
     %init;
+    Class list = NSClassFromString(@"_TtC28NavigationUI_TabBarItemsImpl29TabBarItemsNavigationListImpl");
+    if (SGWGMethodMatches(class_getInstanceMethod(list, @selector(items)), "@", @[])) {
+        %init(SGRStockItems);
+    } else {
+        SGLog(@"navbar: stock items getter unavailable");
+    }
     SGRequireClasses(@[
         @"SPNavigationController",
         @"SPTEncoreIcon",
