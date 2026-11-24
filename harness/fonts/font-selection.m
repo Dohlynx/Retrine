@@ -119,10 +119,10 @@ void SGCheckFontSelection(void) {
     fixture = CFBridgingRelease(CTFontCopyAttribute(font, kCTFontURLAttribute));
     CFRelease(font);
     HARNESS_CHECK([family isEqualToString:@"Chalkduster"] && fixture.isFileURL);
-    copyMethod = class_getInstanceMethod(NSFileManager.class, @selector(copyItemAtURL:toURL:error:));
+    copyMethod = class_getInstanceMethod(NSFileManager.class, @selector(moveItemAtURL:toURL:error:));
     originalCopy = method_getImplementation(copyMethod);
     blockedCopy = imp_implementationWithBlock(^BOOL(NSFileManager *files, NSURL *source, NSURL *destination, NSError **error) {
-        if ([source isEqual:fixture]) {
+        if ([destination.lastPathComponent isEqual:fixture.lastPathComponent]) {
             HARNESS_CHECK(!NSThread.isMainThread);
             dispatch_semaphore_t chosen = dispatch_semaphore_create(0);
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -168,9 +168,9 @@ void SGCheckFontSelection(void) {
                 dispatch_semaphore_signal(chosen);
             });
             HARNESS_CHECK(dispatch_semaphore_wait(chosen, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) == 0);
-            if (scenario == FailReplacement) return YES; // staged file disappears before installation
+            if (scenario == FailReplacement) return NO; // staged file disappears before installation
         }
-        return ((BOOL (*)(id, SEL, id, id, NSError **))originalCopy)(files, @selector(copyItemAtURL:toURL:error:), source, destination, error);
+        return ((BOOL (*)(id, SEL, id, id, NSError **))originalCopy)(files, @selector(moveItemAtURL:toURL:error:), source, destination, error);
     });
     method_setImplementation(copyMethod, blockedCopy);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{

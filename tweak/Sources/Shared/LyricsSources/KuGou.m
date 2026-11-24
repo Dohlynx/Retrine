@@ -16,8 +16,8 @@ static const NSUInteger kMostBytes = 1 << 20;
 static const uint8_t kKey[16] = {64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105};
 
 NSArray<SGKaraokeLine *> *SGKuGouLines(NSString *content) {
-    NSData *packed = [content isKindOfClass:NSString.class]
-        ? [[NSData alloc] initWithBase64EncodedString:content options:NSDataBase64DecodingIgnoreUnknownCharacters] : nil;
+    if (![content isKindOfClass:NSString.class] || content.length > 4 * ((kMostBytes + 2) / 3)) return nil;
+    NSData *packed = [[NSData alloc] initWithBase64EncodedString:content options:NSDataBase64DecodingIgnoreUnknownCharacters];
     if (packed.length <= 4 || packed.length > kMostBytes || memcmp(packed.bytes, "krc1", 4) != 0) return nil;
     NSMutableData *zipped = [[packed subdataWithRange:NSMakeRange(4, packed.length - 4)] mutableCopy];
     uint8_t *bytes = zipped.mutableBytes;

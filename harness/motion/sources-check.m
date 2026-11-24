@@ -128,6 +128,8 @@ int main(void) {
         NSURLSessionConfiguration *configuration = NSURLSessionConfiguration.ephemeralSessionConfiguration;
         configuration.protocolClasses = @[CanvasProtocol.class];
         configuration.timeoutIntervalForRequest = 1;
+        Method ephemeral = class_getClassMethod(NSURLSessionConfiguration.class, @selector(ephemeralSessionConfiguration));
+        method_setImplementation(ephemeral, imp_implementationWithBlock(^id(id cls) { return [configuration copy]; }));
         fixtureSession = [NSURLSession sessionWithConfiguration:configuration];
         Method shared = class_getClassMethod(NSURLSession.class, @selector(sharedSession));
         Method fixture = class_getClassMethod(NSURLSession.class, @selector(canvasSession));

@@ -88,6 +88,12 @@ OSStatus SGLyricsTestKey(CFDictionaryRef query, CFTypeRef *result) {
     if (![testKeys containsObject:service]) return errSecItemNotFound;
     NSData *data = [@"offline-test-key" dataUsingEncoding:NSUTF8StringEncoding];
     if ([service isEqual:@"Vitrine.OpenAI"]) {
+        if ([item[(__bridge id)kSecReturnAttributes] boolValue]) {
+            NSMutableArray *items = [NSMutableArray array];
+            for (NSString *account in openAIKeys) [items addObject:@{(__bridge id)kSecAttrAccount:account}];
+            if (result) *result = CFBridgingRetain(items);
+            return errSecSuccess;
+        }
         data = openAIKeys[item[(__bridge id)kSecAttrAccount]];
         if (!data) return errSecItemNotFound;
     }
@@ -109,6 +115,13 @@ OSStatus SGLyricsTestKeyUpdate(CFDictionaryRef query, CFDictionaryRef attributes
     NSString *account = ((__bridge NSDictionary *)query)[(__bridge id)kSecAttrAccount];
     if (keyWriteFailure) return keyWriteFailure;
     if (!openAIKeys[account]) return errSecItemNotFound;
+    NSString *renamed = ((__bridge NSDictionary *)attributes)[(__bridge id)kSecAttrAccount];
+    if (renamed) {
+        if (openAIKeys[renamed]) return errSecDuplicateItem;
+        openAIKeys[renamed] = openAIKeys[account];
+        [openAIKeys removeObjectForKey:account];
+        return errSecSuccess;
+    }
     openAIKeys[account] = ((__bridge NSDictionary *)attributes)[(__bridge id)kSecValueData];
     return errSecSuccess;
 }
@@ -299,7 +312,7 @@ static void routeEphemeralSessionsToDeepL(BOOL on) {
     realEphemeralConfiguration = method_getImplementation(method);
     IMP routed = imp_implementationWithBlock(^NSURLSessionConfiguration *(id receiver) {
         NSURLSessionConfiguration *config = ((NSURLSessionConfiguration *(*)(id, SEL))realEphemeralConfiguration)(receiver, @selector(ephemeralSessionConfiguration));
-        config.protocolClasses = @[SGDeepLProtocol.class];
+        config.protocolClasses = @[SGDeepLProtocol.class, SGGeminiTitleProtocol.class];
         return config;
     });
     method_setImplementation(method, routed);
@@ -605,6 +618,13 @@ static void checkProviders(void) {
 
 int main(int argc, const char **argv) {
     @autoreleasepool {
+        Method ephemeral = class_getClassMethod(NSURLSessionConfiguration.class, @selector(ephemeralSessionConfiguration));
+        IMP configuration = method_getImplementation(ephemeral);
+        method_setImplementation(ephemeral, imp_implementationWithBlock(^NSURLSessionConfiguration *(id cls) {
+            NSURLSessionConfiguration *config = ((id (*)(id, SEL))configuration)(cls, @selector(ephemeralSessionConfiguration));
+            config.protocolClasses = [@[SGGeminiTitleProtocol.class] arrayByAddingObjectsFromArray:config.protocolClasses];
+            return config;
+        }));
         if (argc > 1 && strcmp(argv[1], "--bing-live") == 0) {
             bingLive = bingEnabled = YES;
             NSString *problem;

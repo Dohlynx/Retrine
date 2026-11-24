@@ -594,6 +594,7 @@ BOOL SGEeveeLyricsOn(void) {
 // Main queue only. NO, asking nothing, before any request of Spotify's has shown the headers, and with
 // EeveeSpotify injected, whose lyrics answer the request: a second asker beside it froze Spotify after launch.
 static BOOL requestFromSpotify(NSString *trackID) {
+    if (!SGLyricsIsSpotifyTrackID(trackID)) return NO;
     NSDictionary<NSString *, NSString *> *headers = sg_spclientHeaders;
     if (!headers || SGLyricsStandAsideForEevee()) return NO;
     if ([headers[@"authorization"] isEqual:sg_refusedAuthorization]) {
@@ -615,7 +616,7 @@ static BOOL requestFromSpotify(NSString *trackID) {
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     // The mod's own, so LyricsHook's request hook does not send it to the donor.
     [NSURLProtocol setProperty:@YES forKey:SGLyricsOwnRequestKey inRequest:request];
-    [[NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *body, NSURLResponse *response, NSError *error) {
+    [SGBoundedRequestTask(request, 0, ^(NSData *body, NSURLResponse *response, NSError *error) {
         NSArray<SGKaraokeLine *> *lines = SGKaraokeLinesFromBody(body);
         NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
         SGLog(@"karaoke: fetched lyrics for %@: status %ld, %lu lines (%@), error %@", trackID,
@@ -658,7 +659,7 @@ static BOOL requestFromSpotify(NSString *trackID) {
             }
             announce(trackID);
         });
-    }] resume];
+    }) resume];
     return YES;
 }
 

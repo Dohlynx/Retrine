@@ -546,12 +546,33 @@ static void checkNewSources(void) {
         CHECK([headers[@"User-Agent"] containsString:@"Macintosh"]);
         if ([url.host isEqualToString:@"www.genie.co.kr"]) return @"<tr class='list' songid='1'><a class='title ellipsis' title='Made up'>x</a></tr>"
             "<tr class='list' songid='2'><a class='title ellipsis' title='Other'>x</a><a class='artist ellipsis'>Singer</a></tr>"
-            "<tr class='list' songid='3'><a class='title ellipsis' title='Made&#32;up'>x</a><a class='artist ellipsis'><span>Singer</span></a></tr>";
+            "<TR class='list' songid='3'><A class='title ellipsis' title='Made&#32;up'>x</A ><a class='artist ellipsis'>\n<span>Singer</span></a></TR >";
         CHECK([param(url, @"songid") isEqualToString:@"3"] && [headers[@"Referer"] isEqualToString:@"https://www.genie.co.kr/"]);
         return @"null({\"8700\":\"Made up\"})";
     };
     got = sourceAnswer(SGGenieAsk, query);
     CHECK(genieRequests == 2 && got.synced && got.karaokeLines.firstObject.start == 8700);
+    // The only artist name is in an unfinished suffix, after a complete tag.
+    sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) {
+        if ([url.host isEqualToString:@"www.genie.co.kr"])
+            return @"<tr class='list' songid='4'><a class='title'>Made up</a><a class='artist'><br><<Singer</a></tr>";
+        CHECK([param(url, @"songid") isEqualToString:@"4"]);
+        return @"null({\"8700\":\"Made up\"})";
+    };
+    CHECK(sourceAnswer(SGGenieAsk, query).synced);
+    // A response cut in the middle of a row/anchor must finish without choosing a partial song.
+    NSString *partialRow = [@"<tr class='list' songid='1'>" stringByPaddingToLength:1024 * 1024 withString:@" " startingAtIndex:0];
+    NSString *partialAnchor = [[@"<tr class='list' songid='1'><a class='title'>Made up" stringByPaddingToLength:32000
+                              withString:@" " startingAtIndex:0] stringByAppendingString:@"</tr>"];
+    // Repeated unfinished openers: the old `<[^>]*>` restarted at each `<` and took about 4 s here.
+    NSString *bareArtist = [[@"<tr class='list' songid='1'><a class='title' title='Made up'>x</a><a class='artist'>"
+                            stringByPaddingToLength:30080 withString:@"<" startingAtIndex:0] stringByAppendingString:@"</a></tr>"];
+    for (NSString *page in @[partialRow, partialAnchor, bareArtist]) {
+        sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) { return page; };
+        NSTimeInterval start = NSProcessInfo.processInfo.systemUptime;
+        CHECK(!sourceAnswer(SGGenieAsk, query));
+        CHECK(NSProcessInfo.processInfo.systemUptime - start < 2);
+    }
     __block NSUInteger plusRequests = 0;
     sg_sourceAnswer = ^id(NSURL *url, NSDictionary *headers, NSData *body, NSInteger *status) {
         CHECK([param(url, @"duration") isEqualToString:@"200.000"]);
@@ -1019,6 +1040,8 @@ int main(int argc, char **argv) {
         CHECK(rl.count == 1 && rl[0].words.count == 1 && rl[0].words[0].end == 62000 && rl[0].end == 62000);
         CHECK(!SGKuGouLines(packed(kKRC, @"krc2")) && !SGKuGouLines(@"bm90IGtyYw==") && !SGKuGouLines(nil));
         CHECK(!SGKuGouLines(packed(@"[ar:only tags]", @"krc1")));
+        NSString *paddedKRC = [packed(kKRC, @"krc1") stringByPaddingToLength:2 * 1024 * 1024 withString:@" " startingAtIndex:0];
+        CHECK(!SGKuGouLines(paddedKRC));
 
         // KuGou: the user uploads, another title, another singer, a length 21 s off and a candidate with
         // no key are passed over; the rest are tried closest in length first, three at most.

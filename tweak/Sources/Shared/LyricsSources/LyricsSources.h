@@ -516,3 +516,11 @@ void SGLyricsKeepChosen(NSString *trackID, SGLyricsResult *result);
 id SGLyricsKeptAnswer(NSString *trackID);
 // Automatic: retires the picked sheet and disk entry, preserving waiters for the configured order.
 void SGLyricsRestoreKept(NSString *trackID, id kept);
+#import "SGBoundedRequest.h"
+
+static inline BOOL SGLyricsIsSpotifyTrackID(NSString *trackID) {
+    if (![trackID isKindOfClass:NSString.class] || trackID.length != 22) return NO;
+    NSCharacterSet *base62 = [NSCharacterSet characterSetWithCharactersInString:
+        @"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"];
+    return [trackID rangeOfCharacterFromSet:base62.invertedSet].location == NSNotFound;
+}

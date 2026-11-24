@@ -33,10 +33,12 @@ static id (^replyForRequest)(NSURLRequest *);
 
 // Keep the walk's held-provider fixtures independent from this real provider.
 #define NSURLSession NetEaseCheckSession
+#define SGBoundedRequestTask(request, timeout, ...) [NetEaseCheckSession.sharedSession dataTaskWithRequest:request completionHandler:__VA_ARGS__]
 #define SGNetEaseAsk NetEaseCheckAsk
 #import "Shared/LyricsSources/NetEase.m"
 #undef SGNetEaseAsk
 #undef NSURLSession
+#undef SGBoundedRequestTask
 
 void checkNetEaseURLs(void) {
     replyForRequest = ^id(NSURLRequest *request) {

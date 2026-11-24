@@ -10,6 +10,9 @@
 static atomic_int sg_mainCalls, sg_workerCalls;
 extern void harnessRemoveCustom(dispatch_block_t done);
 extern void harnessImport(NSURL *url, dispatch_block_t done);
+extern void harnessImportFiles(NSArray *urls, dispatch_block_t done);
+extern void harnessImportPlaceholder(NSURL *url, NSURL *metadata, NSURL *materialized, void (^done)(BOOL));
+extern NSArray *harnessStoredFontNames(void);
 extern void harnessRejectedImport(NSURL *invalid, void (^done)(BOOL));
 // While set, a registration enters and waits here, as a multi-MB Korean font takes its time in Core Text; the
 // imported font's file waits on a semaphore of its own, so the two kinds land one after the other.
@@ -167,6 +170,10 @@ int main(void) { @autoreleasepool {
     HARNESS_CHECK([NSFileManager.defaultManager createDirectoryAtURL:importedFolder withIntermediateDirectories:YES attributes:nil error:nil]);
     HARNESS_CHECK([NSFileManager.defaultManager createFileAtPath:[importedFolder URLByAppendingPathComponent:@"Harness.ttf"].path contents:nil attributes:nil]);
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
+    [store setObject:@[@"Harness.ttf", @"..", @"."] forKey:SGKeyAppFontFiles];
+    HARNESS_CHECK([harnessStoredFontNames() isEqual:@[@"Harness.ttf"]]);
+    [store setObject:@[@42] forKey:SGKeyAppFontFiles];
+    HARNESS_CHECK(!harnessStoredFontNames().count);
     [store setObject:@[@"Harness.ttf"] forKey:SGKeyAppFontFiles];
     [store setObject:@"Helvetica" forKey:SGKeyAppFontName];
     atomic_store(&sg_mainCalls, 0);   // the synchronous entry above ran its registration on the calling thread
@@ -377,5 +384,58 @@ int main(void) { @autoreleasepool {
     SGFontLibraryRemove(@"lato");
     [NSFileManager.defaultManager removeItemAtURL:libraryFolder() error:nil];
     puts("PASS: free fonts register off main on a serial queue, publish and refresh rows on main, a removal beats a pending registration, the Font page, the Free fonts page and the Lyrics PiP font choices stay free while Core Text is busy and update when registration lands");
+    CTFontRef face = CTFontCreateWithName(CFSTR("Chalkduster"), 16, NULL);
+    NSURL *original = CFBridgingRelease(CTFontCopyAttribute(face, kCTFontURLAttribute));
+    CFRelease(face);
+    NSURL *picks = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    HARNESS_CHECK([fm createDirectoryAtURL:picks withIntermediateDirectories:NO attributes:nil error:nil]);
+    NSMutableArray *many = [NSMutableArray array];
+    for (NSInteger i = 0; i < 33; i++) {
+        NSURL *url = [picks URLByAppendingPathComponent:[NSString stringWithFormat:@"%ld.ttf", (long)i]];
+        HARNESS_CHECK([fm copyItemAtURL:original toURL:url error:nil]);
+        [many addObject:url];
+    }
+    NSURL *oversize = many.firstObject;
+    NSURL *stale = [importedFolder URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+    HARNESS_CHECK([fm createDirectoryAtURL:stale withIntermediateDirectories:YES attributes:nil error:nil]);
+    for (NSArray *batch in @[many, @[oversize], @[many[1], oversize]]) {
+        if (batch.count <= 2) {
+            NSFileHandle *handle = [NSFileHandle fileHandleForWritingToURL:oversize error:nil];
+            HARNESS_CHECK([handle truncateAtOffset:64 * 1024 * 1024 + (batch.count == 1) error:nil] && [handle closeAndReturnError:nil]);
+        }
+        __block BOOL completed = NO;
+        harnessImportFiles(batch, ^{ completed = YES; });
+        pumpUntil(^BOOL { return completed; });
+        HARNESS_CHECK(![store objectForKey:SGKeyAppFontFiles]);
+    }
+    HARNESS_CHECK(![fm fileExistsAtPath:stale.path]);
+    NSURL *legacy = [importedFolder URLByAppendingPathComponent:@"Legacy.ttf"];
+    HARNESS_CHECK([fm moveItemAtURL:oversize toURL:legacy error:nil]);
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingToURL:legacy error:nil];
+    HARNESS_CHECK([handle truncateAtOffset:64 * 1024 * 1024 + 1 error:nil] && [handle closeAndReturnError:nil]);
+    [store setObject:@[@"Legacy.ttf"] forKey:SGKeyAppFontFiles];
+    [store setObject:@"Chalkduster" forKey:SGKeyAppFontName];
+    HARNESS_CHECK([SGRegisterCustomFont() isEqual:@"Chalkduster"]);
+    __block BOOL removedLegacy = NO;
+    harnessRemoveCustom(^{ removedLegacy = YES; });
+    pumpUntil(^BOOL { return removedLegacy; });
+    HARNESS_CHECK(![fm fileExistsAtPath:legacy.path]);
+    NSURL *cloudPick = [picks URLByAppendingPathComponent:@"Cloud.ttf"];
+    NSURL *largePromise = [picks URLByAppendingPathComponent:@"large-promise"];
+    HARNESS_CHECK([fm createFileAtPath:largePromise.path contents:nil attributes:nil]);
+    NSFileHandle *promise = [NSFileHandle fileHandleForWritingToURL:largePromise error:nil];
+    HARNESS_CHECK([promise truncateAtOffset:64 * 1024 * 1024 + 1 error:nil] && [promise closeAndReturnError:nil]);
+    __block BOOL rejectedCloud = NO;
+    harnessImportPlaceholder(cloudPick, largePromise, many[1], ^(BOOL requested) {
+        HARNESS_CHECK(!requested && !harnessStoredFontNames().count);
+        rejectedCloud = YES;
+    });
+    pumpUntil(^BOOL { return rejectedCloud; });
+    __block BOOL importedCloud = NO;
+    harnessImportPlaceholder(cloudPick, many[1], many[1], ^(BOOL requested) { importedCloud = requested; });
+    pumpUntil(^BOOL { return importedCloud; });
+    HARNESS_CHECK(([harnessStoredFontNames() isEqual:@[@"Cloud.ttf"]] && [SGRegisteredCustomFont() isEqual:@"Chalkduster"]));
+    HARNESS_CHECK([fm removeItemAtURL:picks error:nil]);
     return 0;
 } }

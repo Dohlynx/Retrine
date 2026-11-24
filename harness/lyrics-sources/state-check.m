@@ -121,7 +121,9 @@ static void observedKaraokeDispatch(dispatch_queue_t queue, dispatch_block_t blo
     dispatch_async(queue, block);
 }
 #define dispatch_async observedKaraokeDispatch
+#define SGBoundedRequestTask(request, timeout, ...) [NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:__VA_ARGS__]
 #import "karaoke.inc"
+#undef SGBoundedRequestTask
 #undef dispatch_async
 #undef SGLyricsPrefetch
 #undef SGOptionalWorkMayRun
@@ -278,6 +280,9 @@ static id fakeApplication(id self, SEL selector) { return sg_testApplication; }
 - (void)resume { self.reply(); }
 @end
 static NSUInteger sg_spotifyAsks;
+static NSString *fixtureTrackID(void) {
+    return [[NSUUID.UUID.UUIDString stringByReplacingOccurrencesOfString:@"-" withString:@""] substringToIndex:22];
+}
 static NSInteger sg_spotifyStatus = 404;
 static NSData *sg_spotifyBody;
 static NSString *sg_holdSpotifyTrack;
@@ -522,7 +527,7 @@ static void checkCompletedBounds(void) {
     HarnessPlayer *player = [HarnessPlayer new]; sg_player = player;
     HarnessLyricsState *state = [HarnessLyricsState new]; player.state = state;
     HarnessLyricsTrack *playing = [HarnessLyricsTrack new]; state.track = playing;
-    NSString *current = @"bounded-current", *active = @"bounded-active";
+    NSString *current = fixtureTrackID(), *active = fixtureTrackID();
     playing.URI = [@"spotify:track:" stringByAppendingString:current];
     sg_lastSeenID = current;
     SGLyricsProvider *provider = SGLyricsProviderFor(@"musixmatch");
@@ -573,6 +578,9 @@ static void checkCompletedBounds(void) {
     NSUInteger oldAsks = sg_spotifyAsks;
     Method method = class_getInstanceMethod(NSURLSession.class, @selector(dataTaskWithRequest:completionHandler:));
     IMP oldTask = method_setImplementation(method, (IMP)spotifyMiss);
+    for (NSString *invalid in @[@"", @"123456789012345678901", @"123456789012345678901?", @"123456789012345678901é"]) {
+        CHECK(!requestFromSpotify(invalid) && !sg_requests[invalid] && sg_spotifyAsks == oldAsks);
+    }
     SGKaraokeRequestLyrics(current);
     pumpUntil(^BOOL { return !SGKaraokeLooking(current); });
     sg_holdSpotifyTrack = active;
@@ -580,7 +588,7 @@ static void checkCompletedBounds(void) {
     CHECK(sg_heldSpotifyReply && SGKaraokeLooking(active));
     [tracks removeAllObjects];
     for (NSUInteger i = 0; i < 250; i++) {
-        NSString *track = [NSString stringWithFormat:@"keeper-miss-%lu", (unsigned long)i];
+        NSString *track = fixtureTrackID();
         [tracks addObject:track]; SGKaraokeRequestLyrics(track);
         pumpUntil(^BOOL { return !SGKaraokeLooking(track); });
     }
@@ -1415,7 +1423,7 @@ static void checkSpotifyAuthPause(void) {
     sg_spclientHeaders = nil;
     Method method = class_getInstanceMethod(NSURLSession.class, @selector(dataTaskWithRequest:completionHandler:));
     IMP original = method_setImplementation(method, (IMP)spotifyMiss);
-    NSString *track = NSUUID.UUID.UUIDString;
+    NSString *track = fixtureTrackID();
     SPTPlayerState *oldState = sg_fixtureState;
     HarnessLyricsState *playing = [HarnessLyricsState new];
     playing.track = [HarnessLyricsTrack new];
@@ -1680,7 +1688,7 @@ static void checkRecoveryWithSpotify(void) {
     SGSetInt(SGKeyLyricsAskMode, 0);
     SGLyricsSetOrder(@[@"musixmatch", @"netease"]);
     for (NSNumber *tier in @[@(SGKaraokeTimingLine), @(SGKaraokeTimingWords)]) {
-        NSString *track = NSUUID.UUID.UUIDString;
+        NSString *track = fixtureTrackID();
         SGLyricsPlaybackChanged(track);
         sg_spotifyBody = pageBody(madeUpLyrics(@"Spotify sheet", SGKaraokeTimingLine), nil);
         SGKaraokeRequestLyrics(track);
@@ -1841,7 +1849,7 @@ static void checkSpotifySurvivesRecoveryMiss(void) {
     IMP original = method_setImplementation(method, (IMP)spotifyMiss);
     SGSetInt(SGKeyLyricsAskMode, 0);
     SGLyricsSetOrder(@[@"musixmatch", @"netease"]);
-    NSString *track = NSUUID.UUID.UUIDString;
+    NSString *track = fixtureTrackID();
     SGLyricsPlaybackChanged(track);
     sg_spotifyBody = pageBody(madeUpLyrics(@"Spotify timed winner", SGKaraokeTimingLine), nil);
     SGKaraokeRequestLyrics(track);
@@ -2580,7 +2588,7 @@ static void checkBackgroundSkip(void) {
     HarnessPlayer *player = [HarnessPlayer new]; sg_player = player;
     HarnessLyricsState *state = [HarnessLyricsState new]; player.state = state;
     HarnessLyricsTrack *track = [HarnessLyricsTrack new]; state.track = track;
-    NSString *key = NSUUID.UUID.UUIDString;
+    NSString *key = fixtureTrackID();
     track.URI = [@"spotify:track:" stringByAppendingString:key];
     track.trackTitle = @"Song"; track.artistName = @"Singer"; track.metadata = @{};
     SGKaraokeRememberTrack((id)track, key);
@@ -2657,7 +2665,7 @@ static void checkBackgroundSkip(void) {
     // every tick. A pause expiring in the background only clears the mark; activation asks again.
     sg_spclientHeaders = nil; sg_testApplication.applicationState = UIApplicationStateBackground;
     [sg_heldClocks removeAllObjects];
-    track = [HarnessLyricsTrack new]; state.track = track; key = NSUUID.UUID.UUIDString;
+    track = [HarnessLyricsTrack new]; state.track = track; key = fixtureTrackID();
     track.URI = [@"spotify:track:" stringByAppendingString:key];
     track.trackTitle = @"Next song"; track.artistName = @"Singer"; track.metadata = @{};
     SGKaraokeRememberTrack((id)track, key);
@@ -2686,7 +2694,7 @@ static void checkBackgroundSkip(void) {
         [sg_heldClocks removeAllObjects];
         sg_spclientHeaders = [signal isEqual:@"explicit"] ? nil : @{};
         state.isPaused = ![signal isEqual:@"activation"];
-        track = [HarnessLyricsTrack new]; state.track = track; key = NSUUID.UUID.UUIDString;
+        track = [HarnessLyricsTrack new]; state.track = track; key = fixtureTrackID();
         track.URI = [@"spotify:track:" stringByAppendingString:key];
         track.trackTitle = @"Outage"; track.artistName = @"Singer"; track.metadata = @{};
         SGKaraokeRememberTrack((id)track, key);

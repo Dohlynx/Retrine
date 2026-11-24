@@ -544,7 +544,7 @@ static void localHistoryChecks(NSString *dir, NSArray<SGPlay *> *existing) {
     CHECK(SGPlaysFromExport(json(root)) == nil, "Retrine JSON: unknown format rejected");
     root[@"format"] = @"retrine.listening-history";
     NSMutableDictionary *row = [root[@"plays"][0] mutableCopy];
-    for (id bad in @[@"123", @YES, @(-1), @1.5, NSNull.null, @18446744073709551615ULL]) {
+    for (id bad in @[@"123", @YES, @(-1), @1.5, NSNull.null, @(INT64_MAX), @18446744073709551615ULL]) {
         row[@"ms"] = bad; root[@"plays"] = @[row];
         CHECK(SGPlaysFromExport(json(root)) == nil, "Retrine JSON: malformed milliseconds rejected (%s)", [[bad description] UTF8String]);
     }
@@ -936,6 +936,13 @@ int main(int argc, const char **argv) {
             @{@"ms_played": @50000, @"ts": NSNull.null},
         ];
         NSArray<SGPlay *> *ext = SGPlaysFromExport(json(extended));
+        for (NSDictionary *override in @[@{@"ms_played": @(INT64_MAX)}, @{@"ts": @"10000-01-01T00:00:00Z"},
+                                         @{@"master_metadata_album_album_name": [@"" stringByPaddingToLength:8192 withString:@"a" startingAtIndex:0]}]) {
+            NSMutableDictionary *row = [extended.firstObject mutableCopy];
+            [row addEntriesFromDictionary:override];
+            CHECK(SGPlaysFromExport(json(@[row])).count == 0, "reject out-of-range Spotify field: %s",
+                  [override.allKeys.firstObject UTF8String]);
+        }
         CHECK(ext.count == 6, "extended: 6 music plays kept of 9 rows (podcast, skip, no ts out): %lu", (unsigned long)ext.count);
         CHECK(ext.firstObject.end == now - 3 * day, "extended: ts read as UTC to the second");
         CHECK([ext.firstObject.album isEqualToString:@"Album X"] && [ext.firstObject.uri isEqualToString:@"spotify:track:Song A"],
@@ -966,6 +973,9 @@ int main(int argc, const char **argv) {
         for (NSNumber *stored in @[@YES, @NO]) {
             NSString *path = [dir stringByAppendingPathComponent:stored.boolValue ? @"stored.zip" : @"deflated.zip"];
             zip(exportDir, path, names, stored.boolValue);
+            SGHistoryImport *imported = SGReadHistoryURLs(@[[NSURL fileURLWithPath:path]]);
+            CHECK(imported.files == 2 && !imported.skipped && imported.plays.count == 9,
+                  "coordinated ZIP import keeps plays from both JSON entries");
             NSArray<NSData *> *files = SGJSONFilesInZip([NSData dataWithContentsOfFile:path]);
             NSUInteger plays = 0;
             for (NSData *file in files) plays += SGPlaysFromExport(file).count;

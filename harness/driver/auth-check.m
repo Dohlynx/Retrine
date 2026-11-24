@@ -59,6 +59,8 @@ int main(int argc, const char *argv[]) {
         HARNESS_CHECK([SGRedactDiagnostics(@"before\ndriver: tailnet listener on phone:8085, token old-fixture\nafter", @{}) isEqualToString:@"before\n[redacted]\nafter"]);
         HARNESS_CHECK([SGRedactDiagnostics(@"prefix secret\nline suffix", @{@"spotifyglass.motion.token": @"secret\nline"}) isEqualToString:@"prefix [redacted] suffix"]);
         HARNESS_CHECK([SGRedactDiagnostics(@"ordinary", @{@"spotifyglass.title": @"ordinary"}) isEqualToString:@"ordinary"]);
+        HARNESS_CHECK([SGRedactDiagnostics(@"spotifyglass.lyrics.openai.baseURL=https://example.test/v1",
+            @{@"spotifyglass.lyrics.openai.baseURL":@"https://example.test/v1"}) isEqual:@"[redacted]=[redacted]"]);
         puts("driver auth: PASS");
     }
     return 0;

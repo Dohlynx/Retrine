@@ -12,6 +12,7 @@ compile() {
 }
 compile -DSGLyricsTranslationSendRequest=SGLyricsTranslationRealSendRequest -DSGLyricsTranslationSendOnce=SGLyricsTranslationRealSendOnce -DSGLyricsTranslationSendOnceUpTo=SGLyricsTranslationRealSendOnceUpTo -c "$SRC/Shared/LyricsTranslation/DeepL.m" -o "$OUT/DeepL.o"
 compile -DSG_LYRICS_TEST_STORE \
+    "$SRC/Shared/LyricsSources/SGBoundedRequest.m" \
     "$HERE/check.m" "$SRC/Shared/LyricsSources/Musixmatch.m" "$SRC/Shared/LyricsSources/LyricsRequest.m" "$SRC/Shared/LyricsSources/LyricsHosts.m" "$SRC/Shared/LyricsTranslation/LyricsTranslation.m" \
     "$OUT/DeepL.o" "$SRC/Shared/LyricsTranslation/BingTranslate.m" "$SRC/Shared/LyricsTranslation/GoogleTranslate.m" "$SRC/Shared/LyricsTranslation/OpenAITranslate.m" \
     "$SRC/Shared/LyricsTranslation/ProseSegments.m" "$SRC/Shared/LyricsTranslation/TranslationPrompt.m" "$SRC/Core/SGGlass.m" \

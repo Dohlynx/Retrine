@@ -6,6 +6,7 @@
 #include <dlfcn.h>
 #include <copyfile.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdatomic.h>
 #include <TargetConditionals.h>
@@ -35,6 +36,9 @@ NSNotificationName const SGPlayLogDidChangeNotification = @"SGPlayLogDidChange";
 static const NSUInteger SGHistoryFileLimit = 64 * 1024 * 1024;
 static const NSUInteger SGHistoryTotalLimit = 256 * 1024 * 1024;
 static const NSUInteger SGHistoryPlayLimit = 1000000;
+// Per play, not per account. Even a multi-day listening session fits a signed 32-bit millisecond field.
+static const int64_t SGHistoryMaxMs = INT32_MAX;
+static const NSUInteger SGHistoryFieldLimit = 4096;
 
 static BOOL historyInteger(id value, int64_t *out) {
     if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return NO;
@@ -57,9 +61,10 @@ static NSArray<SGPlay *> *localHistory(NSDictionary *root) {
     for (id row in root[@"plays"]) {
         int64_t end, ms;
         if (![row isKindOfClass:NSDictionary.class] || !historyInteger(row[@"end"], &end) ||
-            !historyInteger(row[@"ms"], &ms) || ms < 0 || end < -62135596800LL || end > 253402300799LL) return nil;
+            !historyInteger(row[@"ms"], &ms) || ms < 0 || ms > SGHistoryMaxMs ||
+            end < -62135596800LL || end > 253402300799LL) return nil;
         for (NSString *key in @[@"uri", @"title", @"artist", @"album"])
-            if (![row[key] isKindOfClass:NSString.class]) return nil;
+            if (![row[key] isKindOfClass:NSString.class] || [row[key] length] > SGHistoryFieldLimit) return nil;
         SGPlay *p = [SGPlay new];
         p.end = end; p.ms = ms; p.uri = row[@"uri"]; p.title = row[@"title"];
         p.artist = row[@"artist"]; p.album = row[@"album"]; p.exactImport = YES;
@@ -113,13 +118,20 @@ static NSString *stringIn(id value) {
 // rows and more, and the formatter costs microseconds a row.
 static int64_t timeIn(NSString *text, BOOL seconds) {
     struct tm tm = {0};
+    const char *shape = seconds ? "dddd-dd-ddTdd:dd:ddZ" : "dddd-dd-dd dd:dd";
+    if (text.length != strlen(shape)) return 0;
     const char *c = text.UTF8String;
-    int n = seconds ? sscanf(c, "%d-%d-%dT%d:%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec)
-                    : sscanf(c, "%d-%d-%d %d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min);
-    if (n < (seconds ? 6 : 5)) return 0;
+    for (NSUInteger i = 0; shape[i]; i++)
+        if (shape[i] == 'd' ? (c[i] < '0' || c[i] > '9') : c[i] != shape[i]) return 0;
+    if (seconds) sscanf(c, "%4d-%2d-%2dT%2d:%2d:%2d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec);
+    else sscanf(c, "%4d-%2d-%2d %2d:%2d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min);
+    if (tm.tm_mon < 1 || tm.tm_mon > 12 || tm.tm_mday < 1 || tm.tm_mday > 31 ||
+        tm.tm_hour > 23 || tm.tm_min > 59 || tm.tm_sec > 59) return 0;
     tm.tm_year -= 1900;
     tm.tm_mon -= 1;
-    return (int64_t)timegm(&tm);
+    int day = tm.tm_mday;
+    time_t end = timegm(&tm);
+    return tm.tm_mday == day ? end : 0;
 }
 
 // ponytail: the export has no track lengths, so an imported play counts from 30 s only; a full play of
@@ -133,14 +145,16 @@ static SGPlay *playFrom(NSDictionary *row) {
         album = stringIn(row[@"master_metadata_album_album_name"]) ?: @"";
         uri = stringIn(row[@"spotify_track_uri"]) ?: @"";
         end = stringIn(row[@"ts"]) ? timeIn(row[@"ts"], YES) : 0;
-        ms = [row[@"ms_played"] isKindOfClass:NSNumber.class] ? [row[@"ms_played"] longLongValue] : 0;
+        if (!historyInteger(row[@"ms_played"], &ms)) return nil;
     } else {
         title = stringIn(row[@"trackName"]);
         artist = stringIn(row[@"artistName"]);
         end = stringIn(row[@"endTime"]) ? timeIn(row[@"endTime"], NO) : 0;
-        ms = [row[@"msPlayed"] isKindOfClass:NSNumber.class] ? [row[@"msPlayed"] longLongValue] : 0;
+        if (!historyInteger(row[@"msPlayed"], &ms)) return nil;
     }
-    if (!title || !artist || end <= 0 || ms < SGPlayMinimumMs) return nil;
+    if (!title || !artist || end <= 0 || ms < SGPlayMinimumMs || ms > SGHistoryMaxMs ||
+        title.length > SGHistoryFieldLimit || artist.length > SGHistoryFieldLimit ||
+        album.length > SGHistoryFieldLimit || uri.length > SGHistoryFieldLimit) return nil;
     SGPlay *play = [SGPlay new];
     play.end = end;
     play.ms = ms;
@@ -199,13 +213,12 @@ static NSData *inflateHistory(const uint8_t *bytes, size_t packed, size_t length
 
 // The central directory names each entry and where it starts; stored and raw DEFLATE entries are read.
 // ponytail: no ZIP64, so a zip over 4 GB or 65535 entries reads as empty; an export is far smaller.
-static NSArray<NSData *> *historyJSONFilesInZip(NSData *zip, NSUInteger *skipped, NSUInteger expandedLimit,
-                                                NSUInteger *expandedConsumed) {
-    NSMutableArray<NSData *> *files = [NSMutableArray array];
+static void visitHistoryJSON(NSData *zip, NSUInteger *skipped, NSUInteger expandedLimit,
+                             NSUInteger *expandedConsumed, void (^visit)(NSData *)) {
     const uint8_t *b = zip.bytes;
     size_t size = zip.length;
     expandedLimit = MIN(expandedLimit, SGHistoryTotalLimit);
-    if (size < 22 || size > SGHistoryTotalLimit || !expandedLimit) return files;
+    if (size < 22 || size > SGHistoryTotalLimit || !expandedLimit) return;
     NSUInteger expanded = 0, jsonCount = 0;
     size_t eocd = SIZE_MAX;
     size_t floor = size > 22 + 0xFFFF ? size - 22 - 0xFFFF : 0;
@@ -213,10 +226,10 @@ static NSArray<NSData *> *historyJSONFilesInZip(NSData *zip, NSUInteger *skipped
         if (le(b + i, 4) == 0x06054b50) { eocd = i; break; }
         if (i == floor) break;
     }
-    if (eocd == SIZE_MAX) return files;
+    if (eocd == SIZE_MAX) return;
     uint32_t count = le(b + eocd + 10, 2);
     size_t at = le(b + eocd + 16, 4);
-    for (uint32_t n = 0; n < count; n++) {
+    for (uint32_t n = 0; n < count; n++) @autoreleasepool {
         if (n >= 10000) { if (skipped) (*skipped)++; break; }
         if (at + 46 > size || le(b + at, 4) != 0x02014b50) break;
         uint32_t method = le(b + at + 10, 2), packed = le(b + at + 20, 4), length = le(b + at + 24, 4);
@@ -233,24 +246,27 @@ static NSArray<NSData *> *historyJSONFilesInZip(NSData *zip, NSUInteger *skipped
         if (++jsonCount > 1000) { if (skipped) (*skipped)++; continue; }
         if (local + 30 > size || le(b + local, 4) != 0x04034b50) { if (skipped) (*skipped)++; continue; }
         size_t data = local + 30 + le(b + local + 26, 2) + le(b + local + 28, 2);
-        if (data + packed > size || length > SGHistoryFileLimit || length > expandedLimit - expanded || files.count >= 1000) {
+        if (data + packed > size || length > SGHistoryFileLimit || length > expandedLimit - expanded) {
             if (skipped) (*skipped)++;
             continue;
         }
         expanded += length; // Failed decoding consumes the budget too.
         if (method == 0 && packed == length) {
-            [files addObject:[zip subdataWithRange:NSMakeRange(data, packed)]];
+            visit([zip subdataWithRange:NSMakeRange(data, packed)]);
         } else if (method == 8 && length) {
             NSData *out = inflateHistory(b + data, packed, length);
-            if (out.length == length) [files addObject:out];
+            if (out.length == length) visit(out);
             else if (skipped) (*skipped)++;
         } else if (skipped) (*skipped)++;
     }
     if (expandedConsumed) *expandedConsumed = expanded;
-    return files;
 }
 
-NSArray<NSData *> *SGJSONFilesInZip(NSData *zip) { return historyJSONFilesInZip(zip, NULL, SGHistoryTotalLimit, NULL); }
+NSArray<NSData *> *SGJSONFilesInZip(NSData *zip) {
+    NSMutableArray *files = [NSMutableArray array];
+    visitHistoryJSON(zip, NULL, SGHistoryTotalLimit, NULL, ^(NSData *json) { [files addObject:json]; });
+    return files;
+}
 
 #pragma mark - selected files and folders
 
@@ -260,47 +276,50 @@ SGHistoryImport *SGReadHistoryURLs(NSArray<NSURL *> *urls) {
     __block NSUInteger visited = 0, files = 0, inputBytes = 0, jsonBytes = 0;
     NSArray *keys = @[NSURLIsDirectoryKey, NSURLIsRegularFileKey, NSURLIsSymbolicLinkKey, NSURLIsHiddenKey,
                       NSURLIsPackageKey, NSURLFileSizeKey];
-    void (^readFile)(NSURL *) = ^(NSURL *url) {
+    void (^readFile)(NSURL *) = ^(NSURL *url) { @autoreleasepool {
         NSString *ext = url.pathExtension.lowercaseString;
         if (![@[@"json", @"zip"] containsObject:ext]) return;
         if (++files > 1000) { result.skipped++; return; }
         NSFileCoordinator *coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
         NSError *error;
         [coordinator coordinateReadingItemAtURL:url options:NSFileCoordinatorReadingWithoutChanges error:&error byAccessor:^(NSURL *reading) {
-            NSDictionary *values = [reading resourceValuesForKeys:keys error:nil];
-            NSUInteger size = [values[NSURLFileSizeKey] unsignedIntegerValue];
             NSUInteger limit = [ext isEqualToString:@"zip"] ? SGHistoryTotalLimit : SGHistoryFileLimit;
-            if (![values[NSURLIsRegularFileKey] boolValue] || [values[NSURLIsSymbolicLinkKey] boolValue] ||
-                !size || size > limit || size > SGHistoryTotalLimit - inputBytes) { result.skipped++; return; }
+            int fd = open(reading.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+            if (fd < 0) { result.skipped++; return; }
+            struct stat st;
+            if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size <= 0 ||
+                (uint64_t)st.st_size > MIN(limit, SGHistoryTotalLimit - inputBytes)) {
+                close(fd); result.skipped++; return;
+            }
+            NSUInteger size = (NSUInteger)st.st_size;
             inputBytes += size;
             // Read at most the budget even if a provider changes the file after the size check.
-            NSFileHandle *handle = [NSFileHandle fileHandleForReadingFromURL:reading error:nil];
+            NSFileHandle *handle = [[NSFileHandle alloc] initWithFileDescriptor:fd closeOnDealloc:YES];
             NSData *data = [handle readDataUpToLength:size + 1 error:nil];
             [handle closeAndReturnError:nil];
             if (!data || data.length > size) { result.skipped++; return; }
             NSUInteger zipSkipped = 0, zipExpanded = 0;
             NSUInteger remaining = SGHistoryTotalLimit - jsonBytes;
-            BOOL zipped = [ext isEqualToString:@"zip"];
-            NSArray *jsons = zipped ? historyJSONFilesInZip(data, &zipSkipped, remaining, &zipExpanded) : @[data];
-            if (zipped) jsonBytes += zipExpanded; // Failed entries consume the shared allocation/decode budget too.
-            result.skipped += zipSkipped;
-            if (!jsons.count) result.skipped++;
-            for (NSData *json in jsons) {
-              @autoreleasepool {
-                if (result.files >= 1000) { result.skipped++; break; }
-                if (!zipped) {
-                    if (json.length > SGHistoryTotalLimit - jsonBytes) { result.skipped++; continue; }
-                    jsonBytes += json.length;
-                }
+            __block BOOL sawJSON = NO;
+            void (^consume)(NSData *) = ^(NSData *json) {
+                sawJSON = YES;
+                if (result.files >= 1000) { result.skipped++; return; }
                 NSArray *found = SGPlaysFromExport(json);
-                if (!found || found.count > SGHistoryPlayLimit - plays.count) { result.skipped++; continue; }
+                if (!found || found.count > SGHistoryPlayLimit - plays.count) { result.skipped++; return; }
                 result.files++;
                 [plays addObjectsFromArray:found];
-              }
-            }
+            };
+            if ([ext isEqualToString:@"zip"]) {
+                visitHistoryJSON(data, &zipSkipped, remaining, &zipExpanded, consume);
+                jsonBytes += zipExpanded; // Failed entries consume the shared decode budget too.
+                result.skipped += zipSkipped + !sawJSON;
+            } else if (data.length <= remaining) {
+                jsonBytes += data.length;
+                consume(data);
+            } else result.skipped++;
         }];
         if (error) result.skipped++;
-    };
+    }};
     for (NSURL *url in urls) {
         if (++visited > 10000) { result.skipped++; break; }
         if (!url.isFileURL) { result.skipped++; continue; }

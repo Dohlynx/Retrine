@@ -33,33 +33,41 @@ static NSArray *askAI(SGLyricsAI service, NSString *track, NSArray *texts, BOOL 
     return out;
 }
 static void checkOpenAIHostKeys(void) {
-    CHECK([SGOpenAIKeyHost(nil) isEqual:@"api.openai.com"]);
-    CHECK([SGOpenAIKeyHost(@"https://OpenRouter.AI:443/api/v1/") isEqual:@"openrouter.ai"]);
-    CHECK([SGOpenAIKeyHost(@"https://api.openai.com/other-path") isEqual:@"api.openai.com"]);
-    CHECK([SGOpenAIKeyHost(@"http://LOCALHOST:8080/v1") isEqual:@"localhost"]);
-    CHECK([SGOpenAIKeyHost(@"http://127.0.0.1:8080") isEqual:@"127.0.0.1"]);
-    CHECK([SGOpenAIKeyHost(@"http://Server.LOCAL/v1") isEqual:@"server.local"]);
-    CHECK([SGOpenAIKeyHost(@"http://100.97.8.81:10100/v1") isEqual:@"100.97.8.81"]);
+    CHECK([SGOpenAIKeyHost(nil) isEqual:@"https://api.openai.com:443"]);
+    CHECK([SGOpenAIKeyHost(@"https://OpenRouter.AI:443/api/v1/") isEqual:@"https://openrouter.ai:443"]);
+    CHECK([SGOpenAIKeyHost(@"https://api.openai.com/other-path") isEqual:@"https://api.openai.com:443"]);
+    CHECK([SGOpenAIKeyHost(@"http://LOCALHOST:8080/v1") isEqual:@"http://localhost:8080"]);
+    CHECK([SGOpenAIKeyHost(@"http://127.0.0.1:8080") isEqual:@"http://127.0.0.1:8080"]);
+    CHECK([SGOpenAIKeyHost(@"http://Server.LOCAL/v1") isEqual:@"http://server.local:80"]);
+    CHECK([SGOpenAIKeyHost(@"http://100.97.8.81:10100/v1") isEqual:@"http://100.97.8.81:10100"]);
     for (id bad in @[@"", @"/v1", @"https://user:pass@openrouter.ai/v1", @"https://api.openai.com/v1?x=1", @"https://api.openai.com/#x", @"http://openrouter.ai", @42]) CHECK(!SGOpenAIKeyHost(bad));
     CHECK(SGOpenAIKeyMigrationDecision(nil, NO, NO) == SGOpenAIKeyMigrationNone);
     CHECK(SGOpenAIKeyMigrationDecision(nil, YES, NO) == SGOpenAIKeyMigrationCopy);
     CHECK(SGOpenAIKeyMigrationDecision(@"invalid", YES, NO) == SGOpenAIKeyMigrationDeferred);
     CHECK(SGOpenAIKeyMigrationDecision(@"invalid", YES, YES) == SGOpenAIKeyMigrationDeferred);
-    CHECK(SGOpenAIKeyMigrationDecision(@"https://openrouter.ai/api/v1", YES, YES) == SGOpenAIKeyMigrationDeleteLegacy);
+    CHECK(SGOpenAIKeyMigrationDecision(@"https://openrouter.ai/api/v1", YES, YES) == SGOpenAIKeyMigrationDeferred);
 
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSData *legacy = [@"router-key" dataUsingEncoding:NSUTF8StringEncoding];
     testKeys = [NSSet setWithObject:@"Vitrine.OpenAI"];
     openAIKeys = [@{@"api-key": legacy} mutableCopy];
     [defaults removeObjectForKey:SGKeyLyricsOpenAIBaseURL];
-    CHECK(SGOpenAIKeySet() && [openAIKeys[@"api.openai.com"] isEqual:legacy] && !openAIKeys[@"api-key"]);
+    CHECK(SGOpenAIKeySet() && [openAIKeys[@"https://api.openai.com:443"] isEqual:legacy] && !openAIKeys[@"api-key"]);
+    openAIKeys = [@{@"api.openai.com":legacy} mutableCopy];
+    CHECK(SGOpenAIKeySet() && [openAIKeys[@"https://api.openai.com:443"] isEqual:legacy] && !openAIKeys[@"api.openai.com"]);
+    // A bare account saved on port A carries no proof that the now-selected port B owns it.
+    [defaults setObject:@"https://api.openai.com:8443/v1" forKey:SGKeyLyricsOpenAIBaseURL];
+    openAIKeys = [@{@"api.openai.com":legacy} mutableCopy];
+    NSString *problem = nil;
+    CHECK(!SGOpenAIKeySet() && !SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem));
     [defaults setObject:@"https://OpenRouter.AI/api/v1" forKey:SGKeyLyricsOpenAIBaseURL];
     openAIKeys = [@{@"api-key": legacy} mutableCopy];
+    CHECK(!SGOpenAIKeySet() && openAIKeys[@"https://api.openai.com:443"] && !openAIKeys[@"api-key"]);
+    openAIKeys = [@{@"openrouter.ai":legacy} mutableCopy];
     SGModRow *row = SGOpenAIPresetRow();
-    row.chosen(2); // Migration must use the old URL even without a prior key lookup.
-    CHECK([openAIKeys[@"openrouter.ai"] isEqual:legacy] && !openAIKeys[@"api-key"] && !openAIKeys[@"api.groq.com"]);
+    row.chosen(2); // Switching presets before lookup must not claim the previous custom host's key.
+    CHECK(!openAIKeys[@"https://openrouter.ai:443"] && !openAIKeys[@"openrouter.ai"] && !openAIKeys[@"api.groq.com"]);
     CHECK(!SGOpenAIKeySet() && SGLyricsAIAvailable().count == 0 && [row.value() isEqual:@"Groq · no key"]);
-    NSString *problem = nil;
     CHECK(!SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem) && problem.length);
     NSUInteger before = aiRequests;
     CHECK(!askAI(SGLyricsAIOpenAI, @"host-missing-job", @[@"Blue robot"], YES, &problem) && problem.length && aiRequests == before);
@@ -75,6 +83,8 @@ static void checkOpenAIHostKeys(void) {
     CHECK(aiRequests == before);
 
     row.chosen(1);
+    CHECK(!SGOpenAIKeySet());
+    openAIKeys = [@{@"https://openrouter.ai:443":legacy} mutableCopy]; // re-entered for the exact origin
     CHECK(SGOpenAIKeySet() && [row.value() isEqual:@"OpenRouter"]);
     NSURLRequest *request = SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem);
     CHECK([request.URL.host isEqual:@"openrouter.ai"] && [[request valueForHTTPHeaderField:@"Authorization"] isEqual:@"Bearer router-key"]);
@@ -89,7 +99,10 @@ static void checkOpenAIHostKeys(void) {
     resetCredentialCaches();
     row.chosen(2);
     request = SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem);
-    CHECK([request.URL.host isEqual:@"api.groq.com"] && [[request valueForHTTPHeaderField:@"Authorization"] isEqual:@"Bearer groq-key"]);
+    CHECK(!request && !SGOpenAIKeySet()); // inactive hostname: no evidence of its old scheme or port
+    resetCredentialCaches();
+    CHECK(!SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem));
+    openAIKeys[@"https://api.groq.com:443"] = [@"groq-key" dataUsingEncoding:NSUTF8StringEncoding];
     openAIKeys[@"api-key"] = legacy;
     resetCredentialCaches();
     CHECK(SGOpenAIKeySet() && !openAIKeys[@"api-key"] && [[SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem) valueForHTTPHeaderField:@"Authorization"] isEqual:@"Bearer groq-key"]);
@@ -102,7 +115,7 @@ static void checkOpenAIHostKeys(void) {
     keyWriteFailure = 0;
     keyDeleteFailure = errSecInteractionNotAllowed;
     row.chosen(2);
-    CHECK([SGOpenAIPresetName() isEqual:@"OpenRouter"] && openAIKeys[@"api-key"] && openAIKeys[@"openrouter.ai"] && !SGOpenAIKeySet());
+    CHECK([SGOpenAIPresetName() isEqual:@"OpenRouter"] && openAIKeys[@"api-key"] && openAIKeys[@"https://api.openai.com:443"] && !SGOpenAIKeySet());
     keyDeleteFailure = 0;
     row.chosen(2);
     CHECK(!openAIKeys[@"api-key"] && !SGOpenAIKeySet());
@@ -114,10 +127,14 @@ static void checkOpenAIHostKeys(void) {
     openAIKeys = [@{@"api-key": legacy} mutableCopy];
     CHECK(!SGOpenAIKeySet() && openAIKeys[@"api-key"] && openAIKeys.count == 1);
     [defaults setObject:@"http://100.97.8.81:10100/v1" forKey:SGKeyLyricsOpenAIBaseURL];
-    openAIKeys = [@{@"100.97.8.81": [@"tailnet-test-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
+    openAIKeys = [@{@"http://100.97.8.81:10100": [@"tailnet-test-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
     NSURLRequest *tailnet = SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem);
     CHECK([tailnet.URL.absoluteString isEqual:@"http://100.97.8.81:10100/v1/chat/completions"]);
     CHECK([[tailnet valueForHTTPHeaderField:@"Authorization"] isEqual:@"Bearer tailnet-test-key"]);
+    for (NSString *otherOrigin in @[@"https://100.97.8.81:10100/v1", @"http://100.97.8.81:80/v1"]) {
+        [defaults setObject:otherOrigin forKey:SGKeyLyricsOpenAIBaseURL];
+        CHECK(!SGOpenAIKeySet() && !SGOpenAIRequest(@"system", @"prompt", SGLyricsReplyJSON, &problem));
+    }
     [defaults setObject:@"http://100.97.8.82:10100/v1" forKey:SGKeyLyricsOpenAIBaseURL];
     CHECK(!SGOpenAIKeySet());
     testKeys = [NSSet set]; openAIKeys = nil;
@@ -221,7 +238,7 @@ static void checkModelLists(void) {
 
     testKeys = [NSSet setWithObject:@"Vitrine.OpenAI"];
     [defaults setObject:@"https://openrouter.ai/api/v1" forKey:SGKeyLyricsOpenAIBaseURL];
-    openAIKeys = [@{@"openrouter.ai": [@"router-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
+    openAIKeys = [@{@"https://openrouter.ai:443": [@"router-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
     list = SGOpenAIModelsRequest(&problem);
     CHECK([list.URL.absoluteString isEqual:@"https://openrouter.ai/api/v1/models"] && [[list valueForHTTPHeaderField:@"Authorization"] isEqual:@"Bearer router-key"]);
     openAIKeys = [NSMutableDictionary dictionary];
@@ -274,7 +291,7 @@ static void checkModelFetchErrors(void) {
 
     testKeys = [NSSet setWithObject:@"Vitrine.OpenAI"];
     [defaults setObject:@"http://100.97.8.81:10100/v1" forKey:SGKeyLyricsOpenAIBaseURL];
-    openAIKeys = [@{@"100.97.8.81": [@"tailnet-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
+    openAIKeys = [@{@"http://100.97.8.81:10100": [@"tailnet-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
     modelListFailure = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorAppTransportSecurityRequiresSecureConnection userInfo:nil];
 
     __block NSString *listProblem;
@@ -581,7 +598,7 @@ static void checkModelPagination(void) {
     // OpenAI-compatible lists stay one request, whatever pagination fields the reply carries.
     [defaults setObject:@"https://openrouter.ai/api/v1" forKey:SGKeyLyricsOpenAIBaseURL];
     testKeys = [NSSet setWithObject:@"Vitrine.OpenAI"];
-    openAIKeys = [@{@"openrouter.ai": [@"router-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
+    openAIKeys = [@{@"https://openrouter.ai:443": [@"router-key" dataUsingEncoding:NSUTF8StringEncoding]} mutableCopy];
     modelPagesReset();
     calls = 0; models = nil; failure = nil;
     load = SGLyricsAIFetchModels(SGLyricsAIOpenAI, YES, ^(NSArray *list, NSString *problem) {
@@ -1432,8 +1449,8 @@ static void checkCredentialAvailability(void) {
         BOOL (^available)(void) = reads[i];
         NSUInteger before = keyReads;
         for (NSUInteger n = 0; n < 10; n++) CHECK(!available());
-        // OpenAI checks the legacy account once and the current host once.
-        CHECK(keyReads - before == (i == 3 ? 2 : 1));
+        // OpenAI snapshots legacy account names once as well as reading the old and current keys.
+        CHECK(keyReads - before == (i == 3 ? 3 : 1));
         keyPromptAction(rows[i], @"Save", @"new-fixture-key");
         CHECK(available());
         before = keyReads;

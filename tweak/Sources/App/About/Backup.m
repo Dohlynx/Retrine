@@ -6,20 +6,24 @@
 #import "Shared/AdBlock/AdBlock.h"
 #import "Shared/SponsorBlock/SponsorBlock.h"
 #import "Shared/Lyrics/Lyrics.h"
+#import "Shared/Flags/Flags.h"
 #import "Settings/SGPageStyle.h"
 #import "About.h"
 #import "SGDiagnosticRedaction.h"
 #import "Redesigned/Player/Player.h"
 
-// Every key under the prefix travels, the way the reset sweeps them, so a new switch needs nothing
-// here. What is left out belongs to this install rather than to its user's choices.
+// Install-local state must survive replacement as well as stay out of the exported document.
 static BOOL isSetting(NSString *key) {
     if (![key hasPrefix:@"spotifyglass."]) return NO;
-    if (SGPrivatePreferenceKey(key) || [key isEqual:SGKeySponsorBlockServer] || [key isEqual:@"spotifyglass.wireguard"]) return NO;
+    if (SGPrivatePreferenceKey(key) || [key isEqual:SGKeySponsorBlockServer] || [key isEqual:SGKeyLyricsOpenAIBaseURL] ||
+        [key isEqual:@"spotifyglass.wireguard"] || [key isEqual:SGKeyRedesignUntested] ||
+        ([key hasPrefix:@"spotifyglass.dsp."] && [key hasSuffix:@".file"])) return NO;
     for (NSString *local in @[@"spotifyglass.adblock.counts", @"spotifyglass.privacy.counts", @"spotifyglass.update.",
                               @"spotifyglass.signing.", @"spotifyglass.onboarding.", @"spotifyglass.navbar.stock",
                               @"spotifyglass.redesign.navbar.stock", @"spotifyglass.automix.saved",
-                              @"spotifyglass.lossless.savedQuality", @"spotifyglass.liveActivity.startedAt"]) {
+                              @"spotifyglass.lossless.savedQuality", @"spotifyglass.liveActivity.startedAt",
+                              @"spotifyglass.font.file", @"spotifyglass.font.name", @"spotifyglass.localFiles.",
+                              @"spotifyglass.localfiles.imported", @"spotifyglass.audioPresets"]) {
         if ([key hasPrefix:local]) return NO;
     }
     return YES;
@@ -40,10 +44,13 @@ static UIAlertController *showAlert(UIViewController *presenter, NSString *title
     return alert;
 }
 
+static BOOL importable(NSString *key, id value, NSDictionary *registered);
+
 static NSDictionary *exportSettings(NSDictionary *stored) {
+    NSDictionary *registered = [NSUserDefaults.standardUserDefaults volatileDomainForName:NSRegistrationDomain];
     NSMutableDictionary *settings = [NSMutableDictionary dictionary];
     [stored enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
-        if (isSetting(key) && [NSJSONSerialization isValidJSONObject:@[value]]) settings[key] = value;
+        if (importable(key, value, registered) && [NSJSONSerialization isValidJSONObject:@[value]]) settings[key] = value;
     }];
     return settings;
 }
@@ -183,8 +190,126 @@ static Class kindOf(id value) {
     return Nil;
 }
 
-// A key already stored keeps its type: the hooks send boolValue to whatever they find at launch, and
-// an array there would crash Spotify before the reset row could be reached.
+// Most settings use fallback arguments, not NSRegistrationDomain. Describe those portable
+// settings here; never let the document itself decide the type of an unset preference.
+static Class settingClass(NSString *key, NSDictionary *registered) {
+    Class kind = kindOf(registered[key]);
+    if (kind) return kind;
+    if (![key hasPrefix:@"spotifyglass."]) return Nil;
+    NSString *name = [key substringFromIndex:@"spotifyglass.".length];
+    static NSSet *numbers, *strings, *stringLists, *numberLists;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        numbers = [NSSet setWithArray:[@"accent accent.custom adblock.ads adblock.premium adblock.searchVideos adblock.upsells aiBadges albumBackdrop amoled "
+            "artistBlock artistBlock.featured artistPhotoFade automix automix.artwork automix.show-progress automix.show-queue automix.style blockTelemetry cleanSharedLinks "
+            "font gestures gestures.hold gestures.hold.speed gestures.split gestures.step haptics.controls haptics.controls.strength haptics.music haptics.music.strength "
+            "haptics.music.background haptics.music.follows haptics.music.mode headgestures headgestures.chime headgestures.nod headgestures.sensitivity headgestures.shake "
+            "homeGradientTint homeGradientStrength homeGradientHeight redesign.fluid.speed redesign.fluid.warp redesign.fluid.blur redesign.fluid.saturation "
+            "redesign.fluid.brightness redesign.fluid.grain redesign.fluid.renderer redesign.haptics.controls redesign.haptics.controls.strength "
+            "redesign.haptics.music redesign.haptics.music.strength redesign.haptics.music.follows redesign.liveActivity redesign.liveActivity.view "
+            "lockscreen.motion lyrics.typeFirst hideExplicit homeGradient language likelyAIBadges liveActivity liveActivity.alignment liveActivity.artwork liveActivity.colors liveActivity.progressBar "
+            "liveActivity.textSize liveActivity.translation liveActivity.view liveActivity.withoutLyrics loadAhead lockScreenLyrics lockScreenLyrics.line lockscreen.artwork "
+            "lockscreen.dimArtwork lockscreen.lyricsLayout lockscreen.lyricsStyle lockscreen.star lockscreen.star.back lockscreen.translation lossless lyrics.appleIntelligence "
+            "lyrics.askMode lyrics.besideEevee lyrics.bingTranslate lyrics.culturalNotes lyrics.googleTranslate lyrics.offline lyrics.pip lyrics.pip.alignment lyrics.pip.info "
+            "lyrics.pip.layout lyrics.pronunciationNotation lyrics.translateEverySong lyrics.translateOnDevice lyrics.translateTitles lyricsAllTracks lyricsCard lyricsCredit "
+            "lyricsDelay lyricsFurigana lyricsJapaneseKana lyricsMeanings lyricsPreferWordTiming lyricsPronunciationHangul lyricsRomanised lyricsSimulateWords lyricsTranslationLanguage "
+            "motion.lowdata navbar player player.audioQuality playerBackdrop playlistBackdrop redesign redesign.accent redesign.accent.auto redesign.accent.custom redesign.accentPlay "
+            "redesign.album.adaptiveCover redesign.album.artistPicture redesign.album.fullCover redesign.album.motion redesign.album.notesPlace redesign.album.playCounts "
+            "redesign.album.playCounts.place redesign.album.playCounts.source redesign.album.trackNumbers redesign.artist.adaptivePhoto redesign.artist.applePhoto "
+            "redesign.artist.cutOutPlay redesign.artist.listenersInAbout redesign.artist.logo redesign.artist.motion redesign.artist.roundPlay redesign.glass.interactive "
+            "redesign.glass.material redesign.glass.tint redesign.hero.scrollVeil redesign.hideExplicit redesign.home.hidePodcasts redesign.home.keepTitle redesign.home.look "
+            "redesign.home.previews redesign.home.shortcutGlass redesign.home.songSuggestions redesign.home.topPicks redesign.home.topPicksColour redesign.home.topPicksHeading "
+            "redesign.inlinePlayer.artist redesign.library.hideChips redesign.lyrics.autoHide redesign.lyrics.autoTranslation redesign.lyrics.breakLabels redesign.lyrics.fullRate "
+            "redesign.lyrics.keepAwake redesign.lyrics.landscape redesign.lyricsPronunciation redesign.lyricsTranslation redesign.navbar redesign.navbar.fade redesign.navbar.hideLabels "
+            "redesign.navbar.minimize redesign.navbar.symbols redesign.nowPlayingBar.artworkShape redesign.nowPlayingBar.inlineConnect redesign.nowPlayingBar.nextButton "
+            "redesign.pageTitleWhenScrolled redesign.pageZoom redesign.pages.coverBeside redesign.plainCheck redesign.playInPageColour redesign.player.animatedStill "
+            "redesign.player.animatedVisualizer redesign.player.background redesign.player.background.artwork redesign.player.followsCover redesign.player.headerGlass "
+            "redesign.player.hideContext redesign.player.hideRepeat redesign.player.hideShuffle redesign.player.landscape redesign.player.lyricLine redesign.player.movingBackground "
+            "redesign.player.musicIcons redesign.player.rollingDigits redesign.player.starAdd redesign.player.volume redesign.playlist.coverViewer redesign.playlist.creatorLine "
+            "redesign.playlist.creatorPicture redesign.playlist.description redesign.playlist.menuSortMix redesign.savedMark redesign.search.glassCards showCacheLimit simplifyTitles "
+            "sing sing.button sing.ignoreHeat sing.ignoreMemory sing.prepareAhead sing.runsOn sing.spatial sleepTimer.fade speed.pitchFollows sponsorblock.enabled sponsorblock.haptics "
+            "sponsorblock.minDuration sponsorblock.overlay sponsorblock.respectManualSeek stats.recap.announce stats.record stock visualizer.ignoreHeat visualizer.shuffle "
+            "dsp dsp.bass dsp.bass.gain dsp.compander dsp.compander.time dsp.convolver dsp.convolver.mode dsp.crossfeed dsp.crossfeed.mode dsp.ddc dsp.eq dsp.geq dsp.limiterRelease "
+            "dsp.limiterThreshold dsp.liveprog dsp.postGain dsp.reverb dsp.reverb.amount dsp.reverb.preset dsp.tube dsp.tube.drive dsp.wide dsp.wide.level "
+            "headgestures.nodaction headgestures.shakeaction sing.model sing.level sing.spatial.distance sing.spatial.room sing.spatial.front sing.spatial.width lyrics.ai.timeout" componentsSeparatedByString:@" "]];
+        strings = [NSSet setWithArray:[@"font.family font.library lyrics.pip.font lyrics.openai.model lyrics.claude.model lyrics.gemini.model lyrics.gemini.thinking lyrics.translationPrompt redesign.home.topPicksFrom dsp.eq.gains dsp.compander.gains dsp.geq.nodes" componentsSeparatedByString:@" "]];
+        stringLists = [NSSet setWithArray:@[@"motion.sources", @"lyricsProviders", @"lyrics.knownProviders", @"redesign.lyricsTextOrder", @"navbar.split", @"redesign.navbar.split"]];
+        numberLists = [NSSet setWithArray:@[@"accent.recent", @"redesign.accent.recent"]];
+    });
+    if ([strings containsObject:name]) return NSString.class;
+    if ([numberLists containsObject:name] || [stringLists containsObject:name] ||
+        [@[@"artistBlock.list", @"navbar.layout", @"redesign.navbar.layout", @"redesign.navbar.apart"] containsObject:name]) return NSArray.class;
+    if ([@[@"lyrics.sourceTypes", @"lyrics.trackLanguages", @"lyrics.trackOffsets", @"lyrics.routeOffsets",
+           @"gestures.zones", @"blockedSongs", @"lyrics.languageRules"] containsObject:name]) return NSDictionary.class;
+    if ([numbers containsObject:name] || [name hasPrefix:@"hide."] || [name hasPrefix:@"sponsorblock.behavior."] ||
+        [name hasPrefix:@"sponsorblock.category."] || ([name hasPrefix:@"redesign."] && [name containsString:@".hide."])) return NSNumber.class;
+    return Nil;
+}
+
+static BOOL listOf(id value, Class kind) {
+    if (![value isKindOfClass:NSArray.class]) return NO;
+    for (id item in value) if (![item isKindOfClass:kind]) return NO;
+    return YES;
+}
+
+static int compareFlag(const void *key, const void *definition) {
+    return strcmp(key, ((const SGFlagDef *)definition)->key);
+}
+
+static BOOL importable(NSString *key, id value, NSDictionary *registered) {
+    if (!isSetting(key)) return NO;
+    NSString *pip = @"spotifyglass.lyrics.pip.";
+    if ([key hasPrefix:pip]) {
+        NSArray *parts = [[key substringFromIndex:pip.length] componentsSeparatedByString:@"."];
+        if (parts.count == 2 && [@[@"original", @"pronunciation", @"translation"] containsObject:parts[0]]) {
+            if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return NO;
+            double n = [value doubleValue];
+            if (n != floor(n)) return NO;
+            if ([parts[1] isEqual:@"weight"]) return n >= 0 && n <= 3;
+            if (![parts[1] isEqual:@"size"]) return NO;
+            return [parts[0] isEqual:@"original"] ? n >= 24 && n <= 64 : n >= 16 && n <= 48;
+        }
+    }
+    if ([key hasPrefix:SGFlagOverridePrefix]) {
+        NSString *flag = [key substringFromIndex:SGFlagOverridePrefix.length];
+        if (!flag.length || [flag containsString:@"\0"]) return NO;
+        const SGFlagDef *def = bsearch(flag.UTF8String, SGFlagTable, SGFlagCount, sizeof *SGFlagTable, compareFlag);
+        if (!def) return NO;
+        if (def->type == SGFlagBool) return [value isEqual:@0] || [value isEqual:@1];
+        return def->type == SGFlagEnum ? [value isKindOfClass:NSString.class] :
+            [value isKindOfClass:NSNumber.class] || (def->type == SGFlagUnknown && [value isKindOfClass:NSString.class]);
+    }
+    Class kind = settingClass(key, registered);
+    if (!kind || ![value isKindOfClass:kind]) return NO;
+    if ([key isEqual:@"spotifyglass.artistBlock.list"]) {
+        for (id artist in value)
+            if (![artist isKindOfClass:NSDictionary.class] || ![artist[@"uri"] isKindOfClass:NSString.class] ||
+                ![artist[@"name"] isKindOfClass:NSString.class]) return NO;
+    } else if ([key hasSuffix:@".navbar.layout"] || [key isEqual:@"spotifyglass.redesign.navbar.apart"]) {
+        if (!listOf(value, NSDictionary.class)) return NO;
+        for (NSDictionary *tab in value) {
+            if (![tab[@"id"] isKindOfClass:NSString.class]) return NO;
+            for (NSString *field in @[@"title", @"uri", @"icon", @"iconSet"])
+                if (tab[field] && ![tab[field] isKindOfClass:NSString.class]) return NO;
+            if (tab[@"hidden"] && ![tab[@"hidden"] isKindOfClass:NSNumber.class]) return NO;
+        }
+    } else if (kind == NSArray.class && !registered[key]) {
+        if (!listOf(value, [key hasSuffix:@".recent"] ? NSNumber.class : NSString.class)) return NO;
+    } else if (kind == NSDictionary.class && !registered[key]) {
+        for (id entry in [value allValues]) {
+            if ([key isEqual:@"spotifyglass.gestures.zones"]) {
+                if (!listOf(entry, NSNumber.class)) return NO;
+            } else if ([key isEqual:@"spotifyglass.blockedSongs"]) {
+                if (!listOf(entry, NSString.class) || [entry count] != 2) return NO;
+            } else if ([key isEqual:@"spotifyglass.lyrics.languageRules"]) {
+                if (![entry isKindOfClass:NSDictionary.class] || ![entry[@"translation"] isKindOfClass:NSNumber.class] ||
+                    ![entry[@"pronunciation"] isKindOfClass:NSNumber.class]) return NO;
+            } else if (![entry isKindOfClass:[key isEqual:@"spotifyglass.lyrics.trackLanguages"] ? NSString.class : NSNumber.class]) return NO;
+        }
+    }
+    return [NSPropertyListSerialization propertyList:value isValidForFormat:NSPropertyListBinaryFormat_v1_0];
+}
+
 // Settings exported by Chroma (spoti.pw 0.50) under its own names, in ours. Its player background knows only
 // Fluid (0) and Animated (1); its artwork sources call Spotify's clips "spotify". Its menu row cache and
 // one-time notices have no counterpart and are left out.
@@ -204,8 +329,11 @@ static NSDictionary *fromChroma(NSDictionary *settings) {
         id value = settings[key];
         if ([dropped containsObject:key]) continue;
         if ([key isEqualToString:@"spotifyglass.redesign.player.backdrop"]) {
-            if (![value isKindOfClass:NSNumber.class] && ![value isKindOfClass:NSString.class]) continue;
-            ours[@"spotifyglass.redesign.player.background"] = @([value integerValue] == 1 ? SGRPlayerBackgroundAnimated : SGRPlayerBackgroundFluid);
+            NSString *target = @"spotifyglass.redesign.player.background";
+            if (settings[target]) continue;
+            // A present but invalid legacy value is not a missing choice in a replacement backup.
+            ours[target] = [value isEqual:@0] || [value isEqual:@"0"] ? @(SGRPlayerBackgroundFluid) :
+                [value isEqual:@1] || [value isEqual:@"1"] ? @(SGRPlayerBackgroundAnimated) : NSNull.null;
         } else if ([key isEqualToString:@"spotifyglass.redesign.player.artworksources"] && [value isKindOfClass:NSArray.class]) {
             NSMutableArray *sources = [NSMutableArray array];
             for (NSString *source in value) [sources addObject:[source isEqual:@"spotify"] ? @"canvas" : source];
@@ -219,16 +347,13 @@ static NSDictionary *fromChroma(NSDictionary *settings) {
 
 static void importSettings(NSDictionary *settings, NSUserDefaults *store, NSDictionary *stored) {
     settings = fromChroma(settings);
-    for (NSString *key in stored) {
-        if (isSetting(key)) [store removeObjectForKey:key];
-    }
+    NSDictionary *registered = [store volatileDomainForName:NSRegistrationDomain];
+    for (NSString *key in stored)
+        if (!settings[key] && importable(key, stored[key], registered)) [store removeObjectForKey:key];
     NSUInteger skipped = 0;
     for (NSString *key in settings) {
         id value = settings[key];
-        id current = stored[key];
-        BOOL fits = isSetting(key)
-            && [NSPropertyListSerialization propertyList:value isValidForFormat:NSPropertyListBinaryFormat_v1_0]
-            && (!current || kindOf(current) == kindOf(value));
+        BOOL fits = importable(key, value, registered);
         if (fits) [store setObject:value forKey:key];
         else skipped++;
     }

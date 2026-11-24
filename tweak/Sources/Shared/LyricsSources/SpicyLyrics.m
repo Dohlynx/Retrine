@@ -313,14 +313,6 @@ static NSTimeInterval uptime(void) {
     return NSProcessInfo.processInfo.systemUptime;
 }
 
-// Spotify's 22 character base62 id, the only thing the API takes.
-static BOOL isTrackID(NSString *trackID) {
-    if (trackID.length != 22) return NO;
-    NSCharacterSet *base62 = [NSCharacterSet characterSetWithCharactersInString:
-        @"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"];
-    return [trackID rangeOfCharacterFromSet:base62.invertedSet].location == NSNotFound;
-}
-
 // A header's wait in seconds: a number of seconds, a Unix time (a RateLimit-Reset some servers send),
 // or an HTTP date; 0 when it says none.
 static NSTimeInterval secondsIn(NSString *value, NSDate *now) {
@@ -395,7 +387,7 @@ static BOOL deliverCached(NSString *trackID, void (^done)(SGLyricsResult *)) {
 void SGSpicyLyricsAskWith(NSString *key, SGLyricsQuery *query, void (^done)(SGLyricsResult *result));
 void SGSpicyLyricsAskWith(NSString *key, SGLyricsQuery *query, void (^done)(SGLyricsResult *result)) {
     NSString *trackID = query.trackID;
-    if (!key.length || !isTrackID(trackID)) {
+    if (!key.length || !SGLyricsIsSpotifyTrackID(trackID)) {
         done(nil);
         return;
     }

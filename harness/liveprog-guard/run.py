@@ -64,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix="retrine-liveprog-guard-") as directory:
         return executable
 
     executable = build("guard", source)
-    for case in ("thresholds", "normal", "heavy", "deadline", "abandonment", "messages", "quarantine", "adjacent"):
+    for case in ("thresholds", "normal", "heavy", "limits", "deadline", "abandonment", "messages", "quarantine", "adjacent"):
         run([executable, case], timeout=15)
 
     if not args.mutations:
@@ -85,6 +85,7 @@ with tempfile.TemporaryDirectory(prefix="retrine-liveprog-guard-") as directory:
          "install(engine, SlotLiveprog, NULL);\n"
          "            copyError(error, errorSize, kLiveprogStartError);\n            return false;", "deadline"),
         ("cleanup", "SGDSPLiveprogFree(job->result);", "(void)job->result;", "abandonment"),
+        ("slow", "if (job->expired || job->slow) {", "if (job->expired) {", "limits"),
         ("quarantine",
          "if (slot == SlotLiveprog) {\n        // Recheck",
          "if (slot == SlotLiveprog) {\n"

@@ -67,8 +67,8 @@ void guard_run(void *state, float *l, float *r, uint32_t count) {
     if (synthetic) ticks += runTicks;
 }
 
-SGDSPLiveprog *guard_create(const char *script, double rate, char *error, size_t errorSize) {
-    SGDSPLiveprog *vm = SGDSPLiveprogCreate(script, rate, error, errorSize);
+SGDSPLiveprog *guard_create(const char *script, double rate, bool *slow, char *error, size_t errorSize) {
+    SGDSPLiveprog *vm = SGDSPLiveprogCreate(script, rate, slow, error, errorSize);
     if (script && !strncmp(script, "desc: held\n", 11)) {
         atomic_store(&heldVM, vm);
         dispatch_semaphore_wait(releaseLoad, DISPATCH_TIME_FOREVER);
@@ -244,26 +244,30 @@ static void *renderDuringLoad(void *engine) {
 }
 
 static void deadline(void) {
+    releaseLoad = dispatch_semaphore_create(0);
+    freedLoad = dispatch_semaphore_create(0);
     SGDSPEngine *engine = SGDSPEngineCreate(48000);
     load(engine, gain);
     for (int i = 0; i < 3; i++) block(engine);
     pthread_t thread;
     atomic_store(&renderRunning, true);
     require(pthread_create(&thread, NULL, renderDuringLoad, engine) == 0, "render thread starts");
-    // Nested endless loops would need ~10^12 iterations even with EEL's cap.
-    // This process exits after proving abandonment; no VM is freed under its worker.
+    // Hold startup independently of the VM's deterministic work budget.
     char error[300] = "";
     double before = seconds();
     bool ok = SGDSPEngineSetLiveprog(engine, true,
-        "@init\nwhile(while(1;);1;);\n@sample\nspl0 = 0; spl1 = 0;\n", error, sizeof error);
+        "desc: held\n@sample\nspl0 = 0; spl1 = 0;\n", error, sizeof error);
     double elapsed = seconds() - before;
-    require(!ok && !strcmp(error, startError), "endless init returns the start error");
+    require(!ok && !strcmp(error, startError), "held startup returns the start error");
     require(elapsed >= 1.8 && elapsed < 2.6, "start deadline returns in about two seconds");
     require(atomic_load(&rendered) > 100, "the previous script keeps rendering during compile/init");
     before = seconds();
     ok = SGDSPEngineSetLiveprog(engine, true, gain, error, sizeof error);
     require(!ok && !strcmp(error, startError) && seconds() - before < 0.2,
             "a second load is immediately refused while the worker is abandoned");
+    dispatch_semaphore_signal(releaseLoad);
+    require(dispatch_semaphore_wait(freedLoad, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC)) == 0,
+            "abandoned startup releases the VM");
     atomic_store(&renderRunning, false);
     require(pthread_join(thread, NULL) == 0, "render thread joins");
     for (int i = 0; i < 3; i++) block(engine);
@@ -285,6 +289,77 @@ static void abandonment(void) {
     dispatch_semaphore_signal(releaseLoad);
     require(dispatch_semaphore_wait(freedLoad, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC)) == 0,
             "the worker frees its abandoned VM after returning, even after engine destruction");
+}
+
+static void limits(void) {
+    synthetic = true; // the clock guard cannot account for these trips
+    SGDSPEngine *engine = SGDSPEngineCreate(48000);
+    char error[300] = "";
+    load(engine, gain);
+    cost(0.1, 48000);
+    require(!SGDSPEngineSetLiveprog(engine, true,
+            "@init\nloop(1000,loop(1000,x+=1));\n@sample\nspl0=x;", error, sizeof error)
+            && !strcmp(error,startError), "aggregate init work is refused");
+    for (int i = 0; i < 3; i++) block(engine);
+    level(0.125f, -0.0625f);
+    require(!SGDSPEngineSetLiveprog(engine, true,
+            "@init\nloop(1000,memset(0,1,4000000));\n@sample\nspl0=x;", error, sizeof error)
+            && !strcmp(error,startError), "bulk memory work in init is metered");
+    for (int i = 0; i < 3; i++) block(engine);
+    level(0.125f, -0.0625f);
+    NSMutableString *straight = [NSMutableString stringWithString:@"@init\n"];
+    for (int i = 0; i < 16; i++) [straight appendString:@"memset(0,1,1048576);"];
+    [straight appendString:@"\n@sample\nspl0=x;"];
+    NSMutableString *values = [NSMutableString stringWithString:@"@init\nloop(300000,mem_set_values(0"];
+    for (int i = 0; i < 64; i++) [values appendString:@",x"];
+    [values appendString:@"));\n@sample\nspl0=x;"];
+    // A refused @init must stop at the refusal: g is a global the running script reads.
+    load(engine, "@sample\nspl0*=0.5+_global.g;spl1*=0.5+_global.g;");
+    for (int i = 0; i < 3; i++) block(engine);
+    level(0.125f, -0.0625f);
+    NSMutableString *stops = [straight mutableCopy];
+    [stops replaceOccurrencesOfString:@"\n@sample" withString:@"_global.g=1;\n@sample" options:0 range:NSMakeRange(0, stops.length)];
+    require(!SGDSPEngineSetLiveprog(engine, true, stops.UTF8String, error, sizeof error) && !strcmp(error,startError),
+            "a refused init is refused");
+    for (int i = 0; i < 3; i++) block(engine);
+    level(0.125f, -0.0625f);
+    load(engine, gain);
+    NSDictionary<NSString *, NSString *> *refusals = @{
+        @"bulk work that runs out without a later loop is refused": straight,
+        @"scanning unallocated memory is metered": @"@init\nloop(100,x+=mem_multiply_sum(-1,1048576,130000000));\n@sample\nspl0=x;",
+        @"multi-value transfers are metered": values,
+    };
+    for (NSString *what in refusals) {
+        require(!SGDSPEngineSetLiveprog(engine, true, refusals[what].UTF8String, error, sizeof error)
+                && !strcmp(error,startError), what.UTF8String);
+        for (int i = 0; i < 3; i++) block(engine);
+        level(0.125f, -0.0625f);
+    }
+    // Each iteration is a loop step plus a 16-element memset's step: 999,998 of the 1,000,000 startup
+    // steps, and the final 32-element memset spends exactly the last two.
+    load(engine, "@init\nloop(499999,memset(0,0,16));memset(0,0,32);\n@sample\nspl0*=0.5;spl1*=0.5;");
+    for (int i = 0; i < 3; i++) block(engine);
+    level(0.125f, -0.0625f);
+    // A spilled operand comes back through the stack-to-FP pop on the portable VM.
+    load(engine, "@sample\n//#eel-no-optimize:2\na=2;b=3;spl0*=((a+b)*(a-b))/-10;spl1*=((a*b)-(b-a))/10;");
+    for (int i = 0; i < 3; i++) block(engine);
+    level(0.125f, -0.0625f);
+    for (NSString *body in @[@"loop(320,loop(320,x+=1));", @"while((x+=1)<100100);"]) {
+        load(engine, [[@"@sample\n" stringByAppendingString:body] UTF8String]);
+        // The previous trip's cached tail plays out in the first block after a reload, before this script runs.
+        block(engine);
+        if (!SGDSPEngineLiveprogError(engine)) block(engine);
+        require(SGDSPEngineLiveprogError(engine) != NULL, "VM budget quarantines the script on its first run");
+        SGDSPEngineCollect(engine);
+    }
+    for (NSString *link in @[@"+a", @"[]"]) {
+        NSMutableString *s = [NSMutableString stringWithString:@"@sample\nspl0=a"];
+        for (int i=0; i<260; i++) [s appendString:link];
+        SGDSPEngineLiveprogUserChange(engine);
+        require(!SGDSPEngineSetLiveprog(engine,true,s.UTF8String,error,sizeof error) &&
+                !strncmp(error,"Line 2:",7),"overlong chain fails with a compiler error");
+    }
+    SGDSPEngineFree(engine);
 }
 
 static bool applyScript(SGDSPEngine *engine, const char *script) {
@@ -437,6 +512,7 @@ int main(int argc, char **argv) {
             thresholds(96000);
         } else if (!strcmp(argv[1], "normal")) normalScript();
         else if (!strcmp(argv[1], "heavy")) heavy();
+        else if (!strcmp(argv[1], "limits")) limits();
         else if (!strcmp(argv[1], "deadline")) deadline();
         else if (!strcmp(argv[1], "abandonment")) abandonment();
         else if (!strcmp(argv[1], "messages")) messages();

@@ -17,7 +17,7 @@ static void get(SGLyricsRequestContext *context, NSString *path, NSDictionary<NS
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:kTimeout];
     SGLyricsMarkRequest(request);
     [request setValue:@"https://music.163.com" forHTTPHeaderField:@"Referer"];
-    NSURLSessionDataTask *task = [NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSURLSessionDataTask *task = SGBoundedRequestTask(request, 0, ^(NSData *data, NSURLResponse *response, NSError *error) {
         SGLyricsNoteReply(response, error);
         [context noteResponse:response error:error];
         id root = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
@@ -26,7 +26,7 @@ static void get(SGLyricsRequestContext *context, NSString *path, NSDictionary<NS
         if (code && ![code isEqual:@200]) [context noteFailure:YES];
         if (error || !root) SGLog(@"netease: %@ failed: status %ld, error %@", path, (long)[(NSHTTPURLResponse *)response statusCode], error);
         dispatch_async(dispatch_get_main_queue(), ^{ done([root isKindOfClass:NSDictionary.class] ? root : nil); });
-    }];
+    });
     [context trackTask:task];
     [task resume];
 }

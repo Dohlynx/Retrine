@@ -93,11 +93,15 @@ NSArray<NSString *> *SGLyricsAIArrayIn(id content, NSUInteger count) {
 #pragma mark - the key and settings
 
 NSString *SGOpenAIKeyHost(NSString *base) {
-    return SGOpenAICompletionURL(base ?: kBase).host.lowercaseString;
+    NSURL *url = SGOpenAICompletionURL(base ?: kBase);
+    if (!url) return nil;
+    NSString *scheme = url.scheme.lowercaseString, *host = url.host.lowercaseString;
+    if ([host containsString:@":"] && ![host hasPrefix:@"["]) host = [NSString stringWithFormat:@"[%@]", host];
+    return [NSString stringWithFormat:@"%@://%@:%@", scheme, host, url.port ?: ([scheme isEqual:@"https"] ? @443 : @80)];
 }
 SGOpenAIKeyMigration SGOpenAIKeyMigrationDecision(NSString *base, BOOL legacyExists, BOOL hostKeyExists) {
     if (!legacyExists) return SGOpenAIKeyMigrationNone;
-    if (!SGOpenAIKeyHost(base)) return SGOpenAIKeyMigrationDeferred;
+    if (![SGOpenAIKeyHost(base) isEqual:SGOpenAIKeyHost(kBase)]) return SGOpenAIKeyMigrationDeferred;
     return hostKeyExists ? SGOpenAIKeyMigrationDeleteLegacy : SGOpenAIKeyMigrationCopy;
 }
 static NSString *setting(NSString *key, NSString *fallback) {
@@ -124,8 +128,7 @@ static NSString *readKey(NSString *account, OSStatus *status) {
     if (!key.length) { *status = errSecDecode; return nil; }
     return key;
 }
-// Availability only; requests still obtain the secret from Keychain. Host is the
-// credential's account, so a preset or imported base URL cannot reuse another key.
+// Availability only; requests still obtain the secret from the exact origin's account.
 static NSMutableDictionary<NSString *, NSNumber *> *sg_keyAvailable;
 static BOOL storeKey(NSString *key, NSString *host) {
     if (!host.length) return NO;
@@ -150,17 +153,47 @@ static BOOL storeKey(NSString *key, NSString *host) {
     if (status != errSecSuccess) SGLog(@"openai translation: the key could not be kept (%d)", (int)status);
     return status == errSecSuccess;
 }
-// Call before changing the stored base as well as before lookup: the old key belongs only to
-// the address that was stored when migration first ran. Retry Keychain failures without rebinding it.
-static BOOL migrateKey(NSString *base) {
-    OSStatus legacyStatus, hostStatus = errSecItemNotFound;
+// A bare hostname does not identify a custom service, even when it matches the active host.
+// Only carry the OpenAI hostname forward when the official origin is actually selected.
+static BOOL sg_hostsMigrated;
+static BOOL migrateHosts(void) {
+    @synchronized (kService) {
+        if (sg_hostsMigrated) return YES;
+        NSDictionary *query = @{(__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,
+            (__bridge id)kSecAttrService:kService, (__bridge id)kSecReturnAttributes:@YES,
+            (__bridge id)kSecMatchLimit:(__bridge id)kSecMatchLimitAll};
+        CFTypeRef result = NULL;
+        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+        NSArray *items = CFBridgingRelease(result);
+        if (status != errSecSuccess && status != errSecItemNotFound) return NO;
+        NSString *base = setting(SGKeyLyricsOpenAIBaseURL, kBase);
+        NSString *official = SGOpenAIKeyHost(kBase);
+        BOOL usingOfficial = [official isEqual:SGOpenAIKeyHost(base)];
+        for (NSDictionary *item in items) {
+            NSString *account = item[(__bridge id)kSecAttrAccount];
+            if (!account.length || [account containsString:@"/"] || [account isEqual:kLegacyAccount]) continue;
+            BOOL eligible = usingOfficial && [account isEqual:SGOpenAICompletionURL(kBase).host];
+            NSString *destination = eligible ? official : [@"unassigned/" stringByAppendingString:NSUUID.UUID.UUIDString];
+            status = SecItemUpdate((__bridge CFDictionaryRef)keyQuery(account),
+                (__bridge CFDictionaryRef)@{(__bridge id)kSecAttrAccount:destination});
+            if (eligible && status == errSecDuplicateItem) status = SecItemDelete((__bridge CFDictionaryRef)keyQuery(account));
+            if (status != errSecSuccess && status != errSecItemNotFound) return NO;
+        }
+        sg_hostsMigrated = YES;
+        return YES;
+    }
+}
+
+static BOOL migrateKey(void) {
+    OSStatus legacyStatus, hostStatus;
     NSString *legacy = readKey(kLegacyAccount, &legacyStatus);
+    if (legacyStatus != errSecItemNotFound && legacyStatus != errSecSuccess) return NO;
+    if (!migrateHosts()) return NO;
     if (legacyStatus == errSecItemNotFound) return YES;
-    if (legacyStatus != errSecSuccess) return NO;
-    NSString *host = SGOpenAIKeyHost(base);
-    if (host) readKey(host, &hostStatus);
+    NSString *host = SGOpenAIKeyHost(kBase);
+    readKey(host, &hostStatus);
     if (hostStatus != errSecSuccess && hostStatus != errSecItemNotFound) return NO;
-    switch (SGOpenAIKeyMigrationDecision(base, YES, hostStatus == errSecSuccess)) {
+    switch (SGOpenAIKeyMigrationDecision(kBase, YES, hostStatus == errSecSuccess)) {
         case SGOpenAIKeyMigrationDeferred: return NO;
         case SGOpenAIKeyMigrationCopy: if (!storeKey(legacy, host)) return NO; break;
         case SGOpenAIKeyMigrationDeleteLegacy: break;
@@ -169,11 +202,12 @@ static BOOL migrateKey(NSString *base) {
     OSStatus status = SecItemDelete((__bridge CFDictionaryRef)keyQuery(kLegacyAccount));
     return status == errSecSuccess || status == errSecItemNotFound;
 }
+
 static NSString *storedKey(NSString *base) {
     NSString *host = SGOpenAIKeyHost(base);
     if (!host) return nil;
     [sg_keyAvailable removeObjectForKey:host];
-    if (!migrateKey(base)) return nil;
+    if (!migrateKey()) return nil;
     OSStatus status;
     NSString *key = readKey(host, &status);
     if (status == errSecSuccess || status == errSecItemNotFound) {
@@ -191,6 +225,7 @@ BOOL SGOpenAIKeySet(void) {
 // Clear Keychain: every account under the service goes (the legacy key and each host-bound one), so no
 // server's key outlives it; answers kept for the launch go too.
 BOOL SGOpenAIForgetKeys(void) {
+    @synchronized (kService) { sg_hostsMigrated = NO; }
     SGLyricsCredentialChanged(SGLyricsAIOpenAI);
     [sg_keyAvailable removeAllObjects];
     [sg_done removeAllObjects];
@@ -293,7 +328,7 @@ static void askForBase(void) {
     __weak UIAlertController *weakAlert = alert;
     UIAlertAction *save = [UIAlertAction actionWithTitle:SGL(@"common.save", @"Save") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *base = [weakAlert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (!SGOpenAICompletionURL(base) || !migrateKey(setting(SGKeyLyricsOpenAIBaseURL, kBase))) return;
+        if (!SGOpenAICompletionURL(base) || !migrateKey()) return;
         [NSUserDefaults.standardUserDefaults setObject:base forKey:SGKeyLyricsOpenAIBaseURL];
         [sg_done removeAllObjects];
         SGLyricsTranslationServiceSettingsChanged();
@@ -330,7 +365,7 @@ static void askForKey(void) {
         NSString *key = cleanKey(text);
         OSStatus read;
         if (!key.length || [readKey(host, &read) isEqualToString:key]) return;   // the same key again changes nothing, so no job is cut off
-        if (migrateKey(base) && storeKey(key, host)) SGLyricsTranslationServiceSettingsChanged(); else SGLyricsAlertKeyNotSaved();
+        if (migrateKey() && storeKey(key, host)) SGLyricsTranslationServiceSettingsChanged(); else SGLyricsAlertKeyNotSaved();
     }, ^BOOL { return SGOpenAIKeySet(); }, ^{ if (storeKey(nil, host)) SGLyricsTranslationServiceSettingsChanged(); else SGLyricsAlertKeyNotRemoved(); });
 }
 SGModRow *SGOpenAIKeyRow(void) {
@@ -367,7 +402,7 @@ SGModRow *SGOpenAIPresetRow(void) {
             NSArray *presets = SGOpenAIPresets();
             if (index < 0 || (NSUInteger)index >= presets.count) return;
             NSDictionary *preset = presets[index];
-            if (!migrateKey(setting(SGKeyLyricsOpenAIBaseURL, kBase))) return;
+            if (!migrateKey()) return;
             [NSUserDefaults.standardUserDefaults setObject:preset[@"base"] forKey:SGKeyLyricsOpenAIBaseURL];
             [NSUserDefaults.standardUserDefaults setObject:preset[@"model"] forKey:SGKeyLyricsOpenAIModel];
             SGLyricsTranslationServiceSettingsChanged();

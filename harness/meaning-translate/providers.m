@@ -39,12 +39,15 @@ OSStatus ProseTestKey(CFDictionaryRef query, CFTypeRef *result) {
     NSDictionary *services = @{@"deepl": @"Vitrine.DeepL", @"gemini": @"Vitrine.Gemini",
                                @"claude": @"Vitrine.Claude", @"openai": @"Vitrine.OpenAI"};
     if (![service isEqual:services[provider]] ||
-        ([provider isEqual:@"openai"] && ![q[(__bridge id)kSecAttrAccount] isEqual:@"api.openai.com"])) return errSecItemNotFound;
+        ([provider isEqual:@"openai"] && ![q[(__bridge id)kSecAttrAccount] isEqual:@"https://api.openai.com:443"])) return errSecItemNotFound;
     if (result) *result = CFBridgingRetain([@"fixture-key" dataUsingEncoding:NSUTF8StringEncoding]);
     return errSecSuccess;
 }
 OSStatus ProseTestKeyAdd(CFDictionaryRef q, CFTypeRef *result) { HARNESS_FAIL(@"unexpected key write"); }
-OSStatus ProseTestKeyUpdate(CFDictionaryRef q, CFDictionaryRef a) { HARNESS_FAIL(@"unexpected key update"); }
+OSStatus ProseTestKeyUpdate(CFDictionaryRef q, CFDictionaryRef a) {
+    if (((__bridge NSDictionary *)a)[(__bridge id)kSecAttrAccount]) return errSecItemNotFound;
+    HARNESS_FAIL(@"unexpected key update");
+}
 OSStatus ProseTestKeyDelete(CFDictionaryRef q) { return errSecSuccess; }
 
 @implementation SGModRow

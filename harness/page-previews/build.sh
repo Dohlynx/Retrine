@@ -27,6 +27,7 @@ xcrun -sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator -fobjc-ar
     "$SRC/Redesigned/Album/AlbumPlaysText.m" \
     "$SRC/Redesigned/Album/AlbumPlaysPlace.m" "$SRC/Redesigned/Artist/ArtistSettings.m" \
     "$SRC/Shared/Player/SGLastTrack.m" "$SRC/Shared/AnimatedArtwork/MotionSources.m" \
+    "$SRC/Shared/LyricsSources/SGBoundedRequest.m" \
     "$SRC/Shared/AnimatedArtwork/SGMotionTicket.m" \
     "$SRC/Settings/SGPage.m" "$SRC/Settings/SGPageStyle.m" "$SRC/Settings/SGModPage.m" "$SRC/Settings/SGSettingsSearch.m" "$SRC/Settings/SGSettingsIndex.m" "$SRC/Settings/SGGlowSwitch.m" \
     "$SRC/Settings/SGSourcesPage.m" \

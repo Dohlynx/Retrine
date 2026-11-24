@@ -19,7 +19,7 @@ static id forced(NSString *key) {
     atomic_fetch_add_explicit(&sg_ticks, mach_absolute_time() - start, memory_order_relaxed);
     atomic_fetch_add_explicit(&sg_reads, 1, memory_order_relaxed);
     if (pthread_main_np()) atomic_fetch_add_explicit(&sg_mainReads, 1, memory_order_relaxed);
-    return value;
+    return [value isKindOfClass:NSNumber.class] || [value isKindOfClass:NSString.class] ? value : nil;
 }
 
 static BOOL boolFor(NSString *key, BOOL orig) {

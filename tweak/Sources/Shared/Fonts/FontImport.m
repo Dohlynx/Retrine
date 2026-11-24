@@ -4,6 +4,9 @@
 // Fonts.x registers the files again on each launch.
 #import <CoreText/CoreText.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <fcntl.h>
+#import <sys/stat.h>
+#import <unistd.h>
 #import "Core/SGCore.h"
 #import "Core/SGDataRoot.h"
 #import "Settings/SGModPage.h"
@@ -11,8 +14,24 @@
 #import "Shared/Fonts/FontLibrary.h"
 #import "Shared/Fonts/Fonts.h"
 
+extern BOOL SGImportSafeFilename(NSString *name);
+extern int SGOpenImportFile(int parent, const char *path, NSUInteger limit);
+extern NSData *SGReadImportFile(int fd, NSUInteger limit);
+static const NSUInteger maxFontFiles = 32, maxFontBytes = 64 * 1024 * 1024;
+
 static NSURL *fontFolder(void) {
     return [SGDataRoot(NSApplicationSupportDirectory) URLByAppendingPathComponent:@"Font" isDirectory:YES];
+}
+
+// Application Support is private; this worker is the only writer. Core Text's URL
+// registration and unregistration must use the same (stable) installed URL.
+static NSURL *storedFontURL(NSString *name) {
+    if (!SGImportSafeFilename(name)) return nil;
+    NSURL *url = [fontFolder() URLByAppendingPathComponent:name];
+    int fd = SGOpenImportFile(AT_FDCWD, url.fileSystemRepresentation, NSUIntegerMax);
+    if (fd < 0) return nil;
+    close(fd);
+    return url;
 }
 
 // The family name of every face in the file, "" for a face without one; empty when Core Text finds no font. A
@@ -37,9 +56,8 @@ NSString *SGFontSingleFamily(NSArray<NSString *> *names) {
 // SGKeyAppFontName. It becomes a list of one file and its family name, on first use after the update.
 static void migrate(void) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
-    NSString *file = [store stringForKey:SGKeyAppFontFile];
-    if (!file.length) return;
-    NSURL *url = [fontFolder() URLByAppendingPathComponent:file.lastPathComponent];
+    NSString *file = [store objectForKey:SGKeyAppFontFile];
+    NSURL *url = storedFontURL(file);
     if (!url) return;
     NSString *family = familiesIn(url).firstObject;
     if (family.length) {
@@ -54,8 +72,8 @@ static NSArray<NSURL *> *storedFiles(void) {
     migrate();
     NSMutableArray<NSURL *> *urls = [NSMutableArray array];
     for (NSString *file in [NSUserDefaults.standardUserDefaults arrayForKey:SGKeyAppFontFiles]) {
-        NSURL *url = [fontFolder() URLByAppendingPathComponent:file.lastPathComponent];
-        if ([NSFileManager.defaultManager fileExistsAtPath:url.path]) [urls addObject:url];
+        NSURL *url = storedFontURL(file);
+        if (url) [urls addObject:url];
     }
     return urls;
 }
@@ -174,7 +192,7 @@ static void removeImportedFiles(NSArray<NSURL *> *urls) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     for (NSURL *url in urls) {
         CTFontManagerUnregisterFontsForURL((__bridge CFURLRef)url, kCTFontManagerScopeProcess, NULL);
-        [NSFileManager.defaultManager removeItemAtURL:url error:nil];
+        unlink(url.fileSystemRepresentation);
     }
     for (NSString *key in @[SGKeyAppFontFiles, SGKeyAppFontName]) [store removeObjectForKey:key];
 }
@@ -215,33 +233,75 @@ static void tell(NSString *title, NSString *message) {
 // The files are checked and copied aside before the ones in use are touched, so files Core Text will not read,
 // of more than one family, or that fail to copy change nothing.
 static BOOL sg_importing;
+// Only this serial worker creates directories among the installed files. A UUID
+// directory is a previous staging area whose worker didn't reach its cleanup.
+static void reclaimStaging(NSURL *folder) {
+    NSFileManager *files = NSFileManager.defaultManager;
+    for (NSURL *entry in [files contentsOfDirectoryAtURL:folder includingPropertiesForKeys:nil options:0 error:nil]) {
+        if (![[[NSUUID alloc] initWithUUIDString:entry.lastPathComponent].UUIDString isEqual:entry.lastPathComponent]) continue;
+        struct stat st;
+        if (lstat(entry.fileSystemRepresentation, &st) == 0 && S_ISDIR(st.st_mode)) [files removeItemAtURL:entry error:nil];
+    }
+}
+
+// Inspect the whole selection before staging even the first file. Keep each grant
+// through its read; the descriptor and byte-budget checks below also cover growth.
+static BOOL preflight(NSArray<NSURL *> *picked, NSMutableArray<NSURL *> *scoped) {
+    if (!picked.count || picked.count > maxFontFiles) return NO;
+    NSUInteger remaining = maxFontBytes;
+    for (NSURL *url in picked) {
+        if (!url.isFileURL || !SGImportSafeFilename(url.lastPathComponent)) return NO;
+        if ([url startAccessingSecurityScopedResource]) [scoped addObject:url];
+        struct stat st;
+        // A provider may have no local file until its coordinated accessor runs.
+        // Veto a known link, but do not require an already-materialized inode here.
+        if (lstat(url.fileSystemRepresentation, &st) == 0 && S_ISLNK(st.st_mode)) return NO;
+        __block NSNumber *size = nil;
+        [[NSFileCoordinator new] coordinateReadingItemAtURL:url options:NSFileCoordinatorReadingImmediatelyAvailableMetadataOnly error:nil
+            byAccessor:^(NSURL *reading) {
+                NSDictionary *metadata = [reading promisedItemResourceValuesForKeys:@[NSURLFileResourceTypeKey, NSURLFileSizeKey] error:nil];
+                if ([metadata[NSURLFileResourceTypeKey] isEqual:NSURLFileResourceTypeRegular]) size = metadata[NSURLFileSizeKey];
+            }];
+        if (![size isKindOfClass:NSNumber.class] || !size.unsignedLongLongValue || size.unsignedLongLongValue > remaining) return NO;
+        remaining -= size.unsignedIntegerValue;
+    }
+    return YES;
+}
+
 static void import(NSArray<NSURL *> *picked, dispatch_block_t done) {
     NSArray *selection = SGFontSelectionSnapshot();
     NSUInteger generation = ++sg_importGeneration;
     sg_registrationPending = YES;
     dispatch_async(registrationQueue(), ^{
-    NSMutableArray<NSURL *> *scoped = [NSMutableArray array];
     NSMutableArray<NSString *> *families = [NSMutableArray array];
-    BOOL fonts = YES;
-    for (NSURL *url in picked) {
-        if ([url startAccessingSecurityScopedResource]) [scoped addObject:url];
-        NSArray<NSString *> *names = familiesIn(url);
-        fonts = fonts && names.count;
-        [families addObjectsFromArray:names];
-    }
-    NSString *family = fonts ? SGFontSingleFamily(families) : nil;
     NSFileManager *files = NSFileManager.defaultManager;
-    NSURL *incoming = [fontFolder() URLByAppendingPathComponent:@"Incoming" isDirectory:YES];
+    NSURL *folder = fontFolder();
+    if (folder) reclaimStaging(folder);
+    NSURL *incoming = [folder URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
     NSMutableArray<NSString *> *copied = [NSMutableArray array];
-    if (family && incoming) {
-        [files removeItemAtURL:incoming error:nil];
+    NSMutableArray<NSURL *> *scoped = [NSMutableArray array];
+    BOOL staged = incoming && preflight(picked, scoped) &&
         [files createDirectoryAtURL:incoming withIntermediateDirectories:YES attributes:nil error:nil];
-        for (NSURL *url in picked) {
-            NSString *file = url.lastPathComponent;
-            if ([files copyItemAtURL:url toURL:[incoming URLByAppendingPathComponent:file] error:nil]) [copied addObject:file];
-        }
+    BOOL fonts = staged;
+    NSUInteger remaining = maxFontBytes;
+    for (NSURL *url in picked) @autoreleasepool {
+        if (!fonts) break;
+        NSString *name = url.lastPathComponent;
+        __block NSData *data = nil;
+        [[NSFileCoordinator new] coordinateReadingItemAtURL:url options:NSFileCoordinatorReadingWithoutChanges error:nil
+            byAccessor:^(NSURL *reading) {
+                data = SGReadImportFile(SGOpenImportFile(AT_FDCWD, reading.fileSystemRepresentation, remaining), remaining);
+            }];
+        NSURL *copy = [incoming URLByAppendingPathComponent:name];
+        if (!data.length || ![data writeToURL:copy options:NSDataWritingWithoutOverwriting error:nil]) { fonts = NO; break; }
+        remaining -= data.length;
+        NSArray *names = familiesIn(copy);
+        if (!names.count) { fonts = NO; break; }
+        [families addObjectsFromArray:names];
+        [copied addObject:name];
     }
     for (NSURL *url in scoped) [url stopAccessingSecurityScopedResource];
+    NSString *family = fonts ? SGFontSingleFamily(families) : nil;
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     BOOL replacing = family && copied.count == picked.count;
     NSString *registered = nil;
@@ -249,15 +309,20 @@ static void import(NSArray<NSURL *> *picked, dispatch_block_t done) {
         removeImportedFiles(storedFiles()); // replacing the files is not a user font selection
         for (NSString *file in copied) {
             NSURL *target = [fontFolder() URLByAppendingPathComponent:file];
-            [files removeItemAtURL:target error:nil];
-            [files moveItemAtURL:[incoming URLByAppendingPathComponent:file] toURL:target error:nil];
+            unlink(target.fileSystemRepresentation);
+            if (![files moveItemAtURL:[incoming URLByAppendingPathComponent:file] toURL:target error:nil]) {
+                family = nil;
+                break;
+            }
         }
         [store setObject:copied forKey:SGKeyAppFontFiles];
-        [store setObject:family forKey:SGKeyAppFontName];
-        registered = registerCustom();
+        if (family) {
+            [store setObject:family forKey:SGKeyAppFontName];
+            registered = registerCustom();
+        }
         if (!registered) removeImportedFiles(storedFiles());
     }
-    [files removeItemAtURL:incoming error:nil];
+    if (staged) [files removeItemAtURL:incoming error:nil];
     NSDictionary *identity = snapshotImport();
     NSDictionary *installed = registered ? identity : nil;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -308,7 +373,7 @@ static void pickFont(void (^done)(void)) {
     if (sg_importing) return; // the staging directory belongs to the in-flight import
     static SGFontPicker *delegate;
     if (!delegate) delegate = [SGFontPicker new];
-    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeFont] asCopy:YES];
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeFont] asCopy:NO];
     delegate.done = done;
     picker.delegate = delegate;
     picker.allowsMultipleSelection = YES;

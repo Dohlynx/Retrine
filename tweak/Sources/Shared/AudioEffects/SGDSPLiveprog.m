@@ -9,6 +9,8 @@
 
 // A script's memory, all of it given up front: past it, reads and writes land in EEL2's spare slot.
 enum { kMemory = 1 << 20 };
+enum { kRenderSteps = 100000, kStartupSteps = 1000000 };
+extern int NSEEL_code_execute_budget(NSEEL_CODEHANDLE code, unsigned budget);
 
 typedef enum { SectionInit, SectionSlider, SectionBlock, SectionSample, SectionCount } Section;
 
@@ -17,6 +19,7 @@ struct SGDSPLiveprog {
     NSEEL_CODEHANDLE code[SectionCount];
     EEL_F *spl0, *spl1, *samplesblock;
     void *gram;
+    bool tripped;
 };
 
 // EEL2 locks around its memory being grown and its tables being changed, which only a compile does here. On
@@ -132,7 +135,8 @@ static bool compile(SGDSPLiveprog *liveprog, const char *script, char *error, si
     return true;
 }
 
-SGDSPLiveprog *SGDSPLiveprogCreate(const char *script, double rate, char *error, size_t errorSize) {
+SGDSPLiveprog *SGDSPLiveprogCreate(const char *script, double rate, bool *slow, char *error, size_t errorSize) {
+    *slow = false;
     static pthread_once_t once = PTHREAD_ONCE_INIT;
     pthread_once(&once, start);
     SGDSPLiveprog *liveprog = calloc(1, sizeof *liveprog);
@@ -165,9 +169,18 @@ SGDSPLiveprog *SGDSPLiveprogCreate(const char *script, double rate, char *error,
         }
         at += (unsigned int)valid;
     }
-    if (liveprog->code[SectionInit]) NSEEL_code_execute(liveprog->code[SectionInit]);
-    if (liveprog->code[SectionSlider]) NSEEL_code_execute(liveprog->code[SectionSlider]);
+    if (!NSEEL_code_execute_budget(liveprog->code[SectionInit], kStartupSteps) ||
+        !NSEEL_code_execute_budget(liveprog->code[SectionSlider], kStartupSteps)) {
+        SGDSPLiveprogFree(liveprog);
+        *slow = true;
+        copyError(error, errorSize, "This script took too long to start.");
+        return NULL;
+    }
     return liveprog;
+}
+
+bool SGDSPLiveprogTripped(const SGDSPLiveprog *liveprog) {
+    return liveprog && liveprog->tripped;
 }
 
 void SGDSPLiveprogRun(void *state, float *left, float *right, uint32_t frames) {
@@ -175,17 +188,21 @@ void SGDSPLiveprogRun(void *state, float *left, float *right, uint32_t frames) {
     atomic_store_explicit(&sg_renderThread, pthread_self(), memory_order_relaxed);
     if (liveprog->code[SectionBlock]) {
         *liveprog->samplesblock = frames;
-        NSEEL_code_execute(liveprog->code[SectionBlock]);
+        if (!NSEEL_code_execute_budget(liveprog->code[SectionBlock], kRenderSteps)) goto trip;
     }
     NSEEL_CODEHANDLE sample = liveprog->code[SectionSample];
     EEL_F *spl0 = liveprog->spl0, *spl1 = liveprog->spl1;
     for (uint32_t i = 0; i < frames; i++) {
         *spl0 = left[i];
         *spl1 = right[i];
-        NSEEL_code_execute(sample);
+        if (!NSEEL_code_execute_budget(sample, kRenderSteps)) goto trip;
         left[i] = (float)*spl0;
         right[i] = (float)*spl1;
     }
+    goto done;
+trip:
+    liveprog->tripped = true;
+done:
     atomic_store_explicit(&sg_renderThread, (pthread_t)NULL, memory_order_relaxed);
 }
 

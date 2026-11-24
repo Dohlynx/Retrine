@@ -99,7 +99,7 @@ static NSURLRequest *requestFor(NSString *method, NSDictionary<NSString *, NSStr
 
 static void call(SGLyricsRequestContext *context, NSString *method, NSDictionary<NSString *, NSString *> *query, void (^done)(NSDictionary *message)) {
     if (context.cancelled) return;
-    NSURLSessionDataTask *task = [NSURLSession.sharedSession dataTaskWithRequest:requestFor(method, query) completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSURLSessionDataTask *task = SGBoundedRequestTask(requestFor(method, query), 0, ^(NSData *data, NSURLResponse *response, NSError *error) {
         SGLyricsNoteReply(response, error);
         [context noteResponse:response error:error];
         id message = dig(jsonOf(data), @"message");
@@ -109,7 +109,7 @@ static void call(SGLyricsRequestContext *context, NSString *method, NSDictionary
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!context.cancelled) done([message isKindOfClass:NSDictionary.class] ? message : nil);
         });
-    }];
+    });
     [context trackTask:task];
     [task resume];
 }

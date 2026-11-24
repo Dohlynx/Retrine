@@ -5,8 +5,9 @@
 NSString *SGRedactDiagnostics(NSString *text, NSDictionary<NSString *, id> *preferences) {
     NSMutableSet<NSString *> *terms = [SGPrivatePreferenceKeys() mutableCopy];
     [terms addObject:SGKeySponsorBlockServer];
+    [terms addObject:SGKeyLyricsOpenAIBaseURL];
     [preferences enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
-        if ((SGPrivatePreferenceKey(key) || [key isEqual:SGKeySponsorBlockServer]) &&
+        if ((SGPrivatePreferenceKey(key) || [key isEqual:SGKeySponsorBlockServer] || [key isEqual:SGKeyLyricsOpenAIBaseURL]) &&
             [value isKindOfClass:NSString.class] && [value length]) [terms addObject:value];
     }];
     // Old driver logs can contain a credential that has since been rotated and is no longer stored.

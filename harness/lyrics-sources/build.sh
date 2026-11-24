@@ -9,7 +9,7 @@ BUILD=$(mktemp -d "/tmp/retrine-lyrics-sources.XXXXXX")
 trap 'rm -rf "$BUILD"' EXIT HUP INT TERM
 if [ "${1:-}" != "--transport-only" ]; then
 xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi -isysroot "$(xcrun --sdk macosx --show-sdk-path)" -iframework "$(xcrun --sdk macosx --show-sdk-path)/System/iOSSupport/System/Library/Frameworks" -fobjc-arc -g -Wall -I"$SRC" -DSG_VERSION=\"0.0.0\" \
-    "$LS/SongMatch.m" "$LS/LyricsRequest.m" "$LS/LyricsHosts.m" "$LS/PetitLyrics.m" "$SRC/Core/SGPrefs.m" \
+    "$LS/SongMatch.m" "$LS/LyricsRequest.m" "$LS/SGBoundedRequest.m" "$LS/LyricsHosts.m" "$LS/PetitLyrics.m" "$SRC/Core/SGPrefs.m" \
     "$HERE/check.m" "$LS/KuGou.m" "$LS/QQMusic.m" "$LS/NetEase.m" "$LS/Musixmatch.m" "$LS/LrcLib.m" "$LS/Lyricsfile.m" "$LS/Bugs.m" "$LS/Genie.m" "$LS/LyricsPlus.m" "$SRC/Shared/Lyrics/Romanise.m" "$SRC/Shared/Lyrics/LyricsLanguage.m" "$SRC/Shared/Lyrics/KaraokeTiming.m" "$SRC/Shared/AdBlock/Protobuf.m" \
     -framework UIKit -framework Foundation -framework NaturalLanguage -framework Security -lz -o "$BUILD/check"
 "$BUILD/check" "$@"

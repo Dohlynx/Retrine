@@ -153,14 +153,14 @@ static NSMutableURLRequest *requestFor(NSURL *url, NSDictionary<NSString *, NSSt
 
 // Raw transport completion stays off main. The public helpers decode/transform here and only
 // deliver the finished value to main, where provider caches and the source walk still live.
-static void sendForReply(SGLyricsRequestContext *context, NSURLRequest *request, void (^done)(NSData *body, NSHTTPURLResponse *response)) {
+static void sendForReply(SGLyricsRequestContext *context, NSURLRequest *request, NSTimeInterval resourceTimeout, void (^done)(NSData *body, NSHTTPURLResponse *response)) {
     if (!request) {
         [context noteFailure:YES];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ done(nil, nil); });
         return;
     }
     NSURL *url = request.URL;
-    NSURLSessionDataTask *task = [NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSURLSessionDataTask *task = SGBoundedRequestTask(request, resourceTimeout, ^(NSData *data, NSURLResponse *response, NSError *error) {
         NSHTTPURLResponse *reply = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
         SGLyricsNoteReply(response, error);
         [context noteResponse:response error:error];
@@ -168,13 +168,13 @@ static void sendForReply(SGLyricsRequestContext *context, NSURLRequest *request,
         if (!error && reply.statusCode >= 200 && reply.statusCode < 300 && !data.length)
             [context noteFailure:YES];
         done(error ? nil : data, reply);
-    }];
+    });
     [context trackTask:task];
     [task resume];
 }
 
 static void send(SGLyricsRequestContext *context, NSURLRequest *request, void (^done)(NSData *body)) {
-    sendForReply(context, request, ^(NSData *body, NSHTTPURLResponse *reply) {
+    sendForReply(context, request, 0, ^(NSData *body, NSHTTPURLResponse *reply) {
         done(reply.statusCode >= 400 ? nil : body);
     });
 }
@@ -209,7 +209,7 @@ void SGLyricsGetJSONReply(NSURL *url, NSDictionary<NSString *, NSString *> *head
     SGLyricsGetJSONReplyIn(nil, url, headers, done);
 }
 void SGLyricsGetJSONReplyIn(SGLyricsRequestContext *context, NSURL *url, NSDictionary *headers, void (^done)(id, NSHTTPURLResponse *)) {
-    sendForReply(context, requestFor(url, headers), ^(NSData *body, NSHTTPURLResponse *reply) {
+    sendForReply(context, requestFor(url, headers), 0, ^(NSData *body, NSHTTPURLResponse *reply) {
         id root = jsonIn(body);
         if (reply.statusCode >= 200 && reply.statusCode < 300 && !root) [context noteFailure:YES];
         dispatch_async(dispatch_get_main_queue(), ^{ done(root, reply); });
@@ -261,43 +261,6 @@ void SGLyricsPostJSONTransformIn(SGLyricsRequestContext *context, NSURL *url, NS
     });
 }
 
-// A private session keeps a login cookie out of the shared cookie jar and disk cache. Receiving
-// chunks lets us stop a broken endpoint before its reply grows into an unbounded allocation.
-@interface SGLyricsSourceTransfer : NSObject <NSURLSessionDataDelegate>
-@property (nonatomic, strong) NSMutableData *data;
-@property (nonatomic, copy) void (^done)(NSData *, NSInteger);
-@property (nonatomic) NSInteger status;
-@property (nonatomic, strong) SGLyricsRequestContext *context;
-@end
-@implementation SGLyricsSourceTransfer
-- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task
- didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))completion {
-    self.status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
-    SGLyricsNoteReply(response, nil);
-    [self.context noteResponse:response error:nil];
-    completion(response.expectedContentLength > 2 * 1024 * 1024 ? NSURLSessionResponseCancel : NSURLSessionResponseAllow);
-}
-- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
-    if (data.length > 2 * 1024 * 1024 - self.data.length) { [task cancel]; return; }
-    [self.data appendData:data];
-}
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task
- willPerformHTTPRedirection:(NSHTTPURLResponse *)response newRequest:(NSURLRequest *)request
- completionHandler:(void (^)(NSURLRequest *))completion { completion(nil); }
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-    if (error) SGLyricsNoteReply(nil, error);
-    [self.context noteResponse:nil error:error];
-    if (error || self.status >= 400) SGLog(@"lyrics: source request ended with HTTP %ld, error %@ (%ld)", (long)self.status, error.domain, (long)error.code);
-    NSData *data = error ? nil : [self.data copy];
-    if (!error && self.status >= 200 && self.status < 300 && !data.length) [self.context noteFailure:YES];
-    void (^done)(NSData *, NSInteger) = self.done;
-    self.done = nil;
-    NSInteger status = self.status;
-    if (done) dispatch_async(dispatch_get_main_queue(), ^{ done(data, status); });
-    [session finishTasksAndInvalidate];
-}
-@end
-
 void SGLyricsSourceRequest(NSURL *url, NSDictionary<NSString *, NSString *> *headers, NSData *body,
                            void (^done)(NSData *, NSInteger)) {
     SGLyricsSourceRequestIn(nil, url, headers, body, done);
@@ -312,19 +275,9 @@ void SGLyricsSourceRequestIn(SGLyricsRequestContext *context, NSURL *url, NSDict
     }
     request.HTTPShouldHandleCookies = NO;
     if (body) { request.HTTPMethod = @"POST"; request.HTTPBody = body; }
-    NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
-    config.HTTPCookieStorage = nil;
-    config.URLCredentialStorage = nil;
-    config.URLCache = nil;
-    config.timeoutIntervalForResource = kTimeout;
-    SGLyricsSourceTransfer *transfer = [SGLyricsSourceTransfer new];
-    transfer.data = [NSMutableData data];
-    transfer.done = done;
-    transfer.context = context;
-    NSURLSession *session = [NSURLSession sessionWithConfiguration:config delegate:transfer delegateQueue:nil];
-    NSURLSessionDataTask *task = [session dataTaskWithRequest:request];
-    [context trackTask:task];
-    [task resume];
+    sendForReply(context, request, kTimeout, ^(NSData *data, NSHTTPURLResponse *reply) {
+        dispatch_async(dispatch_get_main_queue(), ^{ done(data, reply.statusCode); });
+    });
 }
 
 // A pause this long between two lines gets a ♪, so Spotify's page does not hold the last one.

@@ -26,6 +26,38 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>
+
+typedef __typeof__(*((compileContext *)0)->ram_state) nseel_ram_state;
+
+// Bulk functions receive ram_state->blocks; the running call's budget sits in the same state.
+unsigned **nseel_ram_budget(EEL_F **blocks)
+{
+  return &((nseel_ram_state *)((char *)blocks - offsetof(nseel_ram_state, blocks)))->vm_budget;
+}
+
+int *nseel_ram_refused(EEL_F **blocks)
+{
+  return &((nseel_ram_state *)((char *)blocks - offsetof(nseel_ram_state, blocks)))->vm_refused;
+}
+
+// One step per started group of 16 elements, like a loop iteration's worth of work. Past the budget the
+// operation stops and the call is marked refused, so the VM ends it as exhausted even without another loop.
+static int nseel_ram_charge(EEL_F **blocks, int len)
+{
+  unsigned *budget = *nseel_ram_budget(blocks);
+  int *refused = nseel_ram_refused(blocks);
+  unsigned cost = ((unsigned)len + 15) / 16;
+  if (!budget) return 1;
+  if (*refused || *budget < cost)
+  {
+    *budget = 0;
+    *refused = 1;
+    return 0;
+  }
+  *budget -= cost;
+  return 1;
+}
 
 
 #ifdef _WIN32
@@ -212,6 +244,7 @@ EEL_F NSEEL_CGEN_CALL __NSEEL_RAM_MemInsertShuffle(EEL_F **blocks,EEL_F *buf, EE
       srcptr = __NSEEL_RAMAlloc(blocks,sbidx * NSEEL_RAM_ITEMSPERBLOCK);
       if (srcptr==&nseel_ramalloc_onfail) break;
     }
+    if (!nseel_ram_charge(blocks, copy_len)) break;
 
     len-=copy_len;
     srcptr += src_offs;
@@ -252,6 +285,7 @@ EEL_F NSEEL_CGEN_CALL __NSEEL_RAM_MemSumProducts(EEL_F **blocks,EEL_F *dest, EEL
 
       srcptr = blocks[sbidx];
 
+      if (!nseel_ram_charge(blocks, copy_len)) break;
       if (WDL_likely(srcptr))
       {
         int i;
@@ -288,6 +322,7 @@ EEL_F NSEEL_CGEN_CALL __NSEEL_RAM_MemSumProducts(EEL_F **blocks,EEL_F *dest, EEL
       if (sbidx >= NSEEL_RAM_BLOCKS || dbidx >= NSEEL_RAM_BLOCKS) break;
       srcptr = blocks[sbidx];
       destptr = blocks[dbidx];
+      if (!nseel_ram_charge(blocks, copy_len)) break;
       if (WDL_likely(srcptr && destptr))
       {
         int i;
@@ -351,6 +386,7 @@ EEL_F * NSEEL_CGEN_CALL __NSEEL_RAM_MemCpy(EEL_F **blocks,EEL_F *dest, EEL_F *sr
       srcptr = __NSEEL_RAMAlloc(blocks,src_offs - copy_len);
       destptr = __NSEEL_RAMAlloc(blocks,dest_offs - copy_len);
       if (srcptr==&nseel_ramalloc_onfail || destptr==&nseel_ramalloc_onfail) break;
+      if (!nseel_ram_charge(blocks, copy_len)) break;
 
       if (want_mmove) memmove(destptr,srcptr,sizeof(EEL_F)*copy_len);
       else memcpy(destptr,srcptr,sizeof(EEL_F)*copy_len);
@@ -380,6 +416,7 @@ EEL_F * NSEEL_CGEN_CALL __NSEEL_RAM_MemCpy(EEL_F **blocks,EEL_F *dest, EEL_F *sr
     srcptr = __NSEEL_RAMAlloc(blocks,src_offs);
     destptr = __NSEEL_RAMAlloc(blocks,dest_offs);
     if (srcptr==&nseel_ramalloc_onfail || destptr==&nseel_ramalloc_onfail) break;
+    if (!nseel_ram_charge(blocks, copy_len)) break;
 
     if (want_mmove) memmove(destptr,srcptr,sizeof(EEL_F)*copy_len);
     else memcpy(destptr,srcptr,sizeof(EEL_F)*copy_len);
@@ -405,7 +442,6 @@ EEL_F * NSEEL_CGEN_CALL __NSEEL_RAM_MemSet(EEL_F **blocks,EEL_F *dest, EEL_F *v,
   if (offs+len > NSEEL_RAM_BLOCKS*NSEEL_RAM_ITEMSPERBLOCK) len = NSEEL_RAM_BLOCKS*NSEEL_RAM_ITEMSPERBLOCK - offs;
 
   if (len < 1) return dest;
-  
 
   t=*v; // set value
 
@@ -418,6 +454,7 @@ EEL_F * NSEEL_CGEN_CALL __NSEEL_RAM_MemSet(EEL_F **blocks,EEL_F *dest, EEL_F *v,
 
     lcnt=NSEEL_RAM_ITEMSPERBLOCK-(offs&(NSEEL_RAM_ITEMSPERBLOCK-1));
     if (lcnt > len) lcnt=len;
+    if (!nseel_ram_charge(blocks, lcnt)) break;
 
     len -= lcnt;
     offs += lcnt;
@@ -436,6 +473,7 @@ static inline int __getset_values(EEL_F **blocks, int isset, int len, EEL_F **pa
   int offs, lout=0;
   unsigned int pageidx, sub_offs;
   if (--len < 1) return 0;
+  if (!nseel_ram_charge(blocks, len)) return 0;
   offs = (int)(parms++[0][0] + 0.0001);
 
   if (offs<=0) 

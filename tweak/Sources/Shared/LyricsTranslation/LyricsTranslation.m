@@ -242,7 +242,7 @@ static void sendToGemini(NSURLRequest *request, NSURLRequest *plain, NSUInteger 
         finished(nil, 0, [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:nil]);
         return;
     }
-    [[NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    [SGBoundedRequestTask(request, 0, ^(NSData *data, NSURLResponse *response, NSError *error) {
         NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
         NSString *reply = status == 400 && data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
         if (plain && [reply localizedCaseInsensitiveContainsString:@"thinking"]) {
@@ -259,7 +259,7 @@ static void sendToGemini(NSURLRequest *request, NSURLRequest *plain, NSUInteger 
             return;
         }
         finished(data, status, error);
-    }] resume];
+    }) resume];
 }
 
 // Clear Keychain: the service's own items go, the account left out so every one in it does, and with them
