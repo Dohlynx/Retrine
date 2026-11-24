@@ -17,6 +17,11 @@ static void artTimer(dispatch_source_t source, dispatch_time_t start, uint64_t r
 }
 #define dispatch_time artTime
 #define dispatch_source_set_timer artTimer
+extern NSUInteger harnessArtFires;
+static void artHandler(dispatch_source_t source, dispatch_block_t block) {
+    dispatch_source_set_event_handler(source, ^{ harnessArtFires++; block(); });
+}
+#define dispatch_source_set_event_handler artHandler
 #import "art-dispatch.h"
 #import "Core/SGFileHash.h"
 NSUInteger harnessArtworkHashes;

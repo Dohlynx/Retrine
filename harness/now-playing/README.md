@@ -64,5 +64,15 @@ demand before the latest prefetch. A held filesystem cleanup interleaves an alre
 worker with a new track's cleanup and video request; the delivered URL must remain readable
 after both cleanups finish.
 
+With a missing sheet the harness counts the row and artwork timer fires, admitted fixture requests
+and MediaPlayer setters separately. It releases a lookup on a header notification, holds it across
+pause/resume with no retries left, and publishes lyrics on completion. The real keeper's no-header
+and 401/renewed-header paths run in `harness/lyrics-sources/state-build.sh`.
+
+The activity clock drives the production timer handler with virtual time: a seek near a lyric
+boundary, a quiet panel's refresh, an empty player, pause, a closed background card, a refused
+start, renewal and expiry. Player reports, intents and PiP return run between deadlines.
+`build-resend.sh` checks deferred background resend cancellation and the encoded payload budget.
+
 Device ActivityKit delivery,
 actual video decoding/encoding, and lock-screen presentation still need a device check.

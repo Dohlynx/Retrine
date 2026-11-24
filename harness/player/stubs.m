@@ -411,6 +411,7 @@ NSString *SGSingStatusText(void) { return @"Unavailable"; }
 NSString *SGSingStatusDetail(void) { return nil; }
 NSString *SGSingMissing(void) { return @"the harness"; }
 BOOL SGSingOn(void) { return NO; }
+double SGSingHeldLead(void) { return 0; }
 void SGSetSingOn(BOOL on) {}
 float SGSingLevel(void) { return 0; }
 void SGSetSingLevel(float level) {}

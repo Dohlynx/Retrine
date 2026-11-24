@@ -15,13 +15,13 @@ struct CountingEncoder {
     }
 }
 let log = Logger(), maxStateBytes = 3800
-func budget(_ state: inout State) {
+func budget(_ state: inout State) -> Bool {
     // PRODUCTION BUDGET
+    return true
 }
 func check(_ state: inout State, _ expected: (Int) -> Bool) {
     encodes = 0
-    budget(&state)
-    guard expected(encodes), let data = try? JSONEncoder().encode(state), data.count <= maxStateBytes else {
+    guard budget(&state), expected(encodes), let data = try? JSONEncoder().encode(state), data.count <= maxStateBytes else {
         fputs("FAIL activity budget: \(encodes) encodings\n", stderr)
         exit(1)
     }

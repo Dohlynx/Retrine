@@ -297,6 +297,10 @@ static void reportOnly(void) {
         if ([observer respondsToSelector:@selector(playerStateDidReport:)]) [observer playerStateDidReport:state];
     }
 }
+void harnessReport(NSString *uri, NSString *title) {
+    state = harnessState(uri, title);
+    reportOnly();
+}
 // Other lifecycle cases explicitly force a change (including simulated lyric seeks).
 static void report(void) {
     reportOnly();
@@ -420,6 +424,49 @@ void HarnessArtDispatch(dispatch_queue_t queue, dispatch_block_t block) {
 extern int64_t harnessRowDelay;
 extern BOOL harnessPlaying;
 extern double harnessRate;
+NSUInteger harnessRowFires, harnessArtFires;
+static void failedLookup(void) {
+    extern BOOL harnessLookupFailed;
+    extern void (^harnessLyricsRequested)(NSString *);
+    extern NSNotificationName const SGKaraokeLookupReadyNotification;
+    // Model the keeper's admitted network starts separately from its callers.
+    __block BOOL eligible = NO;
+    __block NSUInteger starts = 0;
+    harnessLyricsRequested = ^(NSString *trackID) {
+        if (eligible && [trackID isEqual:@"lookup"]) { starts++; eligible = NO; }
+    };
+    harnessPlaying = YES;
+    harnessLookupFailed = YES;
+    track(@"lookup", SGLockArtworkLyrics, nil, nil);
+    MPNowPlayingInfoCenter.defaultCenter.nowPlayingInfo = @{MPMediaItemPropertyTitle:@"Song",
+        MPMediaItemPropertyArtist:@"Artist", MPNowPlayingInfoPropertyElapsedPlaybackTime:@0, MPNowPlayingInfoPropertyPlaybackRate:@1};
+    runFor(.03); // drain metadata notification
+    NSUInteger row = harnessRowFires, art = harnessArtFires, sets = harnessSets();
+    runFor(.65); // over two old 250 ms periods
+    check(harnessRowFires == row && harnessArtFires == art, @"failed lookup: neither reader fires again");
+    check(starts == 0 && harnessSets() == sets, @"failed lookup: no network starts or metadata setters");
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    eligible = YES;
+    [center postNotificationName:SGKaraokeLookupReadyNotification object:@"lookup"];
+    check(starts == 1, @"headers arriving wake a reader and admit one lookup");
+    [center postNotificationName:SGKaraokeLinesKeptNotification object:@"lookup"]; // still no sheet; budget spent
+    harnessPlaying = NO; reportOnly();
+    harnessPlaying = YES; reportOnly();
+    sets = harnessSets();
+    runFor(.65);
+    check(harnessRowFires == row && harnessArtFires == art && starts == 1 && harnessSets() == sets,
+          @"pause/resume with exhausted retries does not restart a display clock, request or setter");
+    eligible = YES;
+    [center postNotificationName:SGKaraokeLookupReadyNotification object:@"lookup"];
+    harnessLookupFailed = NO;
+    harnessLines(@[lineOf(@"Recovered", 0, 20000)]);
+    [center postNotificationName:SGKaraokeLinesKeptNotification object:@"lookup"];
+    check(starts == 2 && artwork() && (!getenv("LSL") || [harnessSystem()[MPMediaItemPropertyArtist] isEqual:@"Recovered"]),
+          @"renewal and lookup completion publish the current line and artwork without waiting for a timer");
+    harnessLyricsRequested = nil;
+    harnessPlaying = NO;
+    choose(SGLockArtworkOff);
+}
 static void playerDeadlines(void) {
     harnessPlaying = YES;
     // Artwork also wakes at the current line's sung end and 4 s before the next.
@@ -1138,4 +1185,5 @@ void artworkChecks(void) {
     choose(SGLockArtworkOff);
     interleavedMode();
     playerDeadlines();
+    failedLookup();
 }

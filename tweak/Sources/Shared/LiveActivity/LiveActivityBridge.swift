@@ -202,7 +202,7 @@ public final class SGLiveActivityBridge: NSObject {
                                   timerEnd: Date?, timerEndOfTrack: Bool, timerEndOfAlbum: Bool,
                                   tint: String?, trackStart: Date?, trackEnd: Date?, pausedAt: NSNumber?, translation: String?,
                                   cover: Data?, textSize: Int, alignment: Int, noLyrics: Bool, withoutLyrics: Int,
-                                  colors: Int, accent: String?, progressBar: Bool) {
+                                  colors: Int, accent: String?, progressBar: Bool) -> Bool {
         let tracks = titles.indices.map {
             SGLyricsAttributes.Track(title: titles[$0], artist: artists[$0], uri: uris[$0])
         }
@@ -227,7 +227,7 @@ public final class SGLiveActivityBridge: NSObject {
                       !texts[index].isEmpty else {
                     if !state.tracks.isEmpty { state.tracks.removeLast(); continue }
                     log.error("[spotifyglass] live activity: state exceeds the payload budget without display text")
-                    return
+                    return false
                 }
                 // Character boundaries preserve composed glyphs. Even one enormous grapheme shrinks to empty.
                 let shortened = String(texts[index].prefix(texts[index].count / 2))
@@ -245,16 +245,16 @@ public final class SGLiveActivityBridge: NSObject {
             }
         } catch {
             log.error("[spotifyglass] live activity: state cannot be encoded: \(String(describing: error), privacy: .public)")
-            return
+            return false
         }
         let content = ActivityContent(state: state, staleDate: Date(timeIntervalSinceNow: staleAfter))
         if let id = showing.first {
             queue(.update(id, content, background: inBackground))
-            return
+            return true
         }
         guard canStart else {
             log.notice("[spotifyglass] live activity: activities are off for this app")
-            return
+            return false
         }
         do {
             let id: String
@@ -265,8 +265,10 @@ public final class SGLiveActivityBridge: NSObject {
             }
             UserDefaults.standard.set(["id": id, "at": Date()], forKey: startedKey)
             log.notice("[spotifyglass] live activity: started \(id, privacy: .public)")
+            return true
         } catch {
             log.error("[spotifyglass] live activity: request failed: \(String(describing: error), privacy: .public)")
+            return false
         }
     }
 

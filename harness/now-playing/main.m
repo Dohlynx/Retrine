@@ -44,7 +44,9 @@ __attribute__((constructor)) static void underneath(void) {
 void SGPrefsChanged(void) {}
 void SGMigrateKey(NSString *from, NSString *to) {}
 
+BOOL harnessActivityOn;
 BOOL SGFlag(NSString *key, BOOL fallback) {
+    if ([key isEqual:SGKeyLiveActivity]) return harnessActivityOn;
     if ([key isEqual:SGKeyLockScreenTranslation] || [key isEqual:SGKeyLiveActivityTranslation])
         return [NSUserDefaults.standardUserDefaults boolForKey:key];
     return [key isEqual:SGKeyLockScreenLyrics] ? getenv("LSL") != NULL : fallback;
@@ -65,16 +67,20 @@ BOOL SGEnabled(NSString *key) { return SGFlag(key, YES); }
 
 BOOL harnessPlaying;
 double harnessRate = 1;
+double harnessDuration;
 @implementation SPTPlayerState {
 @public
     SPTPlayerTrack *_track;
 }
 - (SPTPlayerTrack *)track { return _track; }
 - (BOOL)isPaused { return !harnessPlaying; }
+- (BOOL)isPlaying { return harnessPlaying; }
+- (SPTPlayerOptions *)options { return nil; }
 - (double)position { return SGKaraokePositionMs() / 1000.; }
 - (double)positionAsOfTimestamp { return self.position; }
 - (NSArray *)future { return nil; }
 - (double)playbackSpeed { return harnessRate; }
+- (double)duration { return harnessDuration; }
 @end
 
 static NSUInteger skipRequests;
@@ -110,13 +116,16 @@ NSString *SGKaraokePlayingTrack(void) { return sg_player.state.track.URI; }
 NSArray<SGKaraokeLine *> *SGKaraokeLinesForTrack(NSString *trackID) { return sg_lines; }
 void (^harnessLyricsRequested)(NSString *);
 void SGSpclientHeaders(void (^use)(NSDictionary *headers)) { use(@{}); }
-BOOL SGLyricsLoadFailed(NSString *track) { return NO; }
+BOOL harnessLookupFailed;
+BOOL SGLyricsLoadFailed(NSString *track) { return harnessLookupFailed; }
 void SGKaraokeRequestLyrics(NSString *trackID) {
     if (harnessLyricsRequested) harnessLyricsRequested(trackID);
 }
 NSNotificationName const SGKaraokeLinesKeptNotification = @"harness.karaokeLinesKept";
+NSNotificationName const SGKaraokeLookupReadyNotification = @"harness.karaokeLookupReady";
 NSNotificationName const SGLyricsOffsetsDidChangeNotification = @"harness.offsets";
-NSInteger SGKaraokeDelayMs(void) { return [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLyricsDelay]; }
+NSInteger harnessTrackOffset;
+NSInteger SGKaraokeDelayMs(void) { return harnessTrackOffset + [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLyricsDelay]; }
 // Only the translation check selects the translated artist row.
 static BOOL sg_showTranslation;
 NSInteger SGInt(NSString *key, NSInteger fallback) {

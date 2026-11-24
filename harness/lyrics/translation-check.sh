@@ -41,5 +41,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </dict></plist>
 PLIST
+if [ "${SG_LYRICS_CLOCK_ONLY:-0}" = 1 ]; then
+    mkdir -p "$APP/Contents/Resources"
+    cp "$HERE/fixtures/plain.lrc" "$HERE/fixtures/static.txt" "$HERE/fixtures/duet.ttml" "$APP/Contents/Resources/"
+fi
 codesign -f -s - "$APP" >/dev/null 2>&1
-"$APP/Contents/MacOS/Check" -translationCheck 1
+if [ "${SG_LYRICS_CLOCK_ONLY:-0}" = 1 ]; then
+    "$APP/Contents/MacOS/Check" -song plain -frameRateCheck 1
+    "$APP/Contents/MacOS/Check" -song static -plainIdle 1
+else
+    "$APP/Contents/MacOS/Check" -translationCheck 1
+fi

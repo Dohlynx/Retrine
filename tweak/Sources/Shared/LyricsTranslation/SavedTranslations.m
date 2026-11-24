@@ -201,10 +201,10 @@ static NSDictionary *readTranslation(NSURL *file) {
     if (!file) return nil;
     NSDictionary *saved = sg_unsavedTranslations[file];
     if (saved) return saved;
-    if (!prepareStore()) { sg_readFailed = YES; return nil; }
     NSError *error = nil;
     NSDictionary *value = [store() read:@"Translations" key:file.lastPathComponent error:&error];
-    if (error) { sg_storageError = error; sg_readFailed = YES; }
+    sg_storageError = error;
+    sg_readFailed = error != nil;
     return value;
 }
 static void applyTranslation(NSDictionary *saved, NSArray<SGKaraokeLine *> *lines) {

@@ -10,9 +10,11 @@
 static NSString *flushFailureDirectory, *flushFailureTarget;
 static NSDictionary *flushFailureContents;
 static NSUInteger largestAliasLookup;
+static NSUInteger flushCount;
 BOOL SGLyricsTestProtectedDataAvailable(void) { return NSThread.isMainThread; }
 void SGLyricsTestAliasLookupSize(NSUInteger count) { largestAliasLookup = MAX(largestAliasLookup, count); }
 int SGLyricsTestFsync(int fd) {
+    flushCount++;
     char path[PATH_MAX], actual[PATH_MAX], expected[PATH_MAX];
     if (flushFailureDirectory) {
         CHECK(fcntl(fd, F_GETPATH, path) == 0);
@@ -640,8 +642,14 @@ static void checkPreviewSurvivesUnlock(void) {
     });
     waitFor(^BOOL { return imported; });
     NSArray<SGKaraokeLine *> *lines = aiLines(@[@"line"]);
+    SGLyricsSavedAI(@"notes", @"barrier", @"ko"); // Drain import's queued summary before measuring the lookup.
+    NSUInteger before = flushCount;
     SGLyricsSyncSavedTranslation(@"unlock-preview", @"ko", lines);
+    CHECK(flushCount - before == 4);
     CHECK([lines[0].translation isEqual:@"imported"]);
+    before = flushCount;
+    SGLyricsSyncSavedTranslation(@"missing-preview", @"ko", lines);
+    CHECK(flushCount - before == 4 && !lines[0].translation);
     clearFixture(root);
     SGLyricsDeleteSavedTranslations();
 }

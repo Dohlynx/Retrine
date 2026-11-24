@@ -25,6 +25,7 @@
 #import "Settings/SGPageStyle.h"
 #import "Shared/Player/PlayerEvents.h"
 #import "Shared/Player/PlayerState.h"
+#import "Shared/Player/SpeedPitch.h"
 #import "Shared/Haptics/Haptics.h"
 #import "Redesigned/Kit/SGRGlass.h"
 #import "Redesigned/Kit/SGRTokens.h"
@@ -188,6 +189,7 @@ static UILabel *wordLabel(NSString *text, UIFont *font, UIColor *color, CGRect f
 @property (nonatomic) double riseStart, riseEnd;
 - (void)fillTo:(CGFloat)cursor;
 - (void)floatAt:(double)ms;
+- (double)nextMotionAt:(double)ms;
 @property (nonatomic, readonly) UIFont *font;
 - (void)settle;   // land and unglow at once
 - (void)land;     // back down from its float
@@ -406,6 +408,16 @@ static void colorGlyphs(UIView *view, UIColor *color, BOOL outline) {
     if (lift == _lift) return;
     _lift = lift;
     self.transform = CGAffineTransformMakeTranslation(0, -lift);
+}
+
+- (double)nextMotionAt:(double)ms {
+    if (_drawingStyle == SGRLyricsDrawingShimmer && !SGRReduceMotion()) return ms;
+    double begin = _riseStart - kFloatLeadMs;
+    if (_litLetters && !_whole) begin = MIN(begin, _word.start - kWaveLead * (_word.end - _word.start));
+    if (ms < begin) return begin;
+    // The float is asymptotic, not finished at riseEnd. Wait for the actual final transform.
+    if (_lift != kLift || (!_whole && ms < _word.end + kGlowFadeMs)) return ms;
+    return INFINITY;
 }
 
 // How strongly a held word glows and waves: from a quarter for the shortest that does, to all of it.
@@ -1175,6 +1187,19 @@ static double secant(SGSweepKnot *knots, NSUInteger i) {
     }
 }
 
+- (double)nextMotionAt:(double)ms {
+    double next = INFINITY;
+    if (_knotCount > 1 && ms < _knots[_knotCount - 1].ms) {
+        next = MAX(ms, _knots[0].ms);   // the cubic also moves *between* word clocks
+    }
+    for (SGRKaraokeWordView *word in _words) {
+        if (next == ms) break;
+        next = MIN(next, [word nextMotionAt:ms]);
+        if (_whole) break;   // same float, drawing style and start for the whole run
+    }
+    return next;
+}
+
 @end
 
 #pragma mark - a line
@@ -1490,6 +1515,15 @@ static const NSUInteger kLinesPerFrame = 4;
 - (void)showTime:(double)ms {
     for (SGRKaraokeSweep *sweep in _sweeps) [sweep showTime:ms];
     [_backing showTime:ms];   // timed on its own, so it lags the line as it is sung
+}
+
+- (double)nextMotionAt:(double)ms {
+    double next = INFINITY;
+    for (SGRKaraokeSweep *sweep in _sweeps) {
+        next = MIN(next, [sweep nextMotionAt:ms]);
+        if (next == ms) return next;
+    }
+    return _backing ? MIN(next, [_backing nextMotionAt:ms]) : next;
 }
 
 - (void)showPlain {
@@ -1815,6 +1849,7 @@ typedef struct {
     NSInteger _browseBreak;
     CADisplayLink *_link;
     NSTimer *_poll;              // looking a few times a second while the link is paused, nothing on the page moving
+    NSTimer *_boundaryWake;      // instead of polling when an advancing clock has a known static interval
     NSTimer *_plainRelease;      // the one screen-awake deadline of a paused plain sheet
     BOOL _holdingAwake;
     CFTimeInterval _stirredAt;   // when something last set the page moving
@@ -1902,7 +1937,7 @@ typedef struct {
     _shown = [NSMutableDictionary dictionary];
     _sightArrangement = NSUIntegerMax;
     SGAddPlayerStateObserver(self);
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(plainSheetChanged:) name:SGKaraokeLinesKeptNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(sheetChanged:) name:SGKaraokeLinesKeptNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(awakeSettingChanged) name:SGRKeyLyricsKeepAwake object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(frameRateChanged) name:SGRKeyLyricsFullRate object:nil];
     _fade = [CAGradientLayer layer];
@@ -1978,6 +2013,10 @@ typedef struct {
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(restyle) name:SGRLyricsStyleDidChangeNotification object:nil];
     // The menu says the song's offsets and whether its lyrics were picked by hand.
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(offerExtras) name:SGLyricsOffsetsDidChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stir) name:SGLyricsOffsetsDidChangeNotification object:nil];
+    for (NSNotificationName name in @[SGPlayerSpeedDidChangeNotification, SGSingChangedNotification])
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(playbackClockChanged:) name:name object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stir) name:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil];
     // A translator switched on or off on the Lyrics page leaves or joins the menu.
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(offerExtras) name:SGLyricsTranslationServiceSettingsDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(pinChanged:) name:SGLyricsPinDidChangeNotification object:nil];
@@ -2379,7 +2418,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    if (_plain) [self stir];    // follow the presentation-layer offset and finish any budgeted rows
+    [self stir];    // follow the presentation-layer offset and finish any budgeted rows
     [self showLinesInSight];
 }
 
@@ -2450,6 +2489,8 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 // scripts/battery-probe.sh. Nothing of the card is seen from the background, so nothing is drawn.
 - (void)scheduleLink {
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(startLink) object:nil];
+    [_boundaryWake invalidate];
+    _boundaryWake = nil;
     [_plainRelease invalidate];
     _plainRelease = nil;
     [_poll invalidate];
@@ -2511,7 +2552,13 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 // Something is about to move: the link back at the display's rate before its next frame.
 - (void)stir {
     _stirredAt = CACurrentMediaTime();
+    [self resumeFrames];
+}
+
+- (void)resumeFrames {
     if (!_link.paused) return;
+    [_boundaryWake invalidate];
+    _boundaryWake = nil;
     [_poll invalidate];
     _poll = nil;
     _link.paused = NO;
@@ -2522,8 +2569,12 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
     [self stir];
 }
 
-- (void)plainSheetChanged:(NSNotification *)note {
-    if (_plain && [_track isEqual:note.object]) [self stir];
+- (void)sheetChanged:(NSNotification *)note {
+    if ([_track isEqual:note.object]) [self stir];
+}
+
+- (void)playbackClockChanged:(NSNotification *)note {
+    if (!_sample && !_plain) [self resumeFrames];
 }
 
 - (void)awakeSettingChanged {
@@ -2554,7 +2605,16 @@ static NSInteger plainRestPosition(SPTPlayerState *state) {
     // The player's position less the Delay, as positionMs reads it, from the state reported.
     NSInteger ms = _sample ? [self positionMs]
                            : (NSInteger)((state.isPaused ? state.positionAsOfTimestamp : state.position) * 1000) - SGKaraokeDelayMs();
-    if (ms != _reported) [self stir];
+    if (!_link.paused) return;
+    if (_poll) {
+        if (ms != _reported) [self stir];
+    } else {
+        // A normal advancing report confirms the deadline rather than buying a display callback.
+        // Both samples were truncated to milliseconds. A correction, stall or seek rechecks it.
+        double expected = _clock + (CACurrentMediaTime() - _clockTime) * 1000;
+        if (state.isPaused || !state.isPlaying || state.playbackSpeed != 1 || fabs(ms - expected) > 2)
+            [self resumeFrames];
+    }
 }
 
 - (void)playerTransitionChanged:(NSNotification *)note {
@@ -3482,11 +3542,11 @@ static char kTranslationCoverContext;
 }
 
 - (void)dropLines {
+    [self stir];
     if (_plain) {
         [_plainRelease invalidate];
         _plainRelease = nil;
         _plain = NO;
-        [self stir];
     }
     _lines = nil;
     _builtWidth = 0;
@@ -3822,7 +3882,7 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     BOOL running = raw != _reported;   // a paused player reports the same position every frame
     if (running) {
         _stillSince = 0;
-        [self stir];
+        if (_poll) [self stir];   // resumed without a player report
     }
     else if (!_stillSince) _stillSince = shown;
     double reported = raw + (running ? (shown - CACurrentMediaTime()) * 1000 : 0);
@@ -3874,7 +3934,7 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     // A paused clock and a page at rest draw nothing new: once what was last set moving has finished, a few
     // frames a second still watch the track, its lines and the clock, and whatever moves stirs it back.
     if (_seekAt || _scroll.isTracking || _scroll.isDecelerating) [self stir];
-    else if (!_plain && _link && !_link.paused && [self frameTime] - _stirredAt > kCalmAfter) [self calmDown];
+    else if (!_tops && !_plain && _link && !_link.paused && [self frameTime] - _stirredAt > kCalmAfter) [self calmDown];
     NSString *track = _sample ? @"sample" : SGKaraokePlayingTrack();
     if (!(track == _track || [track isEqualToString:_track])) {
         SGLog(@"karaoke: page shows track %@, lyrics %@", track, [self linesFor:track] ? @"captured" : @"not captured yet");
@@ -3950,6 +4010,52 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
     for (NSUInteger i = 0; i < _sungCount; i++) [_shown[@(_sung[i])] showTime:now];
     CFTimeInterval frame = [self frameTime];
     if (_dots.superview) [_dots showTime:now running:!_stillSince || frame - _stillSince < kStillFor at:frame];
+    if (!_link || _link.paused || frame - _stirredAt <= kCalmAfter || _sightOffset != _scroll.contentOffset.y) return;
+    if (_stillSince) {
+        if (frame - _stillSince > kCalmAfter) [self calmDown];
+        return;
+    }
+    [self parkUntilMotionAt:now frame:frame];
+}
+
+// Called after drawing so the decision includes the presented pronunciation and backing, not just
+// the source's timing category. A paused clock still takes the existing pause/awake polling path.
+- (void)parkUntilMotionAt:(double)now frame:(CFTimeInterval)frame {
+    double next = _sample ? _sampleLength : INFINITY;
+    for (NSUInteger i = 0; i < _sungCount; i++) {
+        SGRKaraokeLineView *row = _shown[@(_sung[i])];
+        if (!row) return;
+        next = MIN(next, [row nextMotionAt:now]);
+        if (next <= now) return;
+    }
+    // clockMs predicts at 1x, as does the CA timeline for the dots. At another speed keep
+    // their per-frame corrections rather than projecting that clock across a sleep.
+    // Sing can acquire lead while on, and retain it after switch-off. An output flush can
+    // then advance this same state without a report; no wall-clock deadline is safe.
+    if (!_sample && (SGPlayerState().playbackSpeed != 1 || SGSingOn() || SGSingHeldLead() > 0)) return;
+    if (fabs(now - (_reported + (frame - CACurrentMediaTime()) * 1000)) > 2) return;
+    for (NSUInteger i = 0; i < _lines.count; i++) {
+        if (_spans[i].start > now) { next = MIN(next, _spans[i].start); break; }
+        if (_spans[i].end > now) next = MIN(next, _spans[i].end);
+    }
+    for (NSUInteger i = 0; i < _breakCount; i++) {
+        SGRKaraokeBreak b = _breaks[i];
+        if (b.start > now) next = MIN(next, b.start);
+        double collapse = b.end - kBreakCollapse * 1000;
+        if (collapse > now) next = MIN(next, collapse);
+        // b.end is the following span's start.
+    }
+    // Resume in time to receive the display callback targeting the boundary, not one frame later.
+    double lead = _link.targetTimestamp - _link.timestamp;
+    double wait = frame - CACurrentMediaTime() + (next - now) / 1000.0 - lead;
+    if (wait <= lead) return;
+    _link.paused = YES;
+    if (!isfinite(next)) return;   // last line: reports and UI events still wake the page
+    __weak typeof(self) weakSelf = self;
+    _boundaryWake = [NSTimer timerWithTimeInterval:wait repeats:NO block:^(NSTimer *timer) {
+        [weakSelf resumeFrames];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:_boundaryWake forMode:NSRunLoopCommonModes];
 }
 
 // The keeper retires stale requests; retry never creates a separate UI-only lookup.

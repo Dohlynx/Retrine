@@ -132,7 +132,13 @@ static void setUpOffsets(void) {
         }];
         [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification object:nil queue:nil
                                                     usingBlock:^(NSNotification *note) {
-            readOffsets();
+            BOOL delayChanged;
+            @synchronized (sg_offsetsLock) {
+                NSInteger before = sg_delay;
+                readOffsets();
+                delayChanged = sg_delay != before;
+            }
+            if (delayChanged) offsetsChanged();
         }];
     });
 }
@@ -192,7 +198,15 @@ static BOOL isSpclientHost(NSString *host) {
     return [region rangeOfCharacterFromSet:allowed.invertedSet].location == NSNotFound;
 }
 
-static void rememberHeaders(NSURLSession *session, NSURLRequest *request) {
+// Main queue. Unlike linesKept, this is permission to ask, not a completed look.
+NSNotificationName const SGKaraokeLookupReadyNotification = @"spotifyglass.karaoke.lookupReady";
+
+static void lookupReady(NSString *track) {
+    if (track && !sg_lyrics[track] && ![sg_requested containsObject:track])
+        [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLookupReadyNotification object:track];
+}
+
+static void captureHeaders(NSURLSession *session, NSURLRequest *request) {
     if (![request.URL.scheme.lowercaseString isEqualToString:@"https"] || !isSpclientHost(request.URL.host)) return;
     NSMutableDictionary<NSString *, NSString *> *all = [NSMutableDictionary dictionary];
     [session.configuration.HTTPAdditionalHeaders enumerateKeysAndObjectsUsingBlock:^(id key, id value, BOOL *stop) {
@@ -208,11 +222,34 @@ static void rememberHeaders(NSURLSession *session, NSURLRequest *request) {
         if (all[name]) headers[name] = all[name];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
+        // A late chunk of a pre-401 task must not displace the renewed headers.
+        NSString *old = sg_spclientHeaders[@"authorization"];
+        BOOL refused = [headers[@"authorization"] isEqual:sg_refusedAuthorization];
+        BOOL oldRefused = [old isEqual:sg_refusedAuthorization];
+        if (refused && old && !oldRefused) return;
+        BOOL ready = !refused && (!old || oldRefused);
         sg_spclientHeaders = headers;
         NSArray *waiting = sg_headersWaiting;
         sg_headersWaiting = nil;
         for (void (^waiter)(NSDictionary<NSString *, NSString *> *) in waiting) waiter(headers);
+        if (ready) lookupReady(SGKaraokePlayingTrack());
     });
+}
+
+static void rememberHeaders(NSURLSession *session, NSURLSessionTask *task) {
+    static char revisionKey;
+    @synchronized (task) {
+        NSURLRequest *request = task.currentRequest;
+        NSURLRequest *last = objc_getAssociatedObject(task, &revisionKey);
+        if (last == request) return;
+        // A separate copy can still be the same revision. Request equality alone ignores headers.
+        if ([last.URL isEqual:request.URL]) {
+            NSDictionary *old = last.allHTTPHeaderFields, *now = request.allHTTPHeaderFields;
+            if (old == now || [old isEqual:now]) return;
+        }
+        objc_setAssociatedObject(task, &revisionKey, request, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        captureHeaders(session, request);
+    }
 }
 
 void SGSpclientHeaders(void (^use)(NSDictionary<NSString *, NSString *> *headers)) {
@@ -420,7 +457,7 @@ void SGKaraokeCancelStoreWrite(NSString *track) {
 }
 
 static void received(NSURLSession *session, NSURLSessionTask *task, NSData *data) {
-    rememberHeaders(session, task.currentRequest);
+    rememberHeaders(session, task);
     if (sg_ownSources || !SGLyricsTrackInURL(task.currentRequest.URL)) return;
     NSMutableData *body = objc_getAssociatedObject(task, &kBodyKey);
     if (!body) objc_setAssociatedObject(task, &kBodyKey, (body = [NSMutableData data]), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -470,6 +507,7 @@ static void askAgainLater(NSString *trackID, BOOL automatic) {
         // Returning before the pause ended must not leave the playing track waiting for a reader's tick.
         if (automatic && UIApplication.sharedApplication.applicationState == UIApplicationStateActive
             && [trackID isEqualToString:SGKaraokePlayingTrack()]) SGKaraokeRequestLyrics(trackID);
+        lookupReady(trackID);
     });
 }
 
@@ -1106,14 +1144,14 @@ static SGKaraokeTrackWatcher *sg_trackWatcher;
 %group SGSpclientHeadersOnly
 %hook SPTDataLoaderService
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
-    rememberHeaders(session, task.currentRequest);
+    rememberHeaders(session, task);
     %orig;
 }
 %end
 
 %hook _TtC26Connectivity_HttpClientKit20HttpClientURLSession
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
-    rememberHeaders(session, task.currentRequest);
+    rememberHeaders(session, task);
     %orig;
 }
 %end

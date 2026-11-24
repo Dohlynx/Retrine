@@ -190,11 +190,14 @@ static NSURL *fileFor(NSString *track) {
     return [directory() URLByAppendingPathComponent:[key stringByAppendingPathExtension:@"plist"]];
 }
 
-static NSArray<NSDictionary *> *inventory(unsigned long long *total) {
+static NSMutableArray<NSDictionary *> *inventory(unsigned long long *total) {
     NSMutableArray *files = [NSMutableArray array];
     *total = 0;
+    NSError *error = nil;
     NSArray *urls = [NSFileManager.defaultManager contentsOfDirectoryAtURL:directory()
-        includingPropertiesForKeys:@[NSURLFileSizeKey, NSURLContentModificationDateKey, NSURLIsRegularFileKey] options:0 error:nil];
+        includingPropertiesForKeys:@[NSURLFileSizeKey, NSURLContentModificationDateKey, NSURLIsRegularFileKey] options:0 error:&error];
+    if (!urls && !([error.domain isEqual:NSCocoaErrorDomain] &&
+        (error.code == NSFileReadNoSuchFileError || error.code == NSFileNoSuchFileError))) return nil;
     for (NSURL *url in urls) {
         NSDictionary *values = [url resourceValuesForKeys:@[NSURLFileSizeKey, NSURLContentModificationDateKey, NSURLIsRegularFileKey] error:nil];
         if (![url.pathExtension isEqualToString:@"plist"] || ![values[NSURLIsRegularFileKey] boolValue]) continue;
@@ -277,22 +280,34 @@ void SGLyricsStoreSaveWithLease(NSString *track, NSArray<SGKaraokeLine *> *lines
         NSURL *url = fileFor(track);
         if (!url) return;
         unsigned long long bytes;
-        NSArray *files = inventory(&bytes);
-        NSUInteger count = files.count + 1;
-        for (NSDictionary *file in files) if ([file[@"url"] isEqual:url]) {
-            bytes -= [file[@"size"] unsignedLongLongValue]; count--; break;
+        NSMutableArray *files = inventory(&bytes);
+        if (!files) return; // Cannot admit a write without knowing the remaining budget.
+        for (NSUInteger i = 0; i < files.count; i++) {
+            NSDictionary *file = files[i];
+            // Enumeration can return relative file URLs; both names are in directory().
+            if (![[file[@"url"] lastPathComponent] isEqual:url.lastPathComponent]) continue;
+            bytes -= [file[@"size"] unsignedLongLongValue];
+            [files removeObjectAtIndex:i];
+            break;
         }
+        bytes += data.length;
+        BOOL overBudget = files.count + 1 > sg_countCap || bytes > sg_byteCap;
         BOOL canPrune = !sg_lastPrune || NSProcessInfo.processInfo.systemUptime - sg_lastPrune >= sg_pruneInterval;
         // Keep the hard caps even between prune passes. Defer an over-budget save
         // rather than evicting more often than once a minute.
-        if (!canPrune && (count > sg_countCap || bytes + data.length > sg_byteCap)) return;
+        if (!canPrune && overBudget) return;
         if (![NSFileManager.defaultManager createDirectoryAtURL:directory() withIntermediateDirectories:YES attributes:nil error:&error]
             || ![directory() setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:&error]
             || ![data writeToURL:url options:NSDataWritingAtomic error:&error]) {
             SGLog(@"lyrics store: write failed: %@", error);
             return;
         }
-        if (canPrune) { files = inventory(&bytes); prune(files, bytes); }
+        if (overBudget) {
+            NSDate *date = nil;
+            [url getResourceValue:&date forKey:NSURLContentModificationDateKey error:nil];
+            [files addObject:@{@"url": url, @"size": @(data.length), @"date": date ?: NSDate.distantPast}];
+            prune(files, bytes);
+        }
         }];
     });
 }

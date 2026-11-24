@@ -115,7 +115,14 @@ static void observedPrefetch(NSString *track) {
 }
 #define SGOptionalWorkMayRun optionalForWatcher
 #define SGLyricsPrefetch observedPrefetch
+static _Thread_local NSUInteger *headerSubmissions;
+static void observedKaraokeDispatch(dispatch_queue_t queue, dispatch_block_t block) {
+    if (headerSubmissions && queue == dispatch_get_main_queue()) ++*headerSubmissions;
+    dispatch_async(queue, block);
+}
+#define dispatch_async observedKaraokeDispatch
 #import "karaoke.inc"
+#undef dispatch_async
 #undef SGLyricsPrefetch
 #undef SGOptionalWorkMayRun
 // The production watcher, with only its drawing/rest effects replaced. The full player simulator
@@ -1405,19 +1412,42 @@ static void checkSpotifyAuthPause(void) {
     NSInteger status = sg_spotifyStatus;
     NSUInteger asks = sg_spotifyAsks;
     sg_spotifyStatus = 401;
-    sg_spclientHeaders = @{@"authorization": @"fixture-old"};
+    sg_spclientHeaders = nil;
     Method method = class_getInstanceMethod(NSURLSession.class, @selector(dataTaskWithRequest:completionHandler:));
     IMP original = method_setImplementation(method, (IMP)spotifyMiss);
     NSString *track = NSUUID.UUID.UUIDString;
+    SPTPlayerState *oldState = sg_fixtureState;
+    HarnessLyricsState *playing = [HarnessLyricsState new];
+    playing.track = [HarnessLyricsTrack new];
+    playing.track.URI = [@"spotify:track:" stringByAppendingString:track];
+    sg_fixtureState = (id)playing;
+    __block NSUInteger readyCount = 0;
+    id reader = [NSNotificationCenter.defaultCenter addObserverForName:@"spotifyglass.karaoke.lookupReady" object:nil queue:nil
+        usingBlock:^(NSNotification *note) {
+            if ([note.object isEqual:track]) { readyCount++; SGKaraokeRequestLyrics(note.object); }
+        }];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:@"https://spclient.wg.spotify.com/"]];
     SGKaraokeRequestLyrics(track);
+    drainReplies();
+    CHECK(sg_spotifyAsks == asks);
+    [request setValue:@"fixture-old" forHTTPHeaderField:@"Authorization"];
+    captureHeaders(nil, request);
     pumpUntil(^BOOL { return SGLyricsLoadFailed(track); });
     CHECK(sg_spotifyAsks == asks + 1);
     SGKaraokeAskSpotifyForTiming(track);
     drainReplies();
     CHECK(sg_spotifyAsks == asks + 1 && SGLyricsLoadFailed(track));
-    sg_spclientHeaders = @{@"authorization": @"fixture-new"};
+    NSUInteger before = readyCount;
+    [request setValue:@"updated-client" forHTTPHeaderField:@"Client-Token"];
+    captureHeaders(nil, request);
+    drainReplies();
+    SGSpclientHeaders(^(NSDictionary *headers) {
+        CHECK([headers[@"client-token"] isEqual:@"updated-client"]);
+    });
+    CHECK(readyCount == before);
     sg_spotifyStatus = 404;
-    SGKaraokeAskSpotifyForTiming(track);
+    [request setValue:@"fixture-new" forHTTPHeaderField:@"Authorization"];
+    captureHeaders(nil, request);
     pumpUntil(^BOOL { return sg_spotifyAsks == asks + 2; });
     drainReplies();
     CHECK(!SGLyricsLoadFailed(track));
@@ -1429,6 +1459,8 @@ static void checkSpotifyAuthPause(void) {
     drainReplies();
     CHECK(SGLyricsLoadFailed(track));
     SGKaraokeForgetLyrics(track);
+    [NSNotificationCenter.defaultCenter removeObserver:reader];
+    sg_fixtureState = oldState;
     method_setImplementation(method, original);
     sg_spclientHeaders = headers; sg_refusedAuthorization = refused;
     sg_spotifyStatus = status; sg_spotifyAsks = asks; sg_ownSources = own;
@@ -3182,6 +3214,18 @@ static void checkStockPreferences(void) {
     puts("source defaults: stock marker and Load ahead share typed preference accessors");
 }
 
+@interface HeaderSession : NSObject
+@property NSUInteger merges;
+@end
+@implementation HeaderSession
+- (NSURLSessionConfiguration *)configuration {
+    self.merges++;
+    NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
+    config.HTTPAdditionalHeaders = @{@"Client-Token": @"session-token", @"Cookie": @"not forwarded"};
+    return config;
+}
+@end
+
 static void checkHeaderOrigin(void) {
     NSDictionary *previousHeaders = sg_spclientHeaders;
     NSMutableArray *previousWaiting = sg_headersWaiting;
@@ -3204,21 +3248,67 @@ static void checkHeaderOrigin(void) {
         @[@"https://guc3_x-spclient.spotify.com/", @"untrusted-region-character", @"regional"],
         @[@"https://GUC3-SPCLIENT.SPOTIFY.COM/", @"regional-case", @"regional-case"],
     ];
+    HarnessTask *task = [HarnessTask new];
+    HeaderSession *session = [HeaderSession new];
+    __block NSUInteger first = 0;
+    SGSpclientHeaders(^(NSDictionary *headers) {
+        CHECK([headers[@"authorization"] isEqual:@"trusted"]);
+        first++;
+    });
     for (NSArray<NSString *> *row in cases) {
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:row[0]]];
         [request setValue:row[1] forHTTPHeaderField:@"Authorization"];
-        rememberHeaders(nil, request);
+        task.currentRequest = [request copy];
+        NSUInteger submissions = 0, before = session.merges;
+        headerSubmissions = &submissions;
+        for (NSUInteger i = 0; i < 32; i++) rememberHeaders((id)session, (id)task);
+        headerSubmissions = NULL;
+        NSUInteger accepted = [row[1] isEqual:row[2]] ? 1 : 0;
+        CHECK(submissions == accepted && session.merges - before == accepted);
         __block BOOL checked = NO;
         // Capture queues its update on main. This fence observes that update (or rejection)
         // before querying the public API, without timing assumptions or network access.
         dispatch_async(dispatch_get_main_queue(), ^{
             SGSpclientHeaders(^(NSDictionary *headers) {
                 CHECK([headers[@"authorization"] isEqualToString:row[2]]);
+                CHECK([headers[@"client-token"] isEqual:@"session-token"] && !headers[@"cookie"]);
                 checked = YES;
             });
         });
         pumpUntil(^BOOL { return checked; });
     }
+    CHECK(first == 1);
+    NSMutableURLRequest *revision = [task.currentRequest mutableCopy];
+    [revision setValue:@"ko" forHTTPHeaderField:@"Accept-Language"];
+    task.currentRequest = revision;
+    rememberHeaders((id)session, (id)task);
+    __block BOOL delivered = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        SGSpclientHeaders(^(NSDictionary *headers) {
+            CHECK([headers[@"accept-language"] isEqual:@"ko"] && [headers[@"authorization"] isEqual:@"regional-case"]);
+            delivered = YES;
+        });
+    });
+    pumpUntil(^BOOL { return delivered; });
+    NSString *previousRefusal = sg_refusedAuthorization;
+    sg_refusedAuthorization = @"regional-case"; // 401 while another request using that token is in flight.
+    HarnessTask *late = [HarnessTask new];
+    late.currentRequest = [revision copy];
+    HarnessTask *fresh = [HarnessTask new];
+    [revision setValue:@"renewed" forHTTPHeaderField:@"Authorization"];
+    fresh.currentRequest = [revision copy];
+    rememberHeaders((id)session, (id)fresh);
+    rememberHeaders((id)session, (id)late);
+    rememberHeaders((id)session, (id)fresh);
+    delivered = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        SGSpclientHeaders(^(NSDictionary *headers) {
+            CHECK([headers[@"authorization"] isEqual:@"renewed"]);
+            delivered = YES;
+        });
+    });
+    pumpUntil(^BOOL { return delivered; });
+    sg_refusedAuthorization = previousRefusal;
     sg_spclientHeaders = previousHeaders;
     sg_headersWaiting = previousWaiting;
     puts("header origin: exact HTTPS global or regional host, case-insensitivity, malicious hosts and HTTP rejection passed");
@@ -3437,8 +3527,18 @@ int main(void) {
         NSUInteger reads = sg_defaultsReads;
         dispatch_apply(1000, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^(size_t i) { CHECK(SGKaraokeDelayMs() == 250); });
         CHECK(sg_defaultsReads == reads);
+        __block NSMutableArray *delays = [NSMutableArray array];
+        id delayObserver = [NSNotificationCenter.defaultCenter addObserverForName:SGLyricsOffsetsDidChangeNotification
+            object:nil queue:nil usingBlock:^(NSNotification *note) {
+                CHECK(NSThread.isMainThread);
+                [delays addObject:@(SGKaraokeDelayMs())];
+            }];
         SGSetInt(SGKeyLyricsDelay, 500);
-        CHECK(SGKaraokeDelayMs() == 500);
+        SGSetInt(SGKeyLyricsDelay, 1100);
+        SGSetInt(SGKeyLyricsDelay, 1200); // same effective 1000 ms
+        [NSNotificationCenter.defaultCenter postNotificationName:NSUserDefaultsDidChangeNotification object:defaults];
+        [NSNotificationCenter.defaultCenter removeObserver:delayObserver];
+        CHECK(([delays isEqual:@[@500, @1000]]));
         SGSetInt(SGKeyLyricsDelay, 250);
         SGLyricsSetTrackOffsetMs(@"song", -6000);
         SGLyricsSetRouteOffsetMs(6000);

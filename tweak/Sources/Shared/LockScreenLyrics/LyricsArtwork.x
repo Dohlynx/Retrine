@@ -29,7 +29,7 @@
 #import "Shared/Player/SGLastTrack.h"
 #import "Shared/LyricsBackground/LyricsBackground.h"
 
-extern NSTimeInterval SGLockLyricsRequestMissing(NSString *track);
+extern NSNotificationName const SGKaraokeLookupReadyNotification;
 // A line's clip over moving artwork lasts from the line's start to the next one's, a second longer for the
 // lock screen showing it late, and between these: the cost of a clip is its length.
 static const double kShortest = 2, kLongest = 8;
@@ -508,7 +508,7 @@ static NSTimeInterval update(void) {
                 invalidateRenders();
             }
         }
-        NSTimeInterval retry = lines ? -1 : SGLockLyricsRequestMissing(trackID);
+        if (!lines) SGKaraokeRequestLyrics(trackID);
         // Plain text has no line being sung, nor has a song whose lines are not in yet: the lock screen keeps the cover,
         // or under Moving artwork with lyrics shows the moving artwork plain (LockScreenMotion.x, which has it).
         if (!lines.count || SGKaraokeLinesTiming(lines) == SGKaraokeTimingNone) {
@@ -519,7 +519,7 @@ static NSTimeInterval update(void) {
             }
             clear();
             SGLockMotionShowPlain(YES);
-            return retry;
+            return -1;
         }
         NSInteger position = SGKaraokePositionMs();
         if (position < 0) return -1;
@@ -796,7 +796,7 @@ static void tick(void) {
             });
         }];
         // Lines kept for the track, or better timed ones in their place, are posted on main.
-        for (NSNotificationName name in @[SGKaraokeLinesKeptNotification, SGLyricsReadingsDidChangeNotification,
+        for (NSNotificationName name in @[SGKaraokeLookupReadyNotification, SGKaraokeLinesKeptNotification, SGLyricsReadingsDidChangeNotification,
                                           SGLyricsLanguageDidChangeNotification, SGLyricsOffsetsDidChangeNotification]) {
         [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil
                                                     usingBlock:^(NSNotification *note) {

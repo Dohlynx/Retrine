@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/Lyrics/LyricsStore.h"
 #import "Shared/LyricsSources/LyricsSources.h"
@@ -322,6 +323,43 @@ int main(void) {
         NSArray *small = @[line(@"Same", 0)];
         SGLyricsStoreConfigureForTests(dir, 4, 1024 * 1024);
         for (NSUInteger i = 0; i < 5; i++) {
+            if (i == 4) {
+                // Replacing an entry at the cap must not evict another track.
+                SEL selector = @selector(contentsOfDirectoryAtURL:includingPropertiesForKeys:options:error:);
+                Method method = class_getInstanceMethod([NSFileManager.defaultManager class], selector);
+                IMP original = method_getImplementation(method);
+                __block NSUInteger scans = 0;
+                __block BOOL failScan = NO;
+                IMP probe = imp_implementationWithBlock(^NSArray *(NSFileManager *fm, NSURL *url, NSArray *keys,
+                        NSDirectoryEnumerationOptions options, NSError **error) {
+                    if ([url isEqual:dir]) {
+                        scans++;
+                        if (failScan) {
+                            if (error) *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadUnknownError userInfo:nil];
+                            return nil;
+                        }
+                    }
+                    return ((NSArray *(*)(id, SEL, NSURL *, NSArray *, NSDirectoryEnumerationOptions, NSError **))original)
+                        (fm, selector, url, keys, options, error);
+                });
+                method_setImplementation(method, probe);
+                SGLyricsStoreSave(@"2", @[line(@"Replacement", 0)], nil);
+                CHECK([load(@"2", NULL).firstObject.words.firstObject.text isEqual:@"Replacement"]);
+                CHECK(scans == 1);
+                failScan = YES;
+                SGLyricsStoreSave(@"overflow", small, nil);
+                CHECK(!load(@"overflow", NULL));
+                method_setImplementation(method, original);
+                imp_removeBlock(probe);
+                CHECK(scans == 2 && files(dir).count == 4);
+                // An unwritable destination in the same full store cannot trigger pruning.
+                NSURL *blocked = [dir URLByAppendingPathComponent:[HarnessLegacySHA256([@"blocked" dataUsingEncoding:NSUTF8StringEncoding])
+                    stringByAppendingPathExtension:@"plist"]];
+                CHECK([NSFileManager.defaultManager createDirectoryAtURL:blocked withIntermediateDirectories:NO attributes:nil error:nil]);
+                SGLyricsStoreSave(@"blocked", small, nil);
+                CHECK(!load(@"missing", NULL) && files(dir).count == 5);
+                CHECK([NSFileManager.defaultManager removeItemAtURL:blocked error:nil]);
+            }
             SGLyricsStoreSave(@(i).stringValue, small, nil); size();
             if (i == 0) ageAll(dir, 100);
             if (i == 1) {
