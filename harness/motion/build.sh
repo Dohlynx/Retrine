@@ -9,8 +9,12 @@ sed '/^static void report/,$d' ../../tweak/Sources/Shared/Player/PlayerState.x >
 # Compile the Spotify ISRC reader, not the iOS Music Haptics hooks which follow it.
 sed '/^#pragma mark - iOS$/,$d' ../../tweak/Sources/Shared/Haptics/SystemMusicHaptics.x > "$OUT/spotify-isrc.m"
 xcrun clang -fobjc-arc -O2 -I ../../tweak/Sources \
+    -DreadyForMoreMediaData=fixtureReady -DisReadyForMoreMediaData=isFixtureReady \
+    -DrequestMediaDataWhenReadyOnQueue=fixtureRequestOnQueue -DappendSampleBuffer=fixtureAppend -DassetWriterWithURL=fixtureWriterWithURL \
+    -c ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m -o "$OUT/shape.o"
+xcrun clang -fobjc-arc -O2 -I ../../tweak/Sources \
     -framework Foundation -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework CoreGraphics \
-    main.m ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
+    main.m "$OUT/shape.o" ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
     -o "$OUT/motion"
 # Count normalizations at the lyrics boundary while executing its real implementation.
 xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi -isysroot "$(xcrun --sdk macosx --show-sdk-path)" \

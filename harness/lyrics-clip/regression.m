@@ -125,6 +125,9 @@ int main(int argc, char **argv) {
             backgrounds = 0;
             CGImageRef dim = SGLyricsClipDimmedArtwork(cover, size);
             check(dim && backgrounds == 1, @"dimmed artwork needs only one blur");
+            CGImageRef again = SGLyricsClipDimmedArtwork(cover, size);
+            check(again == dim && backgrounds == 1, @"another demand reuses the final dimmed pixels");
+            CGImageRelease(again);
             CGImageRelease(dim);
             // An asymmetric dark cover needs only the minimum dim, independent of the contrast search.
             CGContextRef dark = context(size);
@@ -142,7 +145,7 @@ int main(int argc, char **argv) {
             check(difference <= 1, @"single-pass dim keeps reference pixels and orientation within rounding");
             CGImageRelease(reference); CGImageRelease(dim); CGImageRelease(source);
             refusedContextIndex = 1;
-            check(!SGLyricsClipDimmedArtwork(cover, size), @"missing measurement context returns no dimmed image");
+            check(!SGLyricsClipDimmedArtwork(cover, CGSizeMake(64, 64)), @"new raster with missing measurement context returns no dimmed image");
             for (NSUInteger index = 1; index <= 2; index++) {
                 refusedContextIndex = index;
                 CGImageRef frame = render(backdrop, cover, nil, @"Line", nil, size, SGLyricsClipCentered);

@@ -158,7 +158,7 @@ static uint16_t keepFor(const Lights *lights) {
     return low;
 }
 
-CGImageRef SGLyricsClipDimmedArtwork(CGImageRef cover, CGSize size) {
+static CGImageRef createDimmedArtwork(CGImageRef cover, CGSize size) {
     SGLyricsBackgroundStyle style = {SGLyricsBackgroundBlur, 0, kDimBlur, 0};
     CGImageRef blurred = SGLyricsBackgroundCreate(cover, size, style);
     if (!blurred) return NULL;
@@ -176,6 +176,29 @@ CGImageRef SGLyricsClipDimmedArtwork(CGImageRef cover, CGSize size) {
     CGImageRef dimmed = CGBitmapContextCreateImage(context);
     CGContextRelease(context);
     return dimmed;
+}
+
+CGImageRef SGLyricsClipDimmedArtwork(CGImageRef cover, CGSize size) {
+    // This renderer has a single, fixed style. Preserve the exact draw size, including fractions.
+    static NSCache<NSArray *, NSArray *> *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        cache = [NSCache new];
+        cache.countLimit = 8;
+        cache.totalCostLimit = 32 * 1024 * 1024;
+    });
+    NSArray *key = @[[NSValue valueWithPointer:cover], @(size.width), @(size.height)];
+    @synchronized (cache) {
+        NSArray *hit = [cache objectForKey:key];
+        if (hit) return CGImageRetain((__bridge CGImageRef)hit[0]);
+        CGImageRef image = createDimmedArtwork(cover, size);
+        if (image) {
+            // Retain the cover with the result: its address cannot be recycled under a live key.
+            [cache setObject:@[(__bridge id)image, (__bridge id)cover ?: NSNull.null] forKey:key
+                        cost:CGImageGetBytesPerRow(image) * CGImageGetHeight(image)];
+        }
+        return image;
+    }
 }
 
 static BOOL isHangul(unichar c) {

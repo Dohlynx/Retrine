@@ -19,6 +19,18 @@ CGSize SGMotionClipCut(CGSize shown, CGFloat ratio) {
     return CGSizeMake(floor(cut.width / 2) * 2, floor(cut.height / 2) * 2);
 }
 
+// A failed writer need never become ready again. Deliver terminal status to the
+// same serial queue as the sample pump so the synchronous caller is released once.
+@interface SGShapeStatus : NSObject
+@property (copy) dispatch_block_t failed;
+@end
+@implementation SGShapeStatus
+- (void)observeValueForKeyPath:(NSString *)key ofObject:(AVAssetWriter *)writer
+                        change:(NSDictionary *)change context:(void *)context {
+    if (writer.status == AVAssetWriterStatusFailed || writer.status == AVAssetWriterStatusCancelled) self.failed();
+}
+@end
+
 static BOOL writeShape(NSURL *file, CGFloat ratio, NSURL *partial) {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:file options:nil];
     __block AVAssetTrack *track = nil;
@@ -63,27 +75,42 @@ static BOOL writeShape(NSURL *file, CGFloat ratio, NSURL *partial) {
         [reader cancelReading];
         return NO;
     }
-    BOOL ok = YES, started = NO;
-    while (ok) {
-        CMSampleBufferRef sample = [frames copyNextSampleBuffer];
-        if (!sample) break;
-        if (!started) {
-            [writer startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(sample)];
-            started = YES;
-        }
-        while (!input.readyForMoreMediaData && writer.status == AVAssetWriterStatusWriting) [NSThread sleepForTimeInterval:0.002];
-        ok = writer.status == AVAssetWriterStatusWriting && [input appendSampleBuffer:sample];
-        CFRelease(sample);
-    }
-    if (!ok || !started || reader.status != AVAssetReaderStatusCompleted) {
+    CMSampleBufferRef first = [frames copyNextSampleBuffer];
+    if (!first) {
         [reader cancelReading];
         [writer cancelWriting];
         return NO;
     }
-    [input markAsFinished];
+    [writer startSessionAtSourceTime:CMSampleBufferGetPresentationTimeStamp(first)];
+    __block id pending = CFBridgingRelease(first);
+    dispatch_queue_t queue = dispatch_queue_create("app.retrine.motion.shape", DISPATCH_QUEUE_SERIAL);
     dispatch_semaphore_t written = dispatch_semaphore_create(0);
-    [writer finishWritingWithCompletionHandler:^{ dispatch_semaphore_signal(written); }];
+    __block BOOL ending = NO;
+    void (^end)(BOOL) = ^(BOOL success) {
+        if (ending) return;
+        ending = YES;
+        if (success) {
+            [input markAsFinished];
+            [writer finishWritingWithCompletionHandler:^{ dispatch_semaphore_signal(written); }];
+        } else {
+            [reader cancelReading];
+            if (writer.status == AVAssetWriterStatusWriting) [writer cancelWriting];
+            dispatch_semaphore_signal(written);
+        }
+    };
+    SGShapeStatus *observer = [SGShapeStatus new];
+    observer.failed = ^{ dispatch_async(queue, ^{ end(NO); }); };
+    [writer addObserver:observer forKeyPath:@"status" options:NSKeyValueObservingOptionInitial context:NULL];
+    [input requestMediaDataWhenReadyOnQueue:queue usingBlock:^{
+        while (!ending && input.readyForMoreMediaData) @autoreleasepool {
+            id sample = pending ?: CFBridgingRelease([frames copyNextSampleBuffer]);
+            pending = nil;
+            if (!sample) end(reader.status == AVAssetReaderStatusCompleted);
+            else if (![input appendSampleBuffer:(__bridge CMSampleBufferRef)sample]) end(NO);
+        }
+    }];
     dispatch_semaphore_wait(written, DISPATCH_TIME_FOREVER);
+    [writer removeObserver:observer forKeyPath:@"status"];
     return writer.status == AVAssetWriterStatusCompleted;
 }
 

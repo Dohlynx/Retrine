@@ -238,7 +238,9 @@ void SGTestLifecycle(void) {
     SGTestAssert(SGTestPump(^BOOL { return [engine.shown[0] isEqual:@"No lyrics available"]; }),
         @"PiP returns to genuine absence after a healthy miss");
     NSUInteger frames = engine.testLayer.frames;
+    SGLyricsPiPStyle *steady = engine.style;
     for (int i = 0; i < 20; i++) [engine refresh];
+    SGTestAssert(engine.style == steady, @"unchanged line keeps the same prepared style");
     SGTestAssert(engine.testLayer.frames == frames, @"unchanged content and background do not repeat frames");
     [engine pictureInPictureControllerDidStartPictureInPicture:(id)pip];
     SGTestAssert(engine.active && !engine.starting && engine.timer == nil, @"paused active session has no render timer");
@@ -271,6 +273,24 @@ void SGTestLifecycle(void) {
     frames = engine.testLayer.frames;
     for (NSUInteger i = 0; i < 10; i++) [engine refresh];
     SGTestAssert(engine.testLayer.frames == frames, @"new style identity is cached after one frame");
+    SGTestSetting(SGKeyPiPFont, @"library:fixture");
+    [NSNotificationCenter.defaultCenter postNotificationName:NSUserDefaultsDidChangeNotification object:nil];
+    SGTestAssert(SGTestPump(^BOOL { return [engine.style.font isEqual:@"system"]; }), @"unregistered selection draws in system font");
+    frames = engine.testLayer.frames;
+    steady = engine.style;
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    for (NSUInteger i = 0; i < 10; i++)
+        [center postNotificationName:SGFontLibraryChangedNotification object:nil userInfo:@{@"identifier": @"fixture"}];
+    __block BOOL drained = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{ drained = YES; });
+    SGTestAssert(SGTestPump(^BOOL { return drained; }) && engine.style == steady && engine.testLayer.frames == frames,
+                 @"download progress does not rebuild style or redraw a paused frame");
+    extern NSString *SGTestRegisteredFamily;
+    SGTestRegisteredFamily = @"Georgia";
+    [center postNotificationName:SGFontLibraryChangedNotification object:nil userInfo:@{@"identifier": @"fixture"}];
+    SGTestAssert(SGTestPump(^BOOL { return [engine.style.font isEqual:@"Georgia"] && engine.testLayer.frames > frames; }),
+                 @"registration of the selected family refreshes paused PiP");
+    SGTestRegisteredFamily = nil;
     SGTestSetting(SGKeyPiPFont, nil);
 
     SGKaraokeWord *word = [SGKaraokeWord new]; word.text = @"Original";
