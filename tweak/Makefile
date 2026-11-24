@@ -51,15 +51,14 @@ Sources/Shared/AudioEffects/SGDSPLiveprog.m_CFLAGS := -isystem $(SG_AUDIO)/wdl/e
 
 ifeq ($(WIREGUARD),1)
 spotifyglass_CFLAGS += -DSG_WIREGUARD=1
-spotifyglass_OBJ_FILES += ../WireGuard/build/libsgwg.a
 spotifyglass_FRAMEWORKS += Network Security CoreFoundation
-spotifyglass_LIBRARIES += resolv
 spotifyglass.all.tweak.variables: sg-wireguard
 .PHONY: sg-wireguard
 sg-wireguard:
 	@bash ../WireGuard/build-ios.sh
 
 after-stage::
+	@cp ../WireGuard/build/libsgwg.dylib "$(THEOS_STAGING_DIR)$(THEOS_PACKAGE_INSTALL_PREFIX)/Library/MobileSubstrate/DynamicLibraries/"
 	@mkdir -p "$(THEOS_STAGING_DIR)$(THEOS_PACKAGE_INSTALL_PREFIX)/Library/Application Support/Retrine.bundle"
 	@cp ../WireGuard/THIRD_PARTY_LICENSES.txt "$(THEOS_STAGING_DIR)$(THEOS_PACKAGE_INSTALL_PREFIX)/Library/Application Support/Retrine.bundle/WireGuard-THIRD_PARTY_LICENSES.txt"
 endif

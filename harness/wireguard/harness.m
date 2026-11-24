@@ -4,6 +4,7 @@
 #import <Network/Network.h>
 #import <arpa/inet.h>
 #import <dlfcn.h>
+#import <mach-o/dyld.h>
 #import <fcntl.h>
 #import <sys/socket.h>
 #import "../../tweak/Sources/Shared/WireGuard/SGWGCore.h"
@@ -121,10 +122,28 @@ static void NativeDenialChecks(void) {
     puts("PASS remote BSD TCP and DNS UDP denied; short sockaddr rejected; O_NONBLOCK preserved");
 }
 
+static BOOL GoImageMapped(void) {
+    for (uint32_t i = 0; i < _dyld_image_count(); i++)
+        if ([@(_dyld_get_image_name(i)).lastPathComponent isEqualToString:@"libsgwg.dylib"]) return YES;
+    return NO;
+}
+
+static void LoaderFailureChecks(void) {
+    NSString *expected = Env(@"SGWG_TEST_LOADER_ERROR");
+    NSString *reason;
+    CHECK(!SGWGInspectProfile(@"private input", &reason) && [reason isEqualToString:expected], "profile admission");
+    CHECK([SGWGRedactText(@"private input") isEqualToString:expected], "unsafe redaction fallback");
+    CHECK([SGWGDiagnosticsReport(@{@"country": @"private input"}) isEqualToString:expected], "unsafe report fallback");
+    CHECK(!SGWGReady() && SGWGGuardsInstalled() && [SGWGEngineStatus()[@"error"] isEqualToString:expected],
+          "engine not guarded on loader failure");
+    if (getenv("SGWG_EXPECT_UNMAPPED")) CHECK(!GoImageMapped(), "loaded despite override");
+}
+
 static void UnitChecks(void) {
     BOOL enabled = [Env(@"SGWG_EXPECT_ACTIVE") boolValue];
     CHECK(SGWGActiveThisLaunch() == enabled, "armed state");
     if (!enabled) {
+        CHECK(!GoImageMapped(), "disabled launch mapped the Go runtime");
         CHECK([[NSURLSessionConfiguration.ephemeralSessionConfiguration valueForKey:@"proxyConfigurations"] count] == 0,
               "proxy applied while disabled");
         puts("PASS disabled: no proxy");
@@ -292,6 +311,7 @@ int main(int argc, const char *argv[]) {
     @autoreleasepool {
         NSString *mode = argc > 1 ? @(argv[1]) : @"unit";
         if ([mode isEqualToString:@"unit"]) UnitChecks();
+        else if ([mode isEqualToString:@"loader-failure"]) LoaderFailureChecks();
         else if ([mode isEqualToString:@"live"]) LiveChecks();
         else if ([mode isEqualToString:@"deferred"]) DeferredGuardChecks();
         else if ([mode isEqualToString:@"offline"]) OfflineBootstrapChecks();

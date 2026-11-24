@@ -1,5 +1,7 @@
 #import "SGWGCore.h"
 #import "SGWGBridge.h"
+#import "SGWGLoaderPolicy.h"
+#import <crt_externs.h>
 #import "SGWGABI.h"
 #import "Shared/LyricsSources/LyricsHosts.h"
 #import <Network/Network.h>
@@ -13,6 +15,7 @@
 #import <stdatomic.h>
 #import <stdlib.h>
 #import <sys/socket.h>
+#import <sys/stat.h>
 #import <sys/utsname.h>
 #import <unistd.h>
 #import <arpa/inet.h>
@@ -44,6 +47,7 @@ enum { MaxStartRetries = 5 };
 static uint64_t gRetryTicket;
 static os_unfair_lock gReadinessLock = OS_UNFAIR_LOCK_INIT;
 static uint64_t gReadinessGeneration;
+static atomic_bool gRegisteringImages;
 static uint64_t gOutage = 1, gPresentedOutage; // protected by gReadinessLock
 static BOOL gEngineAvailable;    // unvalidated engine event, protected by gReadinessLock
 static BOOL gSessionGuards;
@@ -814,16 +818,59 @@ static NSString *ReadProfile(OSStatus *outStatus) {
 
 BOOL SGWGHasProfile(void) { return ReadProfile(NULL).length > 0; }
 
+static BOOL ValidEngineAPI(const struct SGWGAPI *api) {
+    return api && api->version == SGWGEngineABIVersion && api->size >= sizeof(*api)
+        && api->inspect && api->start && api->setCallback && api->status && api->rebind
+        && api->lookup && api->stop && api->redact && api->freeString;
+}
+
+static BOOL gEnginePathOverridesAtLaunch;
+static NSString *gEngineLoadError = @"WireGuard engine unavailable";
+
+static const struct SGWGAPI *EngineAPI(void) {
+    static const struct SGWGAPI *api;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+#ifdef SGWG_TEST_STATIC_ENGINE
+        const struct SGWGAPI *candidate = &SGWGEngineV2;
+#else
+        // dyld can override even an absolute install path. Reject before
+        // dlopen, not after a substitute's initializers would have run.
+        if (gEnginePathOverridesAtLaunch || SGWGProcessOverrides() || SGWGHostOverrides(_NSGetMachExecuteHeader())) {
+            gEngineLoadError = @"WireGuard engine blocked: loader path override";
+            return;
+        }
+        NSString *frameworks = NSBundle.mainBundle.privateFrameworksPath;
+        NSString *path = [frameworks stringByAppendingPathComponent:@"libsgwg.dylib"];
+        struct stat st;
+        if (!path.isAbsolutePath || lstat(frameworks.fileSystemRepresentation, &st) || !S_ISDIR(st.st_mode)
+            || lstat(path.fileSystemRepresentation, &st) || !S_ISREG(st.st_mode)) return;
+        // The Go runtime is process-lifetime and cannot safely be unloaded.
+        void *lib = dlopen(path.fileSystemRepresentation, RTLD_LOCAL | RTLD_NOW | RTLD_FIRST);
+        if (!lib) return;
+        const struct SGWGAPI *candidate = dlsym(lib, "SGWGEngineV2");
+#endif
+        if (ValidEngineAPI(candidate)) api = candidate;
+        else gEngineLoadError = @"WireGuard engine incompatible";
+    });
+    return api;
+}
+
 static NSDictionary *JSONFromGo(char *raw) {
     if (!raw) return nil;
     NSData *data = [NSData dataWithBytes:raw length:strlen(raw)];
-    SGWGFree(raw);
+    EngineAPI()->freeString(raw);
     id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
     return [obj isKindOfClass:NSDictionary.class] ? obj : nil;
 }
 
 NSDictionary *SGWGInspectProfile(NSString *text, NSString **reason) {
-    NSDictionary *summary = JSONFromGo(SGWGInspect((char *)text.UTF8String));
+    const struct SGWGAPI *api = EngineAPI();
+    if (!api) {
+        if (reason) *reason = gEngineLoadError;
+        return nil;
+    }
+    NSDictionary *summary = JSONFromGo(api->inspect((char *)text.UTF8String));
     if (![summary[@"ok"] boolValue]) {
         if (reason) *reason = [summary[@"error"] isKindOfClass:NSString.class] ? summary[@"error"] : @"invalid profile";
         return nil;
@@ -861,7 +908,8 @@ BOOL SGWGDeleteProfile(NSString **reason) {
 
 NSDictionary *SGWGEngineStatus(void) {
     if (!gActive || ![gKind isEqualToString:SGWGKindWireGuard]) return @{@"running": @NO};
-    return JSONFromGo(SGWGStatus()) ?: @{@"running": @NO};
+    const struct SGWGAPI *api = EngineAPI();
+    return api ? JSONFromGo(api->status()) : @{@"running": @NO, @"error": gEngineLoadError};
 }
 
 static void RefuseListener(void);
@@ -921,7 +969,7 @@ static void RefuseListener(void) {
     BOOL stop = atomic_exchange(&gHandedOff, false);
     BOOL published = gPortPublished;
     os_unfair_lock_unlock(&gReadinessLock);
-    if (stop) dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ SGWGStop(); });
+    if (stop) dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ EngineAPI()->stop(); });
     if (published) SinkListener(gListenerFD);
     else if (gListenerFD >= 0) {
         close(gListenerFD);
@@ -957,7 +1005,7 @@ static void FinishStart(enum SGWGStartResult result) {
     gProfileChangedDuringStart = NO;
     gStarting = NO;
     if (gBlockAll) {
-        if (result == SGWGStarted) dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ SGWGStop(); });
+        if (result == SGWGStarted) dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ EngineAPI()->stop(); });
         return;
     }
     if (result == SGWGStarted) {
@@ -1006,9 +1054,13 @@ static void StartEngine(void) {
     }
     gStarting = YES;
     atomic_store(&gState, SGWGStateStarting);
-    SGWGSetStateCallback((uintptr_t)EngineChanged, (uintptr_t)ProxyAdmitted);
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        enum SGWGStartResult result = SGWGStart((char *)profile.UTF8String, gUser, gPass, fd);
+        const struct SGWGAPI *api = EngineAPI();
+        enum SGWGStartResult result = SGWGStartRefused;
+        if (api) {
+            api->setCallback((uintptr_t)EngineChanged, (uintptr_t)ProxyAdmitted);
+            result = api->start((char *)profile.UTF8String, gUser, gPass, fd);
+        } else close(fd);
         dispatch_async(gQueue, ^{ FinishStart(result); });
     });
 }
@@ -1029,7 +1081,7 @@ void SGWGRequestRebind(NSString *reason) {
         } else if (gRetryStart) {
             RetryBootstrap();
         } else if (gHandedOff && SGWGAdmissionReady()) {
-            SGWGRebind();
+            EngineAPI()->rebind();
             atomic_fetch_add(&gRebinds, 1);
         }
     });
@@ -1037,7 +1089,8 @@ void SGWGRequestRebind(NSString *reason) {
 
 void SGWGLookupInTunnel(NSString *host, void (^completion)(NSDictionary *)) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSDictionary *result = gActive && [gKind isEqualToString:SGWGKindWireGuard] ? JSONFromGo(SGWGLookup((char *)host.UTF8String)) : nil;
+        const struct SGWGAPI *api = gActive && [gKind isEqualToString:SGWGKindWireGuard] ? EngineAPI() : NULL;
+        NSDictionary *result = api ? JSONFromGo(api->lookup((char *)host.UTF8String)) : nil;
         dispatch_async(dispatch_get_main_queue(), ^{ completion(result ?: @{@"ok": @NO, @"error": @"tunnel not active"}); });
     });
 }
@@ -1282,7 +1335,9 @@ void SGWGRefreshReadiness(void) {
 }
 
 static void ImageChanged(const struct mach_header *header, intptr_t slide) {
-    if (!gActive) return;
+    // Readiness has never been published during registration. The full
+    // validation immediately afterwards covers replay and concurrent changes.
+    if (!gActive || gRegisteringImages) return;
     os_unfair_lock_lock(&gReadinessLock);
     gReadinessGeneration++;
     atomic_store_explicit(&gReady, false, memory_order_release);
@@ -1292,6 +1347,7 @@ static void ImageChanged(const struct mach_header *header, intptr_t slide) {
 
 __attribute__((constructor)) static void SGWGInit(void) {
     @autoreleasepool {
+        gEnginePathOverridesAtLaunch = SGWGProcessOverrides();
         gQueue = dispatch_queue_create("retrine.wireguard", DISPATCH_QUEUE_SERIAL);
         dispatch_queue_set_specific(gQueue, &kQueueKey, &kQueueKey, NULL);
         if (!SGWGSettingEnabled()) return;
@@ -1307,9 +1363,14 @@ __attribute__((constructor)) static void SGWGInit(void) {
         BOOL admitted = supported && SGWGCheckAdmission(&pending);
         if (!admitted && !pending) RefuseListener();
         gSessionGuards = InstallSessionHooks();
-        SGWGRefreshReadiness();
+        // Arm existing slots before dyld replays the image list. This pass
+        // installs guards but must not publish readiness.
+        SGWGInstallNativePatches();
+        gRegisteringImages = true;
         _dyld_register_func_for_add_image(ImageChanged);
         _dyld_register_func_for_remove_image(ImageChanged);
+        gRegisteringImages = false;
+        SGWGRefreshReadiness();
         ObserveLifecycle();
         dispatch_async(gQueue, ^{ InstallRecoveryTimer(); });
         if (!supported) {
@@ -1343,10 +1404,12 @@ NSString *SGWGHostCategory(NSString *host) {
 }
 
 NSString *SGWGRedactText(NSString *text) {
-    char *raw = SGWGRedact((char *)(text ?: @"").UTF8String);
-    if (!raw) return @"";
-    NSString *out = [NSString stringWithUTF8String:raw] ?: @"";
-    SGWGFree(raw);
+    const struct SGWGAPI *api = EngineAPI();
+    if (!api) return gEngineLoadError;
+    char *raw = api->redact((char *)(text ?: @"").UTF8String);
+    if (!raw) return @"WireGuard redaction unavailable";
+    NSString *out = [NSString stringWithUTF8String:raw] ?: @"WireGuard redaction unavailable";
+    api->freeString(raw);
     return out;
 }
 

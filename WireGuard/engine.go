@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,13 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 )
+
+func init() {
+	// Leave the normal doubling pace alone for short transfers; start GC
+	// earlier under sustained load. This limits Go-managed memory, not RSS.
+	debug.SetGCPercent(100)
+	debug.SetMemoryLimit(64 << 20)
+}
 
 // Engine runs wireguard-go on a gVisor userspace network stack and exposes an
 // authenticated SOCKS5 / HTTP CONNECT proxy on 127.0.0.1 for this process only.

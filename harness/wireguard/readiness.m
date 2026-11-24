@@ -70,6 +70,19 @@ static int fixtureDup(int fd) {
 #define dup fixtureDup
 // Path delivery is driven by the fixture, never by the Mac's actual Wi-Fi.
 #define nw_path_monitor_start(monitor) ((void)(monitor))
+#import <mach-o/dyld.h>
+#import <stdatomic.h>
+static atomic_uint nativeScans;
+static unsigned scansAtRegistration;
+static void (*registeredAdd)(const struct mach_header *, intptr_t);
+static void registerImages(void (*callback)(const struct mach_header *, intptr_t)) {
+    if (getenv("SGWG_TEST_REPLAY")) {
+        registeredAdd = callback;
+        scansAtRegistration = nativeScans;
+        for (int i = 0; i < 600; i++) callback(NULL, 0);
+    } else _dyld_register_func_for_add_image(callback);
+}
+#define _dyld_register_func_for_add_image registerImages
 #import "Shared/WireGuard/SGWGCore.m"
 #undef nw_path_monitor_start
 #undef dispatch_source_set_timer
@@ -84,7 +97,7 @@ static BOOL presenterAvailable;
 static dispatch_block_t presentedNotice;
 static BOOL admitted = YES, patches = YES;
 static atomic_bool sharedImageLoaded;
-static atomic_uint starts, stops, transports, nativeScans, admissions;
+static atomic_uint starts, stops, transports, admissions;
 static dispatch_semaphore_t handoff, releaseHandoff;
 static dispatch_semaphore_t oldProfileRead, finishOldAttempt;
 static int sessionPort;
@@ -448,6 +461,10 @@ int main(int argc, char **argv) {
             }
             if (getenv("SGWG_TEST_REFUSED")) {
                 drain();
+                if (getenv("SGWG_TEST_REPLAY") && !getenv("SGWG_TEST_DELAY_ADMISSION")) {
+                    CHECK(registeredAdd && scansAtRegistration > 0);
+                    CHECK(nativeScans == scansAtRegistration + 1);
+                }
                 CHECK(SGWGActiveThisLaunch() && SGWGGuardsInstalled() && !SGWGReady());
                 unsigned scans = nativeScans, checks = admissions;
                 dispatch_sync(gQueue, ^{ fireRecovery(); });
@@ -476,6 +493,15 @@ int main(int argc, char **argv) {
                 CHECK(gProxyPass && !strcmp(gProxyPass, "unlock-test"));
             }
             CHECK(gListenerFD == -1 && SGWGReady() && SGWGCurrentState() == SGWGStateExternalProxy && transports == 1);
+            if (getenv("SGWG_TEST_REPLAY")) {
+                CHECK(registeredAdd && scansAtRegistration > 0);
+                dispatch_sync(gQueue, ^{
+                    registeredAdd(NULL, 0);
+                    CHECK(!SGWGReady()); // refresh is queued behind this block
+                });
+                drain();
+                CHECK(SGWGReady());
+            }
             if (getenv("SGWG_TEST_ACTIVE_NOTICE")) {
                 patches = NO;
                 ImageChanged(NULL, 0);
