@@ -85,8 +85,10 @@ Rules:
 - Device log: `make log` (`[spotifyglass]` lines).
 - Text on the mod's own screens goes through `SGL(@"settings.<page>.<what>", @"English")` (`Core/SGLocalize.h`); add the
   Korean to `ko.lproj` and run `scripts/check-strings.py --sync` (docs/tweaks.md, Localization).
-- Releases: Release Please (`.github/workflows/release.yml`). Commit as `feat:` / `fix:` (they bump
-  `version.txt` and fill `CHANGELOG.md`; `chore:`, `refactor:` and `docs:` stay out). Merging its
+- Releases: Release Please (`.github/workflows/release.yml`). Commit as `fix:` or `perf:` (they bump
+  the patch version and fill `CHANGELOG.md`; `chore:`, `refactor:` and `docs:` stay out). `feat:` bumps
+  the minor version, so use it only when the user has decided on a minor release; new or removed
+  features otherwise go in as `fix:`. Merging its
   release PR tags `vX.Y.Z`; nothing is attached (the Mac compile of `main` runs in the private Retrine-CI
   repository). Never edit `version.txt` by hand.
 - Known traps: anything pushed onto Spotify's nav stack must conform to `SPTPageController`
