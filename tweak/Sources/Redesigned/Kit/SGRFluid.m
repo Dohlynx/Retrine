@@ -83,7 +83,8 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
         imageByApplyingFilter:@"CIColorControls" withInputParameters:@{kCIInputSaturationKey: @(saturation)}];
     static CIContext *context;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ context = [CIContext contextWithOptions:nil]; });
+    // Covers are prepared even offscreen; leave GPU submission to the visible renderer.
+    dispatch_once(&once, ^{ context = [CIContext contextWithOptions:@{kCIContextUseSoftwareRenderer: @YES}]; });
     CGImageRef cg = [context createCGImage:[output imageByCroppingToRect:extent] fromRect:extent];
     if (!cg) return nil;
     // Each blurred pixel is capped at a linear luminance (0.04 with Increase Contrast) that keeps the player's
@@ -212,7 +213,7 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
         [self setNeedsLayout];
         if (_blur) [_gpu setPicture:_blur.CGImage animated:NO];
     } else if (!smooth && _gpu) {
-        _gpu.moving = NO;
+        _gpu.held = YES;
         [_gpu removeFromSuperlayer];
         _gpu = nil;
         _gpuShown = NO;
