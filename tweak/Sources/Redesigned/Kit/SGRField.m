@@ -261,11 +261,11 @@ UIColor *SGRFieldShownColor(UIColor *color) {
 
 - (void)updateMotion {
     if (!_flow && !_fluidLayer) return;
-    // A locked phone keeps the player in its window, so being in front counts as much as being in one.
+    // Keep the last frame for the switcher snapshot; only motion needs the app to be active.
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    BOOL visible = self.window && !self.hidden && front;
+    BOOL visible = self.window && !self.hidden;
     _fluidLayer.hidden = !_fluid || _covered || !visible;
-    BOOL may = visible && !SGRPlayerIsTransitioning() && !SGRReduceMotion()
+    BOOL may = visible && front && !SGRPlayerIsTransitioning() && !SGRReduceMotion()
             && !SGRMotionHeldForPowerOrHeat() && !_motionHeld;
     _fluidLayer.moving = may && _fluid && !_covered;
     BOOL moving = may && _flows && !_flow.hidden;

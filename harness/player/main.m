@@ -5829,6 +5829,9 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     SGRArtworkField *probe = [[SGRArtworkField alloc] initWithFrame:CGRectMake(0, 0, 80, 80)];
     probe.motionHeld = YES;
     __block SGRFluidGPULayer *gpu;
+    Method appState = class_getInstanceMethod(UIApplication.class, @selector(applicationState));
+    __block IMP originalState, simulatedState;
+    __block UIApplicationState lifecycleState;
     __block UIView *card;
     step(0, ^{
         SGRSetFluidRenderer(SGRFluidRendererSmooth);
@@ -5845,13 +5848,22 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     });
     step(1, ^{
         [self expect:presentedPixel[0] > presentedPixel[2] step:@"first Smooth frame on attachment is red" detail:state()];
+        captureNextFrame(gpu);
         [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+        lifecycleState = UIApplicationStateInactive;
+        simulatedState = imp_implementationWithBlock(^UIApplicationState(id app) { return lifecycleState; });
+        originalState = method_setImplementation(appState, simulatedState);
         [probe setArtwork:solid(UIColor.blueColor) identity:@"inactive" animated:YES];
     });
     step(1, ^{
-        [self expect:![gpu valueForKey:@"to"] && ![gpu valueForKey:@"link"]
-                step:@"inactive track change submits no texture or ticker" detail:state()];
-        captureNextFrame(gpu);
+        [self expect:!gpu.superlayer.hidden && !gpu.hidden && captureLayer == gpu && ![gpu valueForKey:@"to"] && ![gpu valueForKey:@"link"]
+                step:@"inactive field keeps its frame without a submission or ticker" detail:state()];
+        lifecycleState = UIApplicationStateBackground;
+        [probe setArtwork:solid(UIColor.blueColor) identity:@"background" animated:YES];
+        [self expect:captureLayer == gpu && ![gpu valueForKey:@"to"] && ![gpu valueForKey:@"link"]
+                step:@"background artwork submits no frame or ticker" detail:state()];
+        method_setImplementation(appState, originalState);
+        imp_removeBlock(simulatedState);
         [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
     });
     step(1, ^{

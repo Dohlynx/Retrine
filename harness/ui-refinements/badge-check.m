@@ -4,6 +4,7 @@
 #import "Native/Appearance/Appearance.h"
 #import "Native/Appearance/Repaint.h"
 #import "Redesigned/Kit/SGRAccent.h"
+#import "Redesigned/Kit/SGRRepaint.h"
 #import "../harness-fail.h"
 #include <stdlib.h>
 #include <string.h>
@@ -85,8 +86,9 @@ static void check(UIWindow *window) {
         stored(!SGNativeUI(), !SGRedesignedUI());
         expect(paints(component), @"inactive look's setting cannot hide a badge");
         stored(SGNativeUI(), SGRedesignedUI());
-        if (SGNativeUI()) {
-            sg_homeRoot = page;
+        {
+            if (SGNativeUI()) sg_homeRoot = page;
+            else sgr_nowPlayingRoot = page;
             CGColorRef white = UIColor.whiteColor.CGColor;
             dispatch_group_t work = dispatch_group_create();
             dispatch_semaphore_t started = dispatch_semaphore_create(0);
@@ -102,9 +104,10 @@ static void check(UIWindow *window) {
                 }
             });
             dispatch_semaphore_wait(started, DISPATCH_TIME_FOREVER);
-            for (int i = 0; i < 8; ++i) stored(i % 2, NO);
+            for (int i = 0; i < 8; ++i) stored(SGNativeUI() && i % 2, SGRedesignedUI() && i % 2);
             dispatch_group_wait(work, DISPATCH_TIME_FOREVER);
-            sg_homeRoot = nil;
+            if (SGNativeUI()) sg_homeRoot = nil;
+            else sgr_nowPlayingRoot = nil;
         }
         [window addSubview:page];
         expect(returning.layer.mask != nil, @"badge detached at enable is masked on unchanged reattachment");

@@ -379,8 +379,9 @@ come late, out of order, or not at all.
   the Light copies hidden), compared with the band read about 4 s after; the read a second after must match it. It
   also changes a paused field's cover while detached and while resigning active: neither change should upload a texture
   or start a display link. It samples Smooth's first drawable on attachment and reactivation, including an interrupted
-  crossfade with no further track change, and checks that the photo-covered settings preview submits no frame. The log
-  ends with `renderer checks: n of 11 right -- PASS` or `FAIL`.
+  crossfade with no further track change, and checks that the photo-covered settings preview submits no frame. It also
+  checks that Inactive keeps the last Smooth frame visible without submitting, and that a background artwork change
+  submits nothing either. It ends with `renderer checks: n of 12 right -- PASS` or `FAIL`.
 
 - `automix` is AutoMix's transitions in the player (`PlayerMix.x`, with `PlayerControls.x`, `PlayerQueue.m` and
   `PlayerArtwork.x`) and the AutoMix page's preview card (`Shared/AutoMix/AutoMixSettings.m`, `AutoMixPreview.m`), in
