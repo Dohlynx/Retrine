@@ -15,8 +15,10 @@ static int workerSleep(useconds_t delay) {
 #import "Sing.h"
 #import "SGSingLoader.h"
 static SGSingSeparator *loaded;
+static SGSingSeparator *harnessSeparator(void) { return loaded ?: SGSingLoaderSeparator(); }
 #define SGSingModelCurrentState() SGSingModelReady
-#define SGSingLoaderSeparator() loaded
+#define SGSingModelURL() [NSURL fileURLWithPath:@"/mock/separator-light.mlmodelc"]
+#define SGSingLoaderSeparator() harnessSeparator()
 #import "Sing.m"
 
 static OSStatus tone(void *unused, UInt32 frames, float *l, float *r, UInt32 *sounding) {
@@ -41,6 +43,74 @@ static bool mixed(const float *l, const float *r) {
     for (unsigned i = 0; i < 1024; ++i)
         if (!(fabsf(l[i] - 0.125f) < 1e-6f && fabsf(r[i] - 0.125f) < 1e-6f)) return false;
     return true;
+}
+
+// Identity prediction with a switchable ANE error. Only the Core ML file reader is replaced;
+// tick(), apply(), the loader and the separator all see the actual failed prediction.
+@interface TickModel : MLModel
+@property BOOL fails;
+@end
+@implementation TickModel
+- (id<MLFeatureProvider>)predictionFromFeatures:(id<MLFeatureProvider>)input error:(NSError **)error {
+    if (self.fails) {
+        if (error) *error = [NSError errorWithDomain:@"TickHarness" code:1 userInfo:nil];
+        return nil;
+    }
+    return [[MLDictionaryFeatureProvider alloc] initWithDictionary:@{@"vocals_spectrum":[input featureValueForName:@"spectrum"]} error:error];
+}
+@end
+
+static void waitUntil(CFAbsoluteTime deadline, BOOL (^done)(void), void (^next)(void)) {
+    if (done()) { next(); return; }
+    if (CFAbsoluteTimeGetCurrent() >= deadline)
+        HARNESS_FAIL(@"loader state %ld, fast %ld, error %@", (long)SGSingLoaderCurrentState(), (long)SGSingLoaderFastState(), SGSingLoaderError());
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 50), dispatch_get_main_queue(), ^{ waitUntil(deadline, done, next); });
+}
+
+static void checkBackgroundTick(int windows) {
+    loaded = nil;
+    sg_active = NO;
+    SGSingLoaderPurge(@"start tick case");
+    __block TickModel *ane;
+    Method reader = class_getClassMethod(MLModel.class, @selector(modelWithContentsOfURL:configuration:error:));
+    IMP stub = imp_implementationWithBlock(^MLModel *(id cls, NSURL *url, MLModelConfiguration *config, NSError **error) {
+        TickModel *model = [TickModel alloc];
+        if (config.computeUnits != MLComputeUnitsCPUOnly) ane = model;
+        return model;
+    });
+    IMP original = method_setImplementation(reader, stub);
+    NSURL *url = SGSingModelURL();
+    float *silence = calloc(kSGSingWindowFrames, sizeof(float)), *out = calloc(kSGSingWindowFrames, sizeof(float));
+    BOOL (^window)(void) = ^BOOL {
+        @autoreleasepool { return [SGSingLoaderSeparator() separateLeft:silence right:silence vocalsLeft:out vocalsRight:out error:nil]; }
+    };
+    SGSingLoaderSetForeground(YES);
+    SGSingLoaderWant(url, YES);
+    waitUntil(CFAbsoluteTimeGetCurrent() + 10, ^BOOL { return SGSingLoaderFastState() == SGSingFastReady; }, ^{
+        SGSingLoaderSetForeground(NO);
+        sg_active = NO;
+        for (int i = 0; i < windows; i++) HARNESS_CHECK(window());
+        ane.fails = YES;
+        HARNESS_CHECK(window() == (windows == 0));
+        unsigned attempts = SGSingLoaderAttempts();
+        tick();
+        HARNESS_CHECK(sg_neuralFailed && SGSingLoaderFastState() == SGSingFastNone);
+        HARNESS_CHECK(SGSingLoaderCurrentState() == (windows ? SGSingLoaderLoading : SGSingLoaderReady));
+        waitUntil(CFAbsoluteTimeGetCurrent() + 10, ^BOOL { return SGSingLoaderCurrentState() == SGSingLoaderReady; }, ^{
+            SGSingLoaderSetForeground(YES);
+            HARNESS_CHECK(SGSingLoaderAttempts() == attempts + (windows != 0) && window() && !SGSingLoaderSeparator().stats.fast);
+            SGSingLoaderPurge(@"end tick case");
+            sg_neuralFailed = nil;
+            method_setImplementation(reader, original);
+            imp_removeBlock(stub);
+            free(silence); free(out);
+            if (!windows) checkBackgroundTick(20);
+            else {
+                puts("PASS background tick handles probation and proven failures; foreground does not re-request ANE");
+                exit(0);
+            }
+        });
+    });
 }
 
 void HarnessSingBattery(NSSet *listeners) {
@@ -92,4 +162,13 @@ void HarnessSingBattery(NSSet *listeners) {
     [watcher playerStateDidChange:state];
     HARNESS_CHECK([listeners isEqual:both]);
     puts("PASS engaged pause parks the worker and preserves buffered output; heat and remote withdraw only Sing motion");
+    // Run after launch, with main free to receive the loader's completions. Don't let the worker
+    // process a window at the same time as the test, which drives the separator directly.
+    [state setValue:@YES forKey:@"isPaused"];
+    [watcher playerStateDidChange:state];
+    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil
+        usingBlock:^(NSNotification *note) {
+            // Let Sing's foreground observer apply the simulator's CPU-only capability first.
+            dispatch_async(dispatch_get_main_queue(), ^{ checkBackgroundTick(0); });
+        }];
 }

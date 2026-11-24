@@ -537,7 +537,7 @@ static void check(OSStatus status, const char *what) {
     SGHeadMotionListen(@"gestures", ^(id motion){});
     extern void HarnessSingBattery(NSSet *);
     HarnessSingBattery(motionListeners);
-    exit(0);
+    return YES;
 #endif
     NSString *clock = [NSUserDefaults.standardUserDefaults stringForKey:@"clock"];
     sg_clock = [clock isEqualToString:@"restamp"] ? SGHarnessClockRestamp : [clock isEqualToString:@"decoded"] ? SGHarnessClockDecoded : SGHarnessClockReport;

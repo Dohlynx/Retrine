@@ -1066,7 +1066,11 @@ static void tick(void) {
     // A Neural Engine copy that failed a window (Core ML's error) is given up on for the launch. One that is only slow
     // stays: falling behind is the budget's, as on any copy.
     SGSingSeparator *current = SGSingLoaderSeparator();
-    if (current && [current stats].fastFailed) neuralFailed(@"failed a window");
+    if (current && [current stats].fastFailed) {
+        // Even with the screen locked: the CPU may no longer be resident in this running session.
+        SGSingLoaderDropFast(@"failed a window");
+        neuralFailed(@"failed a window");
+    }
     if (engine && SGSingOn() && !sg_stopped && SGSingEngineGaveUp(engine)) {
         BOOL forGood = ++sg_giveUps >= kGiveUpsKept;
         sg_stopKind = forGood ? SGSingStopForGood : SGSingStopBehind;
@@ -1262,9 +1266,12 @@ static void readHeat(void) {
     // value of the earlier key (GPU, GPU and Neural Engine, Neural Engine). The GPU's memory of a stuck load and the
     // one-model test's switch are gone with them.
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    if (runsOn() > 1) SGLog(@"sing: Runs on was %ld, which is gone, so it is Automatic", (long)runsOn());
-    if (runsOn() != 1) [defaults removeObjectForKey:SGKeySingComputeUnits];
-    for (NSString *key in @[SGKeySingComputeUnitsBefore, @"spotifyglass.sing.gpuStuckOn", @"spotifyglass.sing.oneModel"]) [defaults removeObjectForKey:key];
+    NSInteger units = runsOn();
+    if (units > 1) SGLog(@"sing: Runs on was %ld, which is gone, so it is Automatic", (long)units);
+    for (NSString *key in @[SGKeySingComputeUnits, SGKeySingComputeUnitsBefore, @"spotifyglass.sing.gpuStuckOn", @"spotifyglass.sing.oneModel"]) {
+        if (units == 1 && [key isEqualToString:SGKeySingComputeUnits]) continue;
+        if ([defaults objectForKey:key]) [defaults removeObjectForKey:key];
+    }
     // The 489 MB model this one replaces, deleted off the main thread once this one is in (kept and run until then).
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{ SGSingRemoveOldModel(); });
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1312,7 +1319,7 @@ static void readHeat(void) {
             SGSingLoaderSetForeground(NO);
         }];
         // Low on memory, the model goes at once, before iOS closes Spotify for it.
-        [center addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        void (^memoryWarning)(void) = ^{
             if (SGHidden(SGKeySingIgnoreMemory)) {
                 SGLog(@"sing: iOS warned that memory is low; the model is kept (Ignore memory warnings)");
                 return;
@@ -1324,6 +1331,10 @@ static void readHeat(void) {
             sg_stopped = SGL(@"settings.karaoke.note.stopped_memory", @"Karaoke stopped to free memory, so the song plays as it is. It loads the voice model again with the next song if there is room, or switch Karaoke off and on.");
             apply();
             announce();
+        };
+        [center addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+            if (NSThread.isMainThread) memoryWarning();
+            else dispatch_async(dispatch_get_main_queue(), memoryWarning);
         }];
         [center addObserverForName:SGSingChangedNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
             if (SGSingModelCurrentState() != SGSingModelReady) {
