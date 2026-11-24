@@ -34,6 +34,7 @@ static void confirmReset(void) {
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.mod.reset.action.reset_and_restart", @"Reset and restart") style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { resetAll(); }]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert);
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -67,9 +68,11 @@ static void confirmClearKeychain(void) {
                                                                         message:SGL(@"settings.mod.keychain.failed.message", @"The Keychain could not remove every key, so some are still stored on this iPhone. Please try again.")
                                                                  preferredStyle:UIAlertControllerStyleAlert];
         [failed addAction:[UIAlertAction actionWithTitle:SGL(@"common.ok", @"OK") style:UIAlertActionStyleCancel handler:nil]];
+        SGPresentDark(failed);
         [SGTopController() presentViewController:failed animated:YES completion:nil];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert);
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 

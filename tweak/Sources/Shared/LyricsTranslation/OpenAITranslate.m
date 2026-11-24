@@ -346,6 +346,7 @@ static void askForBase(void) {
     save.enabled = SGOpenAICompletionURL(setting(SGKeyLyricsOpenAIBaseURL, kBase)) != nil;
     [alert addAction:save];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert);
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 SGModRow *SGOpenAIBaseURLRow(void) {

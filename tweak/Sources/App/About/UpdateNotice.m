@@ -75,6 +75,7 @@ static void offerWhenClear(NSInteger tries) {
             SGOpenURL(release.url);
         }]];
     [sheet addAction:[UIAlertAction actionWithTitle:SGL(@"settings.mod.update.notice.action.not_now", @"Not now") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(sheet);
     [top presentViewController:sheet animated:YES completion:nil];
     SGLog(@"update notice: offered %@ over %@", version, NSStringFromClass(top.class));
 }

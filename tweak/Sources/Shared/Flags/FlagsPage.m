@@ -157,6 +157,7 @@ static NSString *flagState(const SGFlagDef *flag, id value) {
         if (!text.length) return;
         [self store:flag->type == SGFlagInt ? @(text.integerValue) : text forKey:key row:path.row];
     }]];
+    SGPresentDark(alert);
     [self presentViewController:alert animated:YES completion:nil];
 }
 

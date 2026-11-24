@@ -138,6 +138,7 @@ void SGLocalAudioPresentPicker(UIViewController *top) {
     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeAudio] asCopy:YES];
     picker.allowsMultipleSelection = YES;
     picker.delegate = delegate;
+    SGPresentDark(picker);
     [top presentViewController:picker animated:YES completion:nil];
 }
 

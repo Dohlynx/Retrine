@@ -310,5 +310,6 @@ void SGRPlayerPickPhoto(UIViewController *from, void (^done)(BOOL stored)) {
     sg_picker = [SGRPlayerPhotoPicker new];
     sg_picker.done = done;
     picker.delegate = sg_picker;
+    SGPresentDark(picker);
     [from presentViewController:picker animated:YES completion:nil];
 }

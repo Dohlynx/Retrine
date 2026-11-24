@@ -1012,6 +1012,7 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
         SGRRefreshTabBar();
         [self reload];
     }]];
+    SGPresentDark(alert);
     [self presentViewController:alert animated:YES completion:nil];
 }
 

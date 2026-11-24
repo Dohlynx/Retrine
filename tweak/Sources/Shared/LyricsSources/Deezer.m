@@ -276,6 +276,7 @@ static void askForARL(NSString *problem) {
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.lyricssources.deezer.action.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
     alert.preferredAction = save;
+    SGPresentDark(alert);
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 

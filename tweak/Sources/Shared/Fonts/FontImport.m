@@ -227,6 +227,7 @@ static void tell(NSString *title, NSString *message) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.later", @"Later") style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.font.action.restart_now", @"Restart now") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
+    SGPresentDark(alert);
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -377,6 +378,7 @@ static void pickFont(void (^done)(void)) {
     delegate.done = done;
     picker.delegate = delegate;
     picker.allowsMultipleSelection = YES;
+    SGPresentDark(picker);
     [SGTopController() presentViewController:picker animated:YES completion:nil];
 }
 

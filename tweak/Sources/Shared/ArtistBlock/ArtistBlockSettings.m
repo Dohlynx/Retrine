@@ -149,6 +149,7 @@ typedef NS_ENUM(NSInteger, SGArtistSection) {
     [sheet addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = source;
     sheet.popoverPresentationController.sourceRect = source.bounds;
+    SGPresentDark(sheet);
     [self presentViewController:sheet animated:YES completion:nil];
 }
 

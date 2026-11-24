@@ -698,6 +698,7 @@ static NSString *numberText(SGDSPRow *row, double value) {
         } completion:nil];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert);
     [self presentViewController:alert animated:YES completion:nil];
 }
 

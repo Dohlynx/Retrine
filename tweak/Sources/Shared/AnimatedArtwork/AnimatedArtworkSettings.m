@@ -130,6 +130,7 @@ static void confirmClearCache(void) {
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.artwork_clear.alert.action", @"Clear") style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) { clearCache(); }]];
+    SGPresentDark(alert);
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 

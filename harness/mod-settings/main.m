@@ -7,7 +7,8 @@
 //     xcrun simctl launch <udid> com.retrine.modsettingsharness [setup...] [action...]
 //
 // Setup: redesign (Redesigned UI stored on), warning (a red environment row at the top), keep (the stored
-// look stays; otherwise it is cleared first).
+// look stays; otherwise it is cleared first), system (the window in the system's appearance under a dark
+// navigation stack, as Spotify's is; light-check.sh).
 // Actions: toggle=<section>.<row> (that row's switch flipped the way a tap does), cancel (the alert that
 // switch brings up closed with Later), bottom (scrolled to the end), dump (the rows of each section and
 // what each reads beside its chevron, to the log), gated (a page of a switch, ten rows, a headed and noted
@@ -15,7 +16,9 @@
 // let come; the page's ticker brings it), top (scrolled to the start), layout (the scroll offset, and each
 // section's rows and heading and note heights, to the log), needs (the Lock screen artwork section below iOS
 // 26), tap=<section>.<row> (that row selected, and the alert it brings up logged), rows (the row the mod adds to
-// Spotify's settings list and drawer, after each list is emptied of its subviews, counted to the log).
+// Spotify's settings list and drawer, after each list is emptied of its subviews, counted to the log), alerts (a
+// page of SGModPage's alerts) with info, lock and toggle=0.1 bringing each up, information (SGPresentInformation
+// over the page), look (the controller on top, its appearance and its presentation's, and its frame, to the log).
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
@@ -308,6 +311,25 @@ static UIViewController *gatedPage(void) {
     ] footer:nil];
 }
 
+// The `alerts` page, for the alerts SGModPage itself brings up: a switch with an ⓘ (`info`) and a switch whose
+// warning comes up as it is turned on (`toggle=0.1`); `lock` asks the page why a locked row will not move.
+@interface SGModPage (HarnessAlerts)
+- (void)explainLock;
+@end
+
+static UIViewController *alertsPage(void) {
+    SGModRow *info = SGOptionRow(@"With an info button", nil, @"spotifyglass.harness.alerts.info");
+    info.info = @"What the row does, read out under its title.";
+    SGModRow *warned = SGOptionRow(@"Unstable", nil, @"spotifyglass.harness.alerts.warned");
+    warned.warning = @"This one can misbehave.";
+    SGSetEnabled(warned.key, NO);
+    return [[SGModPage alloc] initWithTitle:@"Alerts" intro:nil sections:@[SGSection(nil, @[info, warned])] footer:nil];
+}
+
+static NSString *styleName(UIUserInterfaceStyle style) {
+    return style == UIUserInterfaceStyleDark ? @"dark" : style == UIUserInterfaceStyleLight ? @"light" : @"unspecified";
+}
+
 @interface SGInformationPresenter : UIViewController
 @property (nonatomic, strong) UIAlertController *information;
 @property (nonatomic) BOOL animated;
@@ -412,14 +434,17 @@ static void pageStyleChecks(void) {
     for (NSString *arg in [args subarrayWithRange:NSMakeRange(1, args.count - 1)]) {
         if ([arg isEqualToString:@"redesign"]) SGSetEnabled(SGKeyRedesign, YES);
         else if ([arg isEqualToString:@"warning"]) SGHarnessWarning = YES;
-        else if (![arg isEqualToString:@"keep"]) [actions addObject:arg];
+        else if (![arg isEqualToString:@"keep"] && ![arg isEqualToString:@"system"]) [actions addObject:arg];
     }
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     UIViewController *home = [UIViewController new];
     home.view.backgroundColor = UIColor.blackColor;
     self.nav = [[UINavigationController alloc] initWithRootViewController:home];
+    // `system`: the window takes the system's appearance and only the navigation stack is dark, as in Spotify, whose
+    // Info.plist sets no style (light-check.sh drops the harness's).
+    if ([args containsObject:@"system"]) self.nav.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    else self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     self.window.rootViewController = self.nav;
     [self.window makeKeyAndVisible];
     if ([args containsObject:@"information-check"]) {
@@ -479,6 +504,23 @@ static void pageStyleChecks(void) {
         [table setContentOffset:CGPointMake(0, MAX(-table.adjustedContentInset.top, table.contentSize.height - table.bounds.size.height + table.adjustedContentInset.bottom)) animated:NO];
     } else if ([verb isEqualToString:@"gated"]) {
         [self.nav pushViewController:gatedPage() animated:NO];
+    } else if ([verb isEqualToString:@"alerts"]) {
+        [self.nav pushViewController:alertsPage() animated:NO];
+    } else if ([verb isEqualToString:@"info"]) {
+        // The ⓘ beside the first row's switch, tapped.
+        NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
+        findViews([table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].accessoryView, UIButton.class, buttons);
+        [buttons.firstObject sendActionsForControlEvents:UIControlEventTouchUpInside];
+    } else if ([verb isEqualToString:@"lock"]) {
+        [(SGModPage *)self.nav.topViewController explainLock];
+    } else if ([verb isEqualToString:@"information"]) {
+        SGPresentInformation(self.nav.topViewController, @"Information", @"An alert the mod presents through SGPresentDark.");
+    } else if ([verb isEqualToString:@"look"]) {
+        UIViewController *shown = self.window.rootViewController;
+        while (shown.presentedViewController) shown = shown.presentedViewController;
+        NSLog(@"[harness] look %@ controller %@ presentation %@ frame %@ window %.0f", NSStringFromClass(shown.class),
+              styleName(shown.traitCollection.userInterfaceStyle), styleName(shown.presentationController.traitCollection.userInterfaceStyle),
+              NSStringFromCGRect([shown.view convertRect:shown.view.bounds toView:nil]), self.window.bounds.size.width);
     } else if ([verb isEqualToString:@"rows"]) {
         // The row ModSettings.x adds to Spotify's settings list and to the side drawer's list, each emptied of its
         // subviews afterward as Spotify can do, then laid out again.

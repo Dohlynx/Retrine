@@ -55,6 +55,7 @@ static void offerRestart(BOOL on) {
         preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.later", @"Later") style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.redesign.action.restart_now", @"Restart now") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
+    SGPresentDark(alert);
     [SGTopController() presentViewController:alert animated:YES completion:nil];
 }
 
@@ -79,6 +80,7 @@ static SGModRow *untestedRow(void) {
             SGSetRedesignedUI(YES);
             SGRestartSpotify();
         }]];
+        SGPresentDark(alert);
         [SGTopController() presentViewController:alert animated:YES completion:nil];
     };
     return SGWithTile(row, @"sparkles", UIColor.systemIndigoColor);

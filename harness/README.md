@@ -200,6 +200,7 @@ by merely compiling them.
 | `lyrics-page/build.sh` | iOS simulator settings UI. |
 | `menu/build.sh` | iOS simulator UI. |
 | `mod-settings/build.sh` | iOS simulator settings UI. |
+| `mod-settings/light-check.sh` | iOS simulator screenshots in Light and Dark Mode: the mod's alerts dark over a window in the system's appearance, as Spotify's is. |
 | `morph/build.sh` | iOS simulator visual rendering. `morph/check.sh` checks the opt-in Music-like close against 9.1.90's compact transition doubles: staged geometry, velocity release, cancellation with the reversed fraction, and the off path's old numbers. |
 | `native-player/build.sh` | iOS simulator UI; `sponsorblock` checks SponsorBlock's progress bar marks (`../sponsorblock/markers-check.m`, also run by `player/`'s `sponsorblock` scenario). |
 | `onboarding/build.sh` | iOS simulator UI; generates fixture release notes only inside its output directory. |

@@ -1181,6 +1181,7 @@ static void light(UITableViewCell *cell, NSTimeInterval hold, NSTimeInterval fad
     SGModRow *row = [self rowAt:path];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:row.title message:row.info preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.ok", @"OK") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert);
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -1219,6 +1220,7 @@ static void light(UITableViewCell *cell, NSTimeInterval hold, NSTimeInterval fad
                          message:SGL(@"settings.page.locked.alert.message", @"Another switch is forcing this flag, so the row shows what it forces instead of taking a value of its own.")
                   preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.ok", @"OK") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert);
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -1230,6 +1232,7 @@ static void light(UITableViewCell *cell, NSTimeInterval hold, NSTimeInterval fad
         SGOpenURL(SGRepoURL);
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.ok", @"OK") style:UIAlertActionStyleCancel handler:nil]];
+    SGPresentDark(alert);
     [self presentViewController:alert animated:YES completion:nil];
 }
 

@@ -700,6 +700,7 @@ void SGLyricsOpenCreditLinks(NSArray<SGLyricsLink *> *links, UIView *from) {
     [sheet addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = from;
     sheet.popoverPresentationController.sourceRect = from.bounds;
+    SGPresentDark(sheet);
     [SGTopController() presentViewController:sheet animated:YES completion:nil];
 }
 

@@ -156,6 +156,7 @@ static NSString *cellLabel(SGGestureAction action) {
     [sheet addAction:[UIAlertAction actionWithTitle:SGL(@"common.cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = _grid;
     sheet.popoverPresentationController.sourceRect = _grid.bounds;
+    SGPresentDark(sheet);
     [self presentViewController:sheet animated:YES completion:nil];
 }
 

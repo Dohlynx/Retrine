@@ -71,6 +71,7 @@ void SGExportSettings(void) {
     }
     UIActivityViewController *sheet = [[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
     sheet.popoverPresentationController.sourceView = top.view;
+    SGPresentDark(sheet);
     [top presentViewController:sheet animated:YES completion:nil];
 }
 
@@ -466,6 +467,7 @@ void SGImportSettings(UIViewController *presenter) {
     delegate.presenter = presenter;
     delegate.picker = picker;
     picker.delegate = delegate;
+    SGPresentDark(picker);
     [presenter presentViewController:picker animated:YES completion:nil];
     if (presenter.presentedViewController != picker) [delegate finish];
 }
