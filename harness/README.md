@@ -120,7 +120,7 @@ their check executable in the workflow.
 | `native-declutter/check.sh` | Production native section classification, isolated heading histories and marker-priority/snapshot checks with Foundation view doubles; no simulator. |
 | `now-playing/build.sh` | Logos setter hooks with the system setter replaced, lyrics off/on; displayed-piece and rest deadlines, speed changes through metadata resends and player-first seeks, late lyrics, interleaved artwork-Off cleanup, idle dispatches and defaults reads, and the Live Activity queue limit. |
 | `palette/build.sh` | Generated image with asserted edge/main colors. |
-| `palette/field-check.sh` | Catalyst player field palette requests across mode changes and stale replies; the flow layer's stepped drift, held and resumed. |
+| `palette/field-check.sh` | Catalyst player field palette requests across mode changes and stale replies; the flow layer's stepped drift, held and resumed; Smooth's drawables made again only a handful of times while the field grows over a scroll, not on every frame (`fluid-steps-check.m`). |
 | `pitch/build.sh` | Synthetic sine pitch/speed assertions, no song argument. |
 | `player/queue-check.sh` | Playing Next history, selection and cover delivery, including cancellation and a retry after an offline failure. |
 | `player/title-notification-check.sh` | Player labels enabled live from an all-off launch and landscape title notifications, using offline fixtures. |

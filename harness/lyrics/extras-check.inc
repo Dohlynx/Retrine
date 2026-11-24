@@ -172,14 +172,19 @@ static void extrasChecks(UIWindow *window) {
         if (!ready) continue;
         UILabel *label = extrasLabel(page, @"kimi");
         UIView *word = label.superview, *row = word.superview;
-        UIView *filled = nil;
-        for (UIView *child in word.subviews) if (child.layer.mask) filled = child;
+        // The sung copy is swept by its mask: with estimated line timing it is the whole word from the start and stays
+        // so; untimed, the word is lit for good and shows its sung copy whole, with no mask at all.
+        UIView *lit = [word valueForKey:@"lit"];
         ((void (*)(id, SEL, double))objc_msgSend)(row, NSSelectorFromString(@"showTime:"), 100);
-        CGRect startMask = filled.layer.mask.frame;
+        CALayer *startMask = lit.layer.mask;
+        CGRect startFrame = startMask.frame;
         ((void (*)(id, SEL, double))objc_msgSend)(row, NSSelectorFromString(@"showTime:"), 1000);
-        check(filled && CGRectEqualToRect(startMask, filled.layer.mask.frame) &&
-              CGRectGetMaxX(startMask) >= filled.bounds.size.width,
-              @"simulated timing off: estimated/untimed pronunciation lights whole, never sweeps");
+        BOOL whole = estimated.timing == SGKaraokeTimingNone
+            ? !startMask && !lit.layer.mask && !lit.hidden && lit.alpha == 1 && lit.layer.opacity == 1
+            : startMask && lit.layer.mask == startMask && CGRectEqualToRect(startFrame, startMask.frame) &&
+              CGRectGetMinX(startFrame) <= 0 && CGRectGetMaxX(startFrame) >= lit.bounds.size.width;
+        check(lit && whole, [NSString stringWithFormat:@"simulated timing off: %@ pronunciation lights whole, never sweeps",
+                                                       estimated.timing == SGKaraokeTimingNone ? @"untimed" : @"estimated"]);
     }
     [defaults setBool:NO forKey:SGKeyLyricsFurigana];
     NSArray *originals = @[@"あ", @"い", @"う", @"え", @"お", @"か", @"き", @"く", @"け", @"こ", @"さ", @"し"];

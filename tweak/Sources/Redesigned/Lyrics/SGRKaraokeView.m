@@ -188,6 +188,8 @@ static UILabel *wordLabel(NSString *text, UIFont *font, UIColor *color, CGRect f
 @property (nonatomic) BOOL whole;
 @property (nonatomic) double riseStart, riseEnd;
 - (void)fillTo:(CGFloat)cursor;
+// Lit for good, as plain lyrics are: no sweep will move, so the mask goes too.
+- (void)showWhole;
 - (void)floatAt:(double)ms;
 - (double)nextMotionAt:(double)ms;
 @property (nonatomic, readonly) UIFont *font;
@@ -381,6 +383,15 @@ static void colorGlyphs(UIView *view, UIColor *color, BOOL outline) {
     [CATransaction setDisableActions:YES];
     _fill.frame = CGRectMake(left, -kGlowReach, lit + kFillEdge, height + 2 * kGlowReach);
     [CATransaction commit];
+}
+
+// Filled to the end, the mask is white over the word and kGlowReach past it on every side, so the word is drawn the
+// same without it, and without the offscreen pass a mask costs every frame for every word of a plain page in sight.
+- (void)showWhole {
+    _lit.hidden = NO;
+    _lit.alpha = 1;
+    [self fillTo:CGFLOAT_MAX];
+    _lit.layer.mask = nil;
 }
 
 // Rises like a critically damped spring let go as the word starts: no jolt, a long soft landing.
@@ -1243,6 +1254,8 @@ static double secant(SGSweepKnot *knots, NSUInteger i) {
     NSArray<UIAccessibilityCustomAction *> *_meaningActions;   // VoiceOver's Meaning, while the line has one
     // How bright the texts set apart are, waiting and sung, from the style.
     CGFloat _translationDim, _translationLit, _spokenDim, _spokenLit, _noteDim, _noteLit;
+    BOOL _blurs;              // made to blur with its distance from what is sung
+    NSUInteger _blurTurn;     // counts the blur's changes, so a sharpening cut short leaves the filter on
 }
 
 // VoiceOver's actions on the line: Meaning first where it has one, then Copy line, Share line and Share as card,
@@ -1354,9 +1367,7 @@ static double wholeFrom(SGKaraokeLine *run, BOOL sweepsEstimates) {
     // Scales toward the edge its text is aligned to, and a backing row rides its line's blur.
     if (backing) return self;
     self.layer.anchorPoint = CGPointMake(_right ? 1 : 0, 0.5);
-    if (!blurred) return self;
-    CAFilter *blur = [NSClassFromString(@"CAFilter") filterWithType:@"gaussianBlur"];
-    if (blur) self.layer.filters = @[blur];
+    _blurs = blurred;
     return self;
 }
 
@@ -1444,13 +1455,37 @@ static double wholeFrom(SGKaraokeLine *run, BOOL sweepsEstimates) {
 // How many line views are made in one frame: the rest follow on the next, nearest the sung line first.
 static const NSUInteger kLinesPerFrame = 4;
 
-// Eases from wherever the blur is on screen, so a line coming into focus sharpens instead of snapping.
+// Eases from wherever the blur is on screen, so a line coming into focus sharpens instead of snapping. The filter is on
+// the line only while it blurs: at a radius of 0 it drew the line offscreen for nothing on every frame, as it did for
+// the lines around what is sung and for every line while the page is browsed. It comes off once a sharpening ends.
 - (void)setBlur:(CGFloat)blur {
     if (blur == _blur) return;
     id shown = [self.layer.presentationLayer valueForKeyPath:kBlurPath];
     CGFloat from = [shown isKindOfClass:NSNumber.class] ? [shown doubleValue] : _blur;
     _blur = blur;
-    if (!self.layer.filters) return;
+    if (!_blurs) return;
+    if (!self.layer.filters) {
+        CAFilter *filter = [NSClassFromString(@"CAFilter") filterWithType:@"gaussianBlur"];
+        if (!filter) return;
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        [filter setValue:@(from) forKey:@"inputRadius"];
+        self.layer.filters = @[filter];
+        [CATransaction commit];
+    }
+    NSUInteger turn = ++_blurTurn;
+    [CATransaction begin];
+    if (blur == 0) {
+        __weak SGRKaraokeLineView *weakSelf = self;
+        [CATransaction setCompletionBlock:^{
+            SGRKaraokeLineView *line = weakSelf;
+            if (!line || line->_blurTurn != turn) return;
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            line.layer.filters = nil;
+            [CATransaction commit];
+        }];
+    }
     [self.layer setValue:@(blur) forKeyPath:kBlurPath];
     CABasicAnimation *ease = [CABasicAnimation animationWithKeyPath:kBlurPath];
     ease.fromValue = @(from);
@@ -1458,6 +1493,7 @@ static const NSUInteger kLinesPerFrame = 4;
     ease.duration = 0.6;
     ease.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
     [self.layer addAnimation:ease forKey:@"blur"];
+    [CATransaction commit];
 }
 
 - (void)setActive:(BOOL)active {
@@ -1528,11 +1564,7 @@ static const NSUInteger kLinesPerFrame = 4;
 
 - (void)showPlain {
     self.accessibilityTraits = UIAccessibilityTraitStaticText;
-    for (SGRKaraokeWordView *word in _words) {
-        word.lit.hidden = NO;
-        word.lit.alpha = 1;
-        [word fillTo:CGFLOAT_MAX];
-    }
+    for (SGRKaraokeWordView *word in _words) [word showWhole];
     _translation.alpha = _translationLit;
     _note.alpha = _noteLit;
     for (UILabel *reading in _furigana) reading.alpha = kTranslationLit;

@@ -106,14 +106,36 @@ static void closeUpTitle(UIView *header) {
 // the same clip, so the picture ends in a straight line well above the buttons. With the switch on,
 // the photo's lower part dissolves into a blurred copy of itself that reaches the header's bottom
 // and fades out there.
+//
+// The blur's sigma is a share of the photo's width, so all the copy keeps is a few samples per sigma: the photo
+// is drawn down to kBlurSamplesPerSigma of them before blurring. Spotify's 640 px photo is blurred at 288 px,
+// and shown at the header's size it differs from the whole photo blurred by at most 2 of 255 away from the
+// edges and 5 at them.
+static const CGFloat kBlurSigmaPerWidth = 1.0 / 18, kBlurLeastSigmaPixels = 6, kBlurSamplesPerSigma = 16;
+
 static UIImage *blurred(UIImage *image) {
     static CIContext *context;
     if (!context) context = [CIContext contextWithOptions:nil];
-    CIImage *input = [CIImage imageWithCGImage:image.CGImage];
+    CGImageRef source = image.CGImage;
+    size_t width = CGImageGetWidth(source), height = CGImageGetHeight(source);
+    if (!width || !height) return nil;
+    CGFloat sigma = MAX(width * kBlurSigmaPerWidth, kBlurLeastSigmaPixels), scale = MIN(1, kBlurSamplesPerSigma / sigma);
+    size_t smallWidth = MAX(1, (size_t)lround(width * scale)), smallHeight = MAX(1, (size_t)lround(height * scale));
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef bitmap = CGBitmapContextCreate(NULL, smallWidth, smallHeight, 8, 0, space,
+                                                kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGColorSpaceRelease(space);
+    if (!bitmap) return nil;
+    CGContextSetInterpolationQuality(bitmap, kCGInterpolationHigh);
+    CGContextDrawImage(bitmap, CGRectMake(0, 0, smallWidth, smallHeight), source);
+    CGImageRef small = CGBitmapContextCreateImage(bitmap);
+    CGContextRelease(bitmap);
+    CIImage *input = small ? [CIImage imageWithCGImage:small] : nil;
+    CGImageRelease(small);
     if (!input) return nil;
-    CIImage *output = [[input imageByClampingToExtent] imageByApplyingGaussianBlurWithSigma:MAX(input.extent.size.width / 18, 6)];
+    CIImage *output = [[input imageByClampingToExtent] imageByApplyingGaussianBlurWithSigma:sigma * smallWidth / width];
     CGImageRef cg = [context createCGImage:[output imageByCroppingToRect:input.extent] fromRect:input.extent];
-    UIImage *result = [UIImage imageWithCGImage:cg];
+    UIImage *result = cg ? [UIImage imageWithCGImage:cg] : nil;
     CGImageRelease(cg);
     return result;
 }

@@ -23,6 +23,11 @@ static const float kOverOpacity = 0.7;
 // The shade over the bottom of the visible rect, where the controls are. Light: the ceiling already keeps the
 // text's contrast, and 0.55 left the lower half of a dark cover black (issue #100).
 static const CGFloat kShadeFrom = 0.45, kShadeAlpha = 0.3;
+// The player's field grows a few points a frame as its list scrolls (Player/PlayerField.x), and every new height of
+// Smooth's layer made its drawables again, one a frame. Its height goes up in steps of this many points instead, the
+// rows past this layer's bounds cut off by masksToBounds; the shader places the picture by the visible rect, so every
+// point it shows is drawn as before.
+static const CGFloat kGPUHeightStepPoints = 256;
 
 NSNotificationName const SGRFluidSettingsDidChangeNotification = @"spotifyglass.redesign.fluidSettingsDidChange";
 
@@ -270,7 +275,8 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     _shade.frame = bounds;
     _shade.locations = @[@(MIN(1, (CGRectGetMinY(visible) + visible.size.height * kShadeFrom) / total)),
                          @(MIN(1, CGRectGetMaxY(visible) / total))];
-    _gpu.frame = bounds;
+    _gpu.frame = CGRectMake(bounds.origin.x, bounds.origin.y, bounds.size.width,
+                            ceil(bounds.size.height / kGPUHeightStepPoints) * kGPUHeightStepPoints);
     _gpu.visibleRect = visible;
     if (!CGRectEqualToRect(visible, _laidOutFor) && visible.size.width >= 1) {
         _laidOutFor = visible;
