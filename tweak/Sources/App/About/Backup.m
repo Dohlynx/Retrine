@@ -100,6 +100,12 @@ static dispatch_queue_t diagnosticWriter(void) {
     return writer;
 }
 
+static NSString *const diagnosticLogPrefix = @"[spotifyglass] ";
+static NSPredicate *diagnosticLogPredicate(void) {
+    return [NSPredicate predicateWithFormat:@"composedMessage BEGINSWITH %@ AND NOT composedMessage BEGINSWITH %@",
+            diagnosticLogPrefix, [diagnosticLogPrefix stringByAppendingString:@"screen dump"]];
+}
+
 // Only the writer queue reads the system log and writes diagnostic files.
 static NSError *writeDiagnostics(NSMutableString *text, NSURL *url) {
         // Release builds keep no log of their own. Retain only the newest matching lines, even
@@ -107,14 +113,13 @@ static NSError *writeDiagnostics(NSMutableString *text, NSURL *url) {
         [text appendString:@"\n== log, this launch\n"];
         NSError *error = nil;
         OSLogStore *store = [OSLogStore storeWithScope:OSLogStoreCurrentProcessIdentifier error:&error];
-        NSPredicate *ours = [NSPredicate predicateWithFormat:
-            @"composedMessage BEGINSWITH '[spotifyglass]' AND NOT composedMessage BEGINSWITH '[spotifyglass] screen dump'"];
+        NSPredicate *ours = diagnosticLogPredicate();
         const NSUInteger limit = 1500;
         NSMutableArray<NSString *> *lines = [NSMutableArray arrayWithCapacity:limit];
         NSUInteger oldest = 0;
         for (OSLogEntry *entry in [store entriesEnumeratorWithOptions:0 position:nil predicate:ours error:&error]) {
             @autoreleasepool {
-                NSString *line = [NSString stringWithFormat:@"%@ %@", entry.date, [entry.composedMessage substringFromIndex:15]];
+                NSString *line = [NSString stringWithFormat:@"%@ %@", entry.date, [entry.composedMessage substringFromIndex:diagnosticLogPrefix.length]];
                 if (lines.count < limit) [lines addObject:line];
                 else {
                     lines[oldest] = line;

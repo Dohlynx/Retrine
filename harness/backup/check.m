@@ -24,6 +24,11 @@ UIViewController *SGTopController(void) { return owner; }
 
 static void runChecks(void) {
     @autoreleasepool {
+        NSArray *messages = @[@{@"composedMessage": @"[spotifyglass]"},
+                              @{@"composedMessage": @"[spotifyglass] settings opened"},
+                              @{@"composedMessage": @"[spotifyglass] screen dump 1"}];
+        NSArray *exportable = [messages filteredArrayUsingPredicate:diagnosticLogPredicate()];
+        HARNESS_CHECK([exportable isEqual:@[messages[1]]]);
         for (oldOverride in @[@[], @{}]) {
             @try {
                 HARNESS_CHECK(boolFor(@"bad", YES) && intFor(@"bad", 0, 10, 7) == 7);
