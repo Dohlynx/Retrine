@@ -203,7 +203,7 @@ Shared:
                   Embedded CTA cards retain registerScrollProviderIn:, not a nonexistent -load.
                   The upstream realtime, instrumentation, element, native-element, shuffle-toggle and
                   full-song services have no Objective-C -load in 9.1.90, so their new hooks are not ported
-                  (including 2a9d4ae). Existing legacy targets without -load are inert there. DI services,
+                  (including 2a9d4ae). Targets without -load in either supported build are not installed. DI services,
                   regulatory notices and 9.2-only renames are untouched.
                   Run harness/adblock/build.sh for Hub, DJ, service-guard and pre-send checks; run
                   python3 -B scripts/audit-ad-services.py ipa/Spotify-9.1.90.ipa for class/selector coverage.
@@ -213,9 +213,6 @@ Shared:
                   exemptions checked against the binary. It includes AudioAd services.
                   This is static 9.1.90 evidence, Foundation doubles and a real macOS URLSession with
                   a local URLProtocol transport, not device playback evidence.
-                  No local 9.1.78/9.1.88 IPA or recorded class tree was available for this port; Eevee's
-                  d4daa49 cites 9.1.88 class symbols, not proof of callable Objective-C selectors.
-                  Both older versions rely on the per-target runtime guards and remain untested here.
                   With Spoof Premium on, the DJ's eligibility check answers yes, which keeps the full DJ with requests; a
                   Free account is then told "DJ is not available in your country" at each start while the DJ plays on, so
                   that dialog alone is closed before it shows (DJ.x: a PopUpPresentableContainer whose title equals the
@@ -259,7 +256,7 @@ Shared:
                   off leaves the server's values alone. They use the forced-flag registry and require a restart.
                   Mod › Storage uses that registry for ios-settings-connectivitypageplugin-impl.show_cache_limit_item
                   (on by default, off after a reset). It exposes Spotify's control without setting a limit.
-                  the provider pins 9.1.88's ios-reprise-liquid-glass-override.mode to default in both looks (after an All flags
+                  On 9.1.90 the provider pins ios-reprise-liquid-glass-override.mode to default in both looks (after an All flags
                   override) and logs the server's own value once, as a force_disabled would take the glass off the redesign.
                   It also pins 9.1.90's ios-navigationui-tabbar-impl.is_liquid_glass_tab_bar_enabled off in both looks.
     Gestures/     the double tap zones on the player: the grid, what each cell does, the recognizer (each look hooks it on);
@@ -1486,7 +1483,7 @@ Redesigned:
                   so an iPad cut the names of items handed over bare (harness/tabbar/ipad-check.sh). A page scrolled down
                   minimizes the bar to glyphs on circles: at the trailing end the last split tab or, with none, Spotify's
                   Search wherever the row holds it, as the Music app keeps Search there (known by the page it opens in
-                  Spotify's list, spotify:search or 9.1.78 to 9.1.90's spotify:find, never by its name or place; a tab
+                  Spotify's list, 9.2.0's spotify:search or 9.1.90's spotify:find, never by its name or place; a tab
                   of the mod's own is never it), drawn selected when it is the tab you are on; at the leading end the
                   tab you are on, or when that is the trailing one the first other tab of the main bar. The now playing
                   card stands between the circles, or with no trailing circle runs to the bar's trailing inset. A tap on
@@ -2249,10 +2246,11 @@ App:
                    CHANGELOG.md, which scripts/whats-new.sh writes into a gitignored header at each make (a section
                    that came over from upstream is left out, so a build without its own has no sheet). The Mod
                    page offers both again. Environment.m says once per install state, a few seconds in, when
-                   EeveeSpotify is injected too (a dyld image named so, or its settings page's Swift class) or Spotify is not the version the mod is
-                   supports (SGSpotifySupportedVersions in Onboarding.h: 9.1.78, which it is made for, 9.1.88, 9.1.90 and 9.2.0) or likely works on (SGSpotifyLikelyWorksVersions, empty now), and when a redesign below iOS 26 did not start, and when the install lacks the app
-                   changes the IPA build makes, as with a .deb injected by hand: Spotify's own glass opt-out set (9.1.88's
-                   UIDesignRequiresCompatibility, under the redesign), or NSSupportsLiveActivities or MusicHapticsSupported
+                   EeveeSpotify is injected too (a dyld image named so, or its settings page's Swift class), or Spotify
+                   is on neither version list in Onboarding.h (supported: 9.1.90 and release base 9.2.0; likely works:
+                   none). The version warning does not block launch. Other warnings cover a redesign below iOS 26 that
+                   did not start and missing IPA changes, as with a .deb injected by hand: a glass opt-out
+                   (UIDesignRequiresCompatibility, under the redesign), or NSSupportsLiveActivities or MusicHapticsSupported
                    missing, each named in the warning and the last two under Live Activity and Vibrations too.
                    A missing Live Activity extension alone does not trigger this warning: signing can strip extensions,
                    and LiveContainer cannot register them. The Live Activity page's missing-install row explains

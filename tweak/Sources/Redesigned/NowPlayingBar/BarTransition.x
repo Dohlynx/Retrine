@@ -1,9 +1,7 @@
 // The now playing bar and the tab bar keep their glass while the player opens and closes.
 //
 // Spotify does not move the real bars with the player: it hides them and moves stand-ins, made once at
-// the start. -[SPTBarOverlayPresentationTransition setupTransitioningContext:] takes the bar's with
-// -snapshotViewAfterScreenUpdates: when the player opens, but with -[CALayer renderInContext:] into a
-// UIImageView when it closes, and the tab bar's that way too when it closes over a compact tab bar.
+// the start. CompactOverlayTransition holds them in npbSnapshotView and tabBarSnapshotView.
 // renderInContext: cannot draw glass (UIVisualEffectView, UIKit's tab bar platters), so every close
 // showed the bar's artwork and title and the tab bar's glyphs floating on nothing, and the glass
 // popped back in when the real bars returned. Checked in the simulator: a snapshot view keeps the glass,
@@ -13,18 +11,9 @@
 // taken of, with the image moved into a child on top, so it moves and fades with Spotify's own frame
 // and alpha changes. Live glass at half alpha still renders (simulator). The tab bar's selection bubble
 // is not copied.
-//
-// MainUI_TabBarUIImpl.CompactOverlayTransition is a Swift animator with the same stand-ins
-// (npbSnapshotView, tabBarSnapshotView); which of the two 9.1.78 runs is not known, so both are hooked
-// and the log says which fired.
 #import "Core/SGCore.h"
 #import "Shared/WireGuard/SGWGABI.h"
 #import "Redesigned/Kit/SGRGlass.h"
-
-@interface SPTBarOverlayPresentationTransition : NSObject
-- (UIView *)bottomBarView;
-- (UIView *)tabBarView;
-@end
 
 // The panes to copy: glass views and UIKit's tab bar platters, whose glass is not a UIVisualEffectView.
 // The source itself may be hidden: Spotify renders the closed bar and hides it again before handing
@@ -88,19 +77,6 @@ static void backWithGlass(UIView *snapshot, UIView *source, NSString *what) {
     if (logged++ < 4) SGLog(@"player transition: %@ stand-in got %lu glass panes", what, (unsigned long)panes.count);
 }
 
-%group SGRObjCBarSnapshots
-%hook SPTBarOverlayPresentationTransition
-- (void)setBarSnapshotView:(UIView *)view {
-    backWithGlass(view, [self bottomBarView], @"bar");
-    %orig;
-}
-- (void)setTabBarSnapshotView:(UIView *)view {
-    backWithGlass(view, [self tabBarView], @"tab bar");
-    %orig;
-}
-%end
-%end
-
 @interface SGStoredField : NSObject
 + (id)field:(NSString *)name on:(id)object ofClass:(Class)cls;
 @end
@@ -124,19 +100,11 @@ static UIView *ivarNamed(id object, const char *name) {
 
 %ctor {
     if (!SGRedesignedUI()) return;
-    Class owner = NSClassFromString(@"SPTBarOverlayPresentationTransition");
-    if (SGWGMethodMatches(class_getInstanceMethod(owner, @selector(bottomBarView)), "@", @[]) &&
-        SGWGMethodMatches(class_getInstanceMethod(owner, @selector(tabBarView)), "@", @[]) &&
-        SGWGMethodMatches(class_getInstanceMethod(owner, @selector(setBarSnapshotView:)), "v", @[@"@"]) &&
-        SGWGMethodMatches(class_getInstanceMethod(owner, @selector(setTabBarSnapshotView:)), "v", @[@"@"])) {
-        %init(SGRObjCBarSnapshots);
-    }
     Class compact = NSClassFromString(@"_TtC19MainUI_TabBarUIImpl24CompactOverlayTransition");
     if (SGWGMethodMatches(class_getInstanceMethod(compact, @selector(animateTransition:)), "v", @[@"@"])) {
         %init(SGRCompactBarSnapshots);
     }
     SGRequireClasses(@[
-        @"SPTBarOverlayPresentationTransition",
         @"_TtC19MainUI_TabBarUIImpl24CompactOverlayTransition",
     ]);
 }

@@ -20,7 +20,7 @@ fixed in the commits that follow `956e65c`.
 |---|---|
 | `5f7b82e` | NativeDownloads offline-device manager: opaque device/cache selection tokens, current/other/unregistered-copy visibility and credential-free failure snapshots, adapted from `OfflineDeviceManager.m:147–251,275–306`. Confirmation, fresh-state checks and 9.1.90 routes/profile retained; companion-owned Korean/English strings. Fixture tests only; real-account registration/disable behavior remains unverified. Eevee's quality UI, 9.2.0 profile and other download features excluded. |
 | `5f5c7ea`, `7a8c573` | Spotify 9.2 Spoof Premium: nebula account attributes and the signed-in remote config rewritten with Retrine's existing attribute and flag rules (crossfade included), their validators stripped, composed after Pixie's offline values. Version split by `CFBundleShortVersionString` ≥ 9.2 so 9.1.x keeps customize. Eevee's token bridge rename has no Retrine counterpart, and `AdsBaseImpl` was already covered. Harness only; on-device 9.2 queue, on-demand and crossfade unverified. |
-| `43b9ca3`, `350aa15`, `d4daa49`; audit ideas `1010573`, `7a617a7`, `e2abe5a` | Terminal `/ads` and pre-send ad cancellation under Hide ads; six 9.1.90-verified service selectors with individual runtime guards; binary coverage audit with explicit DI/regulatory and missing-selector exemptions. `2a9d4ae` shuffle/full-song hooks and d4daa49 realtime/instrumentation/element/native-element hooks were not ported: no Objective-C `load` in 9.1.90. CTA cards keep `registerScrollProviderIn:`. Static 9.1.90 proof and Foundation harnesses only; no 9.1.78/9.1.88 binary or device verification. |
+| `43b9ca3`, `350aa15`, `d4daa49`; audit ideas `1010573`, `7a617a7`, `e2abe5a` | Terminal `/ads` and pre-send ad cancellation under Hide ads; six 9.1.90-verified service selectors with individual runtime guards; binary coverage audit with explicit DI/regulatory and missing-selector exemptions. `2a9d4ae` shuffle/full-song hooks and d4daa49 realtime/instrumentation/element/native-element hooks were not ported: no Objective-C `load` in 9.1.90. CTA cards keep `registerScrollProviderIn:`. Static proof and Foundation harnesses, not device verification. |
 
 Not yet ported, checked against upstream `f6a3403` (2026-11-17):
 
@@ -147,7 +147,7 @@ opening for Karaoke on a song without lyrics; Karaoke's background download, out
 route handling, seeks and read-ahead limit (the Karaoke rewrite owns them). A change to or from Lyrics on the lock screen
 now applies at once (LyricsArtwork.x), as does the star's swap. Deliberate differences: the Off default for the lock screen artwork, the lock
 screen page's flag rows, the Reinvented Free player mode turned off, the title kept over the lyrics left alone.
-Not gaps: Hide social proof (both flags ship off), recvmsg (Spotify 9.1.78 does not import it).
+Not gaps: Hide social proof (both flags ship off), recvmsg (neither Spotify nor SpotifyShared imports it in 9.1.90 or 9.2.0).
 
 ### From upstream pull requests
 

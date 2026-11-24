@@ -107,12 +107,12 @@ design addresses caller-fd ownership and asynchronous semantics.
 
 ## Exact admission
 
-Ordinary Retrine supports 9.1.78, 9.1.88, 9.1.90 and 9.2.0. Only
+Retrine supports Spotify 9.1.90 and 9.2.0 (release base). Its install warning does not block launch.
+WireGuard uses a separate exact-build check. Only
 `tweak/Sources/Shared/WireGuard/SGWGTargets.inc` admits WireGuard targets:
 
 | Version / build | Evidence |
 | --- | --- |
-| 9.1.78 / 9.1.88 | No WireGuard transport acceptance; rejected by this feature. |
 | 9.1.90 / 919002269 | Local static IPA scan: main `fbce22c17e1b3e0d9be866ff9291943e`, shared `2e074234cfc63f0e9255c9881824167a`. |
 | 9.1.94 / 919401928 | Fork static evidence only: main `1dfddfa139c03735b9a5fdfa475f4700`, shared `2c12ca8c48ad33f8af6569c084a6324f`. Not Retrine playback certification. |
 | 9.2.0 / 920002054 | Local static IPA/ABI scan: main `b49e75781d8635d38bb57daf68fed8a8`, shared `30bac55f8361373aad607f0535395641`. |

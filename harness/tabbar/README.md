@@ -197,7 +197,7 @@ is up, and Spotify's 8 pt in a regular width and right to left.
 
 `search` (search.m, issue #34) makes the row Home, Your Library, Create, Liked Songs and Search, the last of five as
 the issue keeps it (`middle` puts Search third), and hands TabBar.x the pages of Spotify's tabs as Navbar.x reads them
-off Spotify's list: Search as `spotify:search` (9.2.0), with `find` as `spotify:find` (9.1.78 to 9.1.90). Spotify's
+off Spotify's list: Search as `spotify:search` (9.2.0), with `find` as `spotify:find` (9.1.90). Spotify's
 tab change is played too: a tap on a mock tab tells the container (`setSelectedViewController:`), whose hook brings
 the bar back. It minimizes on Home and asserts Home on the leading circle, which says it shows all tabs, Search on a
 trailing circle on a 104 pt bar at the trailing edge (a split tab's), its item named Search with its glyph for the large

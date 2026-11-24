@@ -24,7 +24,7 @@
 @interface MissingReadiness : NSObject
 @end
 @implementation MissingReadiness
-- (void)navigateToURI:(id)uri options:(long long)options interactionID:(id)interaction {}
+- (void)navigateToURI:(id)uri options:(long long)options reason:(id)reason completionHandler:(id)completion resultHandler:(id)result {}
 @end
 @interface NavigationReason : NSObject
 @end
@@ -174,7 +174,7 @@ int main(void) {
             }
         }
         for (NSArray *test in @[
-            @[(id)LegacyDispatcher.class, NSNull.null, @YES],
+            @[(id)LegacyDispatcher.class, (id)NavigationReason.class, @NO],
             @[(id)ModernDispatcher.class, (id)NavigationReason.class, @YES],
             @[(id)ModernDispatcher.class, NSNull.null, @NO],
             @[(id)MissingReadiness.class, (id)NavigationReason.class, @NO],

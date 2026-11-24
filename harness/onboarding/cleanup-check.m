@@ -35,7 +35,13 @@ static void scheduleCleanup(dispatch_queue_t queue, dispatch_block_t block) {
     HARNESS_CHECK([content.secondaryText isEqual:self.expectedSubtitle]);
     HARNESS_CHECK([SGEnvironmentWarningRows().lastObject.subtitle isEqual:self.expectedSubtitle]);
     dispatch_async(dispatch_get_main_queue(), ^{
-        self.sections.firstObject.rows.firstObject.action(); // The harness version triggers the install warning.
+        // An upgrade can drop support without changing Spotify or its plist. The previous build
+        // had already checked this exact install; the new warning must appear once, not twice.
+        [NSUserDefaults.standardUserDefaults setObject:@"eevee 0, spotify 1.0, app changes 0" forKey:@"spotifyglass.environment.told"];
+        tellProblems();
+        HARNESS_CHECK(self.alerts == 1);
+        tellProblems();
+        HARNESS_CHECK(self.alerts == 1);
         self.cleanup.action();
     });
 }

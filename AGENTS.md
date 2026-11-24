@@ -24,9 +24,9 @@ last three were the redesign's until they moved to `Shared/`, so their keys lost
 can be given. `SGRedesignAvailable()` (`Core/SGUIMode.h`) says whether this OS has it. Below 26 the
 redesign runs only after a warning that it is untested there (`SGKeyRedesignUntested`, stored by
 `SGSetRedesignedUI` in `App/Pages.m`), and a launch with it that hangs (issue #37) is followed by one in
-the native look with both switches off. The native look's floor is iOS 16.1, which is
-Spotify 9.1.78's own. Retrine is made for Spotify 9.1.78 and supports 9.1.88, 9.1.90 and 9.2.0, the release base. The install warning
-leaves all four alone. A new version goes in one of the two lists
+the native look with both switches off. Both supported Spotify IPAs require iOS 16.1, the native look's
+floor. Retrine supports Spotify 9.1.90 and 9.2.0 only; 9.2.0 is the release base (`SGSpotifyMadeFor`).
+Other versions get the generic install warning, not a launch block. A new version goes in one of the two lists
 in `App/Onboarding/Onboarding.h` (`SGSpotifySupportedVersions`, `SGSpotifyLikelyWorksVersions`), and the warning's text
 and About follow. The IPA build reads
 Spotify's flag table from the IPA it builds, and again when the version changes.

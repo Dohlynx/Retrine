@@ -285,11 +285,10 @@ static UIImage *iconGlyph(NSString *icon, BOOL symbol, BOOL active) {
 
 #pragma mark - Apple symbols
 
-// Search's page: 9.1.78 to 9.1.90 open it as spotify:find, and spotify:search is the same page by the name the router
-// also takes.
+// Search's page is spotify:find on 9.1.90 and spotify:search on 9.2.0.
 static NSString *const kFindURI = @"spotify:find", *const kSearchURI = @"spotify:search";
 
-// The SF Symbol for each page Spotify's tabs open (SGRNavbarStockURIs). 9.1.78 to 9.1.90 open Create as the playlist
+// The SF Symbol for each page Spotify's tabs open (SGRNavbarStockURIs). 9.1.90 opens Create as the playlist
 // creation container; spotify:create-menu is the same page by the name the router also takes.
 static NSDictionary<NSString *, NSString *> *pageSymbols(void) {
     return @{

@@ -606,10 +606,10 @@
 "settings.environment.missing.music_haptics" = "iOS does not list Spotify for Music Haptics, which stops vibrations in the background";
 "settings.environment.missing.tabbar" = "the tab bar stays Spotify's own, without its glass";
 "settings.environment.multiple_problems.alert.title" = "%lu things to know";
-"settings.environment.supported_versions.title" = "Made for Spotify %@";
-"settings.environment.version.likely_suffix" = ", and %@ likely %@ too";
-"settings.environment.version.mismatch.message" = "Retrine is made for Spotify %@%@. On another version some of its changes find nothing to change, and some screens can look wrong or crash. Inject Retrine into Spotify %@.";
-"settings.environment.version.mismatch.title" = "Spotify %@ is not the version Retrine is made for";
+"settings.environment.supported_versions.title" = "Supported Spotify versions: %@";
+"settings.environment.version.likely_suffix" = " Likely to work: %@.";
+"settings.environment.version.mismatch.message" = "Supported Spotify versions: %@.%@ On other versions, some changes may not work and some screens may look wrong or crash.";
+"settings.environment.version.mismatch.title" = "Spotify %@ is not supported";
 "settings.environment.warning.subtitle" = "Tap for what that does";
 "settings.environment.without_app_changes.title" = "Installed without the app changes";
 

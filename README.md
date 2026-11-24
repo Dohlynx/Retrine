@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Spotify-9.1.78%20%7C%209.1.88%20%7C%209.1.90%20%7C%209.2.0-1ED760?style=for-the-badge&logo=spotify&logoColor=white" alt="Spotify 9.1.78 | 9.1.88 | 9.1.90 | 9.2.0">
+  <img src="https://img.shields.io/badge/Spotify-9.1.90%20%7C%209.2.0-1ED760?style=for-the-badge&logo=spotify&logoColor=white" alt="Spotify 9.1.90 | 9.2.0">
   <img src="https://img.shields.io/badge/Redesign-iOS%2026%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="재설계: iOS 26+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge" alt="라이선스: GPL-3.0"></a>
 </p>
@@ -118,7 +118,7 @@ Spotify 화면을 직접 그리지 않는 기능(광고, 개인정보 보호, �
 
 | | |
 |---|---|
-| Spotify | **9.1.78**, **9.1.88**, **9.1.90**, **9.2.0** 중 하나의 복호화된 IPA |
+| Spotify | **9.1.90** 또는 **9.2.0**(배포 기준 버전)의 복호화된 IPA. 다른 버전에서는 경고를 표시하지만 실행을 막지는 않습니다. |
 | 재설계 화면 | **iOS 26 이상** |
 | Spotify 기본 화면 | iOS 16.1 이상 |
 | Live Activity | iOS 17 이상 |
@@ -149,8 +149,8 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 | Decrypted Spotify IPA URL | (필수) | 복호화된 IPA의 직접 다운로드 링크(Dropbox 공유 링크도 가능). 링크는 로그에서 가려집니다. |
 | Where to put the result | `artifacts` | `artifacts`, `filebin`, `both` 중 선택. filebin을 고르면 실행 요약에 filebin.net 링크가 표시되며, 며칠 동안 쓰지 않으면 삭제됩니다. |
 | Remove every app extension (PlugIns/) | 꺼짐 | IPA에서 앱 확장을 모두 제거합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
-| Include app-local WireGuard / proxy | 켜짐 | **9.1.78과 9.1.88에서는 꺼야 합니다.** [WireGuard](#wireguard--프록시) 항목을 참고하세요. |
-| Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0 또는 9.1.90 빌드와 정확히 일치해야 합니다. **9.1.78과 9.1.88에서는 꺼야 합니다.** |
+| Include app-local WireGuard / proxy | 켜짐 | 라우팅 요구 사항은 [WireGuard](#wireguard--프록시) 항목을 참고하세요. |
+| Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0 또는 9.1.90 빌드와 정확히 일치해야 합니다. |
 | Bundle ID | `app.retrine.player` | 서명할 App ID와 같아야 하며, 앱 확장 ID도 이를 따라갑니다. Spotify의 ID를 유지하려면 `com.spotify.client`를 직접 입력합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 
 내려받은 파일은 먼저 검사하므로, HTML 로그인 페이지나 중간에 끊긴 파일이면 바로 실패합니다.
@@ -177,7 +177,6 @@ uv tool install "cyan @ git+https://github.com/asdfzxcvbn/pyzule-rw"
 ```sh
 make release                 # 9.2.0: out/retrine-<version>-pixie.ipa
 make release PIXIE=0         # Pixie 제외: out/retrine-<version>.ipa
-make release PIXIE=0 WIREGUARD=0  # 9.1.78 / 9.1.88에서는 둘 다 제외
 make release NO_PLUGINS=1    # 앱 확장 모두 제거
 make install                 # 빌드 후 본인 인증서로 서명해 기기에 설치
 ```
@@ -226,8 +225,7 @@ Mac에서 빌드하면 번들 ID를 따로 지정하지 않는 한 Spotify의 `c
   시작하기 전까지는 꺼져 있습니다.
 - 적용되지 않는 경로: 백그라운드 세션, 웹 로그인, AVURLAsset, 트윅 초기화 전의 트래픽, 로컬 네트워크
   예외, 다른 Connect 기기에서의 재생.
-- WireGuard는 **Spotify 9.1.90과 9.2.0만** 지원합니다. 9.1.78이나 9.1.88은 `PIXIE=0 WIREGUARD=0`으로
-  빌드하세요(Actions에서는 **Include Pixie native downloads**와 **Include app-local WireGuard / proxy**를 모두 해제).
+- WireGuard는 네트워크 훅을 활성화하기 전에 Spotify 빌드가 정확히 일치하는지 확인합니다.
 - WireGuard 없이 빌드하면 이전에 켜 두었더라도 라우팅과 차단이 전혀 적용되지 않습니다.
 
 적용 범위와 한계 전체: [docs/wireguard.md](docs/wireguard.md)

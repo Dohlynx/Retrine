@@ -23,7 +23,7 @@ NSString *SGSpotifyVersion(void) {
     return [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"unknown";
 }
 
-// A Spotify whose version can be read and is not the one the mod is made for; one that cannot be read
+// A Spotify whose version can be read and is on neither list; one that cannot be read
 // says nothing, rather than "Spotify unknown".
 static BOOL otherVersion(void) {
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
@@ -46,16 +46,15 @@ static NSString *joined(NSArray<NSString *> *items, NSString *word) {
 static SGProblem version(void) {
     NSArray<NSString *> *likely = SGSpotifyLikelyWorksVersions;
     NSString *also = !likely.count ? @""
-        : [NSString stringWithFormat:SGL(@"settings.environment.version.likely_suffix", @", and %@ likely %@ too"), joined(likely, @"and"), likely.count == 1 ? @"works" : @"work"];
-    return @[[NSString stringWithFormat:SGL(@"settings.environment.version.mismatch.title", @"Spotify %@ is not the version Retrine is made for"), SGSpotifyVersion()],
-             [NSString stringWithFormat:SGL(@"settings.environment.version.mismatch.message", @"Retrine is made for Spotify %@%@. On another version some of its changes find nothing to change, and some screens can look wrong or crash. Inject Retrine into Spotify %@."),
-                 joined(SGSpotifySupportedVersions, @"and"), also,
-                 joined([SGSpotifySupportedVersions arrayByAddingObjectsFromArray:likely], @"or")]];
+        : [NSString stringWithFormat:SGL(@"settings.environment.version.likely_suffix", @" Likely to work: %@."), [likely componentsJoinedByString:@", "]];
+    return @[[NSString stringWithFormat:SGL(@"settings.environment.version.mismatch.title", @"Spotify %@ is not supported"), SGSpotifyVersion()],
+             [NSString stringWithFormat:SGL(@"settings.environment.version.mismatch.message", @"Supported Spotify versions: %@.%@ On other versions, some changes may not work and some screens may look wrong or crash."),
+                 [SGSpotifySupportedVersions componentsJoinedByString:@", "], also]];
 }
 
 // What this install lacks of the app changes Retrine's IPA build makes (scripts/pipeline.sh: plist/liquid-glass.plist),
 // as when its .deb is injected by hand, each said as what it costs. Spotify's own plist opting out of the system's glass
-// (9.1.88's) costs the redesign its glass bars. 9.1.90 has no such key, and none is the same as glass on. The Live
+// costs the redesign its glass bars. Neither supported IPA sets the key; absent means glass on. The Live
 // Activity and Music Haptics keys matter in either look, and their own settings say so too.
 static NSArray<NSString *> *missingAppChanges(void) {
     NSMutableArray<NSString *> *missing = [NSMutableArray array];
@@ -198,7 +197,7 @@ NSArray<SGModRow *> *SGEnvironmentWarningRows(void) {
     if (SGEeveeSpotifyInjected())
         [rows addObject:SGWarningRow(SGL(@"settings.environment.eevee.title", @"EeveeSpotify is injected too"), SGL(@"settings.environment.warning.subtitle", @"Tap for what that does"), ^{ tell(@[eevee()]); })];
     if (otherVersion())
-        [rows addObject:SGWarningRow([NSString stringWithFormat:SGL(@"settings.environment.supported_versions.title", @"Made for Spotify %@"), joined(SGSpotifySupportedVersions, @"and")],
+        [rows addObject:SGWarningRow([NSString stringWithFormat:SGL(@"settings.environment.supported_versions.title", @"Supported Spotify versions: %@"), [SGSpotifySupportedVersions componentsJoinedByString:@", "]],
                                      [NSString stringWithFormat:SGL(@"settings.environment.current_version.subtitle", @"This is %@. Tap for what that does"), SGSpotifyVersion()],
                                      ^{ tell(@[version()]); })];
     if (withoutAppChanges())
@@ -229,10 +228,11 @@ NSArray<SGModRow *> *SGEnvironmentWarningRows(void) {
     return rows;
 }
 
-// Once per install state: the same EeveeSpotify and the same Spotify version say nothing again, a
-// change says what it is now.
+// Losing support is a new install state even if Spotify itself hasn't changed. Keep the original
+// signature on supported installs so a Retrine update doesn't repeat unrelated warnings.
 static NSString *state(void) {
-    return [NSString stringWithFormat:@"eevee %d, spotify %@, app changes %d", SGEeveeSpotifyInjected(), SGSpotifyVersion(), !withoutAppChanges()];
+    return [NSString stringWithFormat:@"eevee %d, spotify %@, app changes %d%@", SGEeveeSpotifyInjected(),
+            SGSpotifyVersion(), !withoutAppChanges(), otherVersion() ? @", unsupported" : @""];
 }
 
 static void whenClear(NSInteger tries, void (^then)(void)) {

@@ -32,7 +32,7 @@ static long intFor(NSString *key, long lower, long upper, long orig) {
     return value ? MAX(lower, MIN(upper, (long)[value longLongValue])) : orig;
 }
 
-// 9.1.88's switch over the system's own glass (default, force_enabled, force_disabled). Default leaves it to
+// 9.1.90's switch over the system's own glass (default, force_enabled, force_disabled). Default leaves it to
 // Info.plist, where the IPA build turns glass on; a force_disabled from Spotify's servers would take the glass
 // off the redesign's bars. Pinned to default in both looks, after an override from the All flags page.
 static NSString *const kGlassOverride = @"ios-reprise-liquid-glass-override.mode";
