@@ -5,6 +5,7 @@
 #include <compression.h>
 #include <dlfcn.h>
 #include <copyfile.h>
+#include <sys/clonefile.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -369,35 +370,55 @@ NSString *SGTrackKey(SGPlay *play) {
 }
 
 
-static NSMutableArray<SGPlay *> *playsFromTSV(NSString *text) {
-    NSMutableArray *plays = [NSMutableArray array];
-    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
-        NSArray<NSString *> *f = [line componentsSeparatedByString:@"\t"];
-        if (f.count < 6) continue;
-        SGPlay *play = [SGPlay new];
-        play.end = f[0].longLongValue; play.ms = f[1].longLongValue;
-        play.uri = f[2]; play.title = f[3]; play.artist = f[4]; play.album = f[5];
-        [plays addObject:play];
+#import "SGMappedHistory.inc"
+
+// The canonical, stage and segment names belong to the writer. Never map any of
+// their inodes: rename is harmless, but ftruncate on an open inode is not.
+static NSData *privateHistoryData(NSString *path, NSError **error) {
+    NSString *private = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    int source = open(path.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    int failure = source < 0 ? errno : 0;
+    struct stat st;
+    if (!failure && fstat(source, &st)) failure = errno;
+    if (!failure && !S_ISREG(st.st_mode)) failure = EINVAL;
+    if (!failure && fclonefileat(source, AT_FDCWD, private.fileSystemRepresentation, 0)) {
+        // Cross-volume or unsupported filesystem: copy the opened file, never reopen its name.
+        int destination = open(private.fileSystemRepresentation, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+        if (destination < 0) failure = errno;
+        else {
+            if (fcopyfile(source, destination, NULL, COPYFILE_DATA)) failure = errno;
+            if (close(destination) && !failure) failure = errno;
+            if (failure) unlink(private.fileSystemRepresentation);
+        }
     }
-    return plays;
+    if (source >= 0) close(source);
+    if (failure) {
+        *error = [NSError errorWithDomain:NSPOSIXErrorDomain code:failure userInfo:@{NSFilePathErrorKey:path}];
+        return nil;
+    }
+    NSData *data = [NSData dataWithContentsOfFile:private options:NSDataReadingMappedAlways error:error];
+    unlink(private.fileSystemRepresentation);
+    return data;
 }
 
 @implementation SGPlayLog {
     NSString *_path;
     dispatch_queue_t _io, _writer;
-    NSObject *_journalLock; // only journal append/rotation, erase, and the atomic commit; never bulk work
+    Class _journalLock; // only journal append/rotation, erase, and the atomic commit; never bulk work
     BOOL _journalPrepared;
     _Atomic(NSUInteger) _generation;
     NSUInteger _workerGeneration;
     NSUInteger _appliedGeneration; // recorder queue: advances only after erase has run
     NSError *_writerError; // recorder queue only
     // IO queue only.
-    NSMutableArray<SGPlay *> *_plays;
-    NSMutableSet<NSString *> *_recordIDs;
+    SGMappedHistory *_plays;
+    struct stat _canonical;
+    NSMutableSet<NSString *> *_folded; // just the journal IDs since last publication
     BOOL _ready;
     NSError *_loadError;
     // Main only. Records not yet included in an IO snapshot are overlaid when it is published.
-    NSMutableArray<SGPlay *> *_visible;
+    SGMappedHistory *_visible;
+    NSMutableArray<SGPlay *> *_tail;
     NSMutableArray<NSDictionary *> *_pending;
     NSError *_publishedError;
     NSUInteger _playsGeneration;
@@ -406,12 +427,22 @@ static NSMutableArray<SGPlay *> *playsFromTSV(NSString *text) {
 - (instancetype)initWithPath:(NSString *)path {
     if ((self = [super init])) {
         _path = [path copy];
-        _io = dispatch_queue_create("spotifyglass.history.io", DISPATCH_QUEUE_SERIAL);
+        // A restore is a merge, not a separate file installer. Serialize bulk
+        // work even across independently opened logs: recovery must not clean
+        // another import's stage while its writer is preparing the commit.
+        static dispatch_queue_t canonicalIO;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{ canonicalIO = dispatch_queue_create("spotifyglass.history.io", DISPATCH_QUEUE_SERIAL); });
+        _io = canonicalIO;
         _writer = dispatch_queue_create("spotifyglass.history.recorder", DISPATCH_QUEUE_SERIAL);
-        _journalLock = [NSObject new];
+        _journalLock = SGPlayLog.class; // shared by every canonical commit and erase
         _workerGeneration = NSUIntegerMax;
-        _visible = [NSMutableArray array];
+        _tail = [NSMutableArray array];
         _pending = [NSMutableArray array];
+#if TARGET_OS_IOS
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(dropDecodedPages:)
+            name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
+#endif
         dispatch_async(_io, ^{
             [self load];
             [self publishWithCompletion:nil announce:NO];
@@ -472,11 +503,22 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
     return [found sortedArrayUsingSelector:@selector(compare:)];
 }
 
-- (NSArray<SGPlay *> *)plays { return [_visible copy]; }
+- (void)dropDecodedPages:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{ [self->_visible dropPages]; });
+}
+
+- (NSArray<SGPlay *> *)plays {
+    if (_tail.count) return [[SGJournalSnapshot alloc] initWithBase:_visible tail:_tail];
+    if (_visible) return _visible;
+    return @[];
+}
 - (NSError *)loadError { return _publishedError; }
 - (NSUInteger)playsGeneration { return _playsGeneration; }
 - (NSArray<SGPlay *> *)playsFromIndex:(NSUInteger)index {
-    return [_visible subarrayWithRange:NSMakeRange(index, _visible.count - index)];
+    if (index >= _visible.count)
+        return [_tail subarrayWithRange:NSMakeRange(index - _visible.count, _visible.count + _tail.count - index)];
+    if (!index) return self.plays;
+    return [[SGHistorySuffix alloc] initWithSnapshot:self.plays start:index];
 }
 
 - (BOOL)drainForTermination {
@@ -499,20 +541,22 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
 }
 
 - (void)publishWithCompletion:(dispatch_block_t)completion announce:(BOOL)announce {
-    NSArray *snapshot = [_plays copy] ?: @[];
-    NSSet *included = [_recordIDs copy] ?: [NSSet set];
+    SGMappedHistory *snapshot = _plays;
+    NSSet *included = _folded;
+    _folded = [NSMutableSet set];
     NSError *error = _loadError;
     NSUInteger generation = _workerGeneration;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (generation == self->_generation) {
             self->_publishedError = error;
-            self->_visible = [snapshot mutableCopy];
+            self->_visible = snapshot;
+            [self->_tail removeAllObjects];
             self->_playsGeneration++;
             NSMutableArray *pending = [NSMutableArray array];
             for (NSDictionary *row in self->_pending) {
                 if ([included containsObject:row[@"id"]]) continue;
                 [pending addObject:row];
-                [self->_visible addObject:row[@"play"]];
+                [self->_tail addObject:row[@"play"]];
             }
             self->_pending = pending;
             if (announce) [self changed];
@@ -537,7 +581,45 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
 }
 
 // Bulk imports and startup journal folding only. A per-play record never clones the history.
+static int historyStamp(NSString *path, struct stat *stamp) {
+    if (!lstat(path.fileSystemRepresentation, stamp)) return 0;
+    if (errno != ENOENT) return errno;
+    memset(stamp, 0, sizeof(*stamp));
+    return 0;
+}
+
+static BOOL sameHistory(struct stat a, struct stat b) {
+    return a.st_dev == b.st_dev && a.st_ino == b.st_ino && a.st_size == b.st_size &&
+        a.st_mtimespec.tv_sec == b.st_mtimespec.tv_sec && a.st_mtimespec.tv_nsec == b.st_mtimespec.tv_nsec &&
+        a.st_ctimespec.tv_sec == b.st_ctimespec.tv_sec && a.st_ctimespec.tv_nsec == b.st_ctimespec.tv_nsec;
+}
+
+- (BOOL)refreshCanonical:(NSError **)error {
+    struct stat before, after;
+    int failure = historyStamp(_path, &before);
+    if (failure) { *error = historyPOSIXError(failure, _path); return NO; }
+    if (_plays && sameHistory(before, _canonical)) return YES;
+    NSData *data = before.st_mode ? privateHistoryData(_path, error) : [NSData data];
+    if (!data) return NO;
+    failure = historyStamp(_path, &after);
+    if (failure || !sameHistory(before, after)) { *error = historyPOSIXError(failure ?: EAGAIN, _path); return NO; }
+    SGMappedHistory *snapshot = [[SGMappedHistory alloc] initWithData:data];
+    if (!snapshot) { *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil]; return NO; }
+    _plays = snapshot;
+    _canonical = after;
+    return YES;
+}
+
+- (BOOL)canonicalUnchanged:(NSError **)error {
+    struct stat now;
+    int failure = historyStamp(_path, &now);
+    if (!failure && sameHistory(now, _canonical)) return YES;
+    *error = historyPOSIXError(failure ?: EAGAIN, _path);
+    return NO;
+}
+
 - (BOOL)append:(NSArray<SGPlay *> *)plays journalRows:(NSString *)rows error:(NSError **)error {
+    if (![self canonicalUnchanged:error]) return NO;
     if (!plays.count && !rows.length) return YES;
     NSFileManager *files = NSFileManager.defaultManager;
     if (![files createDirectoryAtPath:_path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:error]) return NO;
@@ -546,8 +628,11 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
     @synchronized (_journalLock) {
         if (_generation != _workerGeneration) failure = ECANCELED;
         else {
-            source = open(_path.fileSystemRepresentation, O_RDONLY);
+            source = open(_path.fileSystemRepresentation, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
             if (source < 0 && errno != ENOENT) failure = errno;
+            struct stat opened = {0};
+            if (!failure && source >= 0 && fstat(source, &opened)) failure = errno;
+            if (!failure && !sameHistory(opened, _canonical)) failure = EAGAIN;
             if (!failure) {
                 destination = open(temporary.fileSystemRepresentation, O_CREAT | O_EXCL | O_RDWR, 0600);
                 if (destination < 0) failure = errno;
@@ -557,6 +642,11 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
     // Use open descriptors so erase can unlink a writer's stage even while it is copying.
     // The writer cannot recreate the old pathname after that privacy boundary.
     if (!failure && source >= 0 && fcopyfile(source, destination, NULL, COPYFILE_ALL) != 0) failure = errno;
+    if (!failure && source >= 0) {
+        struct stat copied;
+        if (fstat(source, &copied)) failure = errno;
+        else if (!sameHistory(copied, _canonical)) failure = EAGAIN;
+    }
     if (source >= 0 && close(source) != 0 && !failure) failure = errno;
     NSError *writeError;
     NSFileHandle *handle = destination < 0 ? nil : [[NSFileHandle alloc] initWithFileDescriptor:destination closeOnDealloc:YES];
@@ -580,10 +670,24 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
     if (written) written = [handle synchronizeAndReturnError:&writeError];
     NSError *closeError;
     if (handle && ![handle closeAndReturnError:&closeError]) { written = NO; writeError = writeError ?: closeError; }
+    SGMappedHistory *snapshot;
+    if (written) {
+        NSData *data = privateHistoryData(temporary, &writeError);
+        snapshot = data ? [[SGMappedHistory alloc] initWithData:data] : nil;
+        written = snapshot != nil;
+        if (!written && !writeError) writeError = historyPOSIXError(EILSEQ, temporary);
+    }
     if (written) {
         @synchronized (_journalLock) {
+            struct stat staged;
             if (_generation != _workerGeneration) failure = ECANCELED;
-            else if (rename(temporary.fileSystemRepresentation, _path.fileSystemRepresentation) == 0) return YES;
+            else if (![self canonicalUnchanged:&writeError]) failure = EAGAIN;
+            else if (stat(temporary.fileSystemRepresentation, &staged)) failure = errno;
+            else if (rename(temporary.fileSystemRepresentation, _path.fileSystemRepresentation) == 0) {
+                _canonical = staged;
+                _plays = snapshot;
+                return YES;
+            }
             else failure = errno;
         }
     }
@@ -621,31 +725,45 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
     });
     if (rotationError) *error = rotationError;
     if (!segments) return NO;
+    if (![self refreshCanonical:error]) return NO;
     NSMutableString *rows = [NSMutableString string];
-    NSMutableSet *ids = [_recordIDs mutableCopy];
+    NSMutableSet *wanted = [NSMutableSet set];
+    NSMutableArray<NSData *> *journals = [NSMutableArray array];
     for (NSString *segment in segments) {
-        NSData *data = [NSData dataWithContentsOfFile:segment options:0 error:error];
+        NSData *data = privateHistoryData(segment, error);
         if (!data) return NO;
-        // A process killed inside write() can leave only the final row incomplete.
-        const uint8_t *bytes = data.bytes;
-        NSUInteger end = data.length;
-        while (end && bytes[end - 1] != '\n') end--;
-        NSString *text = [[NSString alloc] initWithBytes:bytes length:end encoding:NSUTF8StringEncoding];
-        if (!text) { *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil]; return NO; }
-        for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
-            if (!line.length) continue;
-            NSArray *fields = [line componentsSeparatedByString:@"\t"];
+        [journals addObject:data];
+        NSUInteger cursor = 0;
+        BOOL corrupt = NO;
+        while (cursor < data.length) @autoreleasepool {
+            NSRange range = nextRow(data, &cursor);
+            if (NSMaxRange(range) == data.length) break; // interrupted final write
+            if (!range.length) continue;
+            NSArray *fields = rowFields(data, range);
             if (fields.count != 7 || ![[NSUUID alloc] initWithUUIDString:fields[6]]) {
-                *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil]; return NO;
+                corrupt = YES; break;
             }
-            if ([ids containsObject:fields[6]]) continue;
-            [ids addObject:fields[6]];
+            [wanted addObject:fields[6]];
+        }
+        if (corrupt) { *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadCorruptFileError userInfo:nil]; return NO; }
+    }
+    NSMutableSet *ids = [NSMutableSet set];
+    [_plays findRecordIDs:wanted into:ids];
+    for (NSData *data in journals) {
+        NSUInteger cursor = 0;
+        while (cursor < data.length) @autoreleasepool {
+            NSRange range = nextRow(data, &cursor);
+            if (NSMaxRange(range) == data.length) break;
+            if (!range.length) continue;
+            NSString *line = rowText(data, range);
+            NSString *key = rowFields(data, range).lastObject;
+            if ([ids containsObject:key]) continue;
+            [ids addObject:key];
             [rows appendFormat:@"%@\n", line];
         }
     }
     if (![self append:@[] journalRows:rows error:error]) return NO;
-    [_plays addObjectsFromArray:playsFromTSV(rows)];
-    _recordIDs = ids;
+    [_folded unionSet:ids];
     for (NSString *segment in segments) {
         if (![NSFileManager.defaultManager removeItemAtPath:segment error:error]) return NO;
     }
@@ -662,7 +780,7 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
         _workerGeneration = generation;
         _ready = NO;
         _plays = nil;
-        _recordIDs = nil;
+        _folded = [NSMutableSet set];
         _loadError = nil;
     }
     if (_ready) return YES;
@@ -672,16 +790,8 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
             _loadError = error; return NO;
         }
     }
-    NSString *text = [NSString stringWithContentsOfFile:_path encoding:NSUTF8StringEncoding error:&error];
-    if ([error.domain isEqual:NSCocoaErrorDomain] && error.code == NSFileReadNoSuchFileError) error = nil;
-    _loadError = error;
-    if (error) return NO;
-    _plays = playsFromTSV(text);
-    _recordIDs = [NSMutableSet set];
-    for (NSString *line in [text componentsSeparatedByString:@"\n"]) {
-        NSArray *fields = [line componentsSeparatedByString:@"\t"];
-        if (fields.count == 7 && [[NSUUID alloc] initWithUUIDString:fields[6]]) [_recordIDs addObject:fields[6]];
-    }
+    if (![self refreshCanonical:&error]) { _loadError = error; return NO; }
+    _loadError = nil;
     if (![self foldJournal:&error]) { _loadError = error; return NO; }
     _ready = YES;
     return YES;
@@ -736,7 +846,7 @@ static SGHistoryFileKind historyFileKind(NSString *suffix) {
                     NSLog(@"[spotifyglass] history: record not saved: %@", error);
                 } else {
                     [self->_pending addObject:@{@"id":identifier, @"play":play}];
-                    [self->_visible addObject:play];
+                    [self->_tail addObject:play];
                 }
                 [self changed];
             }
@@ -770,6 +880,9 @@ static BOOL hasNearbyEnd(NSDictionary *buckets, int64_t end) {
 - (NSUInteger)mergeOnQueue:(NSArray<SGPlay *> *)incoming error:(NSError **)error {
     if (![self load]) { *error = _loadError; return 0; }
     if (![self foldJournal:error]) return 0;
+    // Folding can rename a stage over the canonical. Some filesystems advance
+    // its change time on rename; dedup this import against the installed version.
+    if (![self refreshCanonical:error]) return 0;
     BOOL needsExact = [incoming indexOfObjectPassingTest:^BOOL(SGPlay *play, NSUInteger index, BOOL *stop) {
         return play.exactImport;
     }] != NSNotFound;
@@ -777,13 +890,13 @@ static BOOL hasNearbyEnd(NSDictionary *buckets, int64_t end) {
     NSMutableSet<NSString *> *exact = needsExact ? [NSMutableSet set] : nil;
     // An exact import matches on the persisted line itself, field normalization included; NSString's
     // content hash keeps million-row imports linear instead of making equal-length tuple arrays collide.
-    for (SGPlay *play in _plays) {
+    for (SGPlay *play in _plays) @autoreleasepool {
         indexEnd(ends, SGTrackKey(play), play.end);
         if (needsExact) [exact addObject:lineOf(play)];
     }
     NSMutableArray<SGPlay *> *added = [NSMutableArray array];
     for (SGPlay *play in incoming) {
-        NSString *key = SGTrackKey(play);
+        NSString *key = [NSString stringWithFormat:@"%@\x1f%@", field(play.title).lowercaseString, field(play.artist).lowercaseString];
         NSString *exactKey = needsExact ? lineOf(play) : nil;
         BOOL have = play.exactImport && [exact containsObject:exactKey];
         if (!play.exactImport) have = hasNearbyEnd(ends[key], play.end);
@@ -793,7 +906,6 @@ static BOOL hasNearbyEnd(NSDictionary *buckets, int64_t end) {
         [added addObject:play];
     }
     if (![self append:added journalRows:nil error:error]) return 0;
-    [_plays addObjectsFromArray:added];
     return added.count;
 }
 
@@ -810,7 +922,8 @@ static BOOL hasNearbyEnd(NSDictionary *buckets, int64_t end) {
     NSUInteger generation = ++_generation;
     _playsGeneration++;
     _publishedError = nil;
-    [_visible removeAllObjects];
+    _visible = nil;
+    [_tail removeAllObjects];
     [_pending removeAllObjects];
     dispatch_block_t finishTask = beginHistoryWriteTask();
     dispatch_async(_writer, ^{

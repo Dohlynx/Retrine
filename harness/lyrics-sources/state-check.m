@@ -1668,9 +1668,15 @@ static void checkRecoveryRetirement(void) {
         NSString *credit = SGLyricsCreditFor(track);
         late(madeUpLyrics(@"Stale recovery", SGKaraokeTimingWords), NO);
         drainReplies();
-        CHECK(SGKaraokeLinesForTrack(track) == before);
-        CHECK(SGLyricsCreditFor(track) == credit || [SGLyricsCreditFor(track) isEqual:credit]);
-        CHECK(![recoveryDisk(track)[@"text"] isEqual:@"Stale recovery"]);
+        if ([action isEqual:@"evict"]) {
+            // Capacity eviction is not retirement: the better provider still wins and persists.
+            CHECK([SGKaraokeLineText(SGKaraokeLinesForTrack(track).firstObject) isEqual:@"Stale recovery"]);
+            CHECK([recoveryDisk(track)[@"text"] isEqual:@"Stale recovery"]);
+        } else {
+            CHECK(SGKaraokeLinesForTrack(track) == before);
+            CHECK(SGLyricsCreditFor(track) == credit || [SGLyricsCreditFor(track) isEqual:credit]);
+            CHECK(![recoveryDisk(track)[@"text"] isEqual:@"Stale recovery"]);
+        }
         SGKaraokeForgetLyrics(track);
         [fixture.held removeAllObjects];
         [sg_recoveryClocks removeAllObjects];
@@ -1829,6 +1835,8 @@ static void checkRecoveryNamesDeferredSources(void) {
         [fixture reply:@"musixmatch" track:track result:name failed:NO];
         BOOL newlyEligible = fixture.held[[track stringByAppendingString:@"netease"]] != nil;
         CHECK(newlyEligible);
+        if (getenv("RETRINE_PRESSURE_ONLY"))
+            for (NSUInteger i = 0; i <= kKeptTracks; i++) SGKaraokeKeepLines(NSUUID.UUID.UUIDString, @[]);
         CHECK(!recoveryDisk(track));
         [fixture reply:@"netease" track:track result:madeUpLyrics(@"Named word winner", SGKaraokeTimingWords) failed:NO];
         CHECK([recoveryDisk(track)[@"text"] isEqual:@"Named word winner"]);
@@ -2486,13 +2494,19 @@ static void checkPickRaces(NSUInteger only) {
             SGLyricsAskOffers(track);
             SGLyricsChooseSource(track, keys[1]);
             if (!pendingWrite.boolValue) {
+                if (getenv("RETRINE_PRESSURE_ONLY"))
+                    for (NSUInteger i = 0; i <= kKeptTracks; i++) SGKaraokeKeepLines(NSUUID.UUID.UUIDString, @[]);
                 drainReplies();
                 __block BOOL loaded = NO;
                 SGLyricsStoreLoad(track, ^(NSArray *lines, NSString *credit, SGLyricsResult *metadata) {
                     CHECK(lines.count && [credit isEqual:keys[1]]); loaded = YES;
                 });
                 pumpUntil(^BOOL { return loaded; });
-            } else CHECK(sg_storeWrites[track] != nil);
+            } else {
+                BOOL pending = NO;
+                for (SGKaraokeWrite *write in sg_storeWrites) if ([write.track isEqual:track]) pending = YES;
+                CHECK(pending);
+            }
             SGLyricsChooseAutomatic(track);
             SGKaraokeRequestLyrics(track);
             pumpUntil(^BOOL { return SGKaraokeLinesForTrack(track) != nil; });
@@ -3526,6 +3540,10 @@ int main(void) {
         puts("file authority and path sampling: Automatic protected; local revisit reused; background change deferred until activation");
         checkDirectInstrumentalFallback();
         const char *race = getenv("RETRINE_PICK_RACE");
+        if (getenv("RETRINE_PRESSURE_ONLY")) {
+            checkRecoveryNamesDeferredSources(); checkPickRaces(1);
+            return 0;
+        }
         if (race) { checkPickRaces((NSUInteger)atoi(race)); return 0; }
         HarnessPort *port = [HarnessPort new]; port.UID = @"headphones-one"; port.portName = @"Headphones"; port.portType = AVAudioSessionPortBluetoothA2DP;
         sg_fakeRoute = [HarnessRoute new]; sg_fakeRoute.outputs = @[port];

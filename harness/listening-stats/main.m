@@ -8,6 +8,9 @@
 #import "Shared/ListeningStats/SGRecap.h"
 #include <sys/resource.h>
 #include <signal.h>
+#include <sys/clonefile.h>
+#include <sys/stat.h>
+#include <malloc/malloc.h>
 #include <unistd.h>
 #include <dlfcn.h>
 #include <stdatomic.h>
@@ -62,12 +65,24 @@ void dispatch_sync(dispatch_queue_t queue, dispatch_block_t block) {
 }
 
 static NSString *eraseRacePath;
-static NSString *(*originalReadText)(id, SEL, NSString *, NSStringEncoding, NSError **);
 static BOOL (*originalRemoveItem)(id, SEL, NSString *, NSError **);
-static NSString *readRaceText(id object, SEL selector, NSString *path, NSStringEncoding encoding, NSError **error) {
-    NSString *text = originalReadText(object, selector, path, encoding, error);
-    if ([path isEqual:eraseRacePath]) dispatch_semaphore_signal(canonicalRead);
-    return text;
+static atomic_bool forceCopy, holdClone;
+int fclonefileat(int from, int dir, const char *to, uint32_t flags) {
+    static int (*realClone)(int, int, const char *, uint32_t);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ realClone = dlsym(RTLD_NEXT, "fclonefileat"); });
+    if (atomic_exchange(&holdClone, false)) {
+        dispatch_semaphore_signal(syncEntered);
+        if (dispatch_semaphore_wait(releaseSync, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC))) {
+            fprintf(stderr, "held import clone timed out\n"); exit(1);
+        }
+    }
+    if (atomic_exchange(&forceCopy, false)) { errno = EXDEV; return -1; }
+    int result = realClone(from, dir, to, flags);
+    struct stat a, b;
+    if (eraseRacePath && !fstat(from, &a) && !stat(eraseRacePath.fileSystemRepresentation, &b) &&
+        a.st_dev == b.st_dev && a.st_ino == b.st_ino) dispatch_semaphore_signal(canonicalRead);
+    return result;
 }
 static BOOL removeRaceItem(id object, SEL selector, NSString *path, NSError **error) {
     if ([path isEqual:eraseRacePath] &&
@@ -159,6 +174,58 @@ static SGPlay *play(int64_t end, int64_t ms, NSString *title, NSString *artist, 
     SGPlay *p = [SGPlay new];
     p.end = end; p.ms = ms; p.title = title; p.artist = artist; p.album = album ?: @""; p.uri = @"";
     return p;
+}
+
+static void snapshotChecks(NSString *dir) {
+    NSString *path = [dir stringByAppendingPathComponent:@"private.tsv"];
+    NSString *odd = @"1\t2\turi\t\u0301bad\tartist\talbum";
+    NSMutableString *rows = [NSMutableString stringWithFormat:@"%@\n", odd];
+    for (int i = 0; i < 10000; i++) [rows appendFormat:@"%d\t30000\turi\tSong %d\tArtist\tAlbum\n", i, i];
+    [rows writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    atomic_store(&forceCopy, true);
+    SGPlayLog *log = openLog(path);
+    NSUInteger count = 10001;
+    CHECK(log.plays.count == count && [log.plays.firstObject.title isEqual:@"\u0301bad"] && log.plays.lastObject.end == 9999,
+          "combining mark belongs to the field after the tab");
+    malloc_statistics_t a, b;
+    malloc_zone_statistics(NULL, &a);
+    NSArray<SGPlay *> *suffix = [log playsFromIndex:1];
+    malloc_zone_statistics(NULL, &b);
+    CHECK((double)b.size_in_use - a.size_in_use < 65536 && suffix.count == count - 1, "large suffix needs no per-row materialization");
+    CHECK(truncate(path.fileSystemRepresentation, 0) == 0 && suffix[9000].end == 9001 - (count - 10000),
+          "published suffix remains readable past truncated EOF");
+    SGPlay *p = play(1000, 48000, @"A\tB", @"C\nD", @"Album");
+    CHECK([log merge:@[p]] == 1 && [log merge:@[p]] == 0 && [log merge:@[p]] == 0,
+          "repeat Spotify merges match normalized title and artist");
+    NSArray<SGPlay *> *committed = log.plays;
+    CHECK(truncate(path.fileSystemRepresentation, 0) == 0 && [committed.firstObject.title isEqual:@"A B"],
+          "just-committed snapshot survives in-place truncation");
+    p.exactImport = YES;
+    [NSData.data writeToFile:path atomically:YES];
+    CHECK([log merge:@[p]] == 1 && openLog(path).plays.count == 1, "restore deduplicates against replacement inode, not stale snapshot");
+    NSString *link = [dir stringByAppendingPathComponent:@"linked.tsv"];
+    CHECK(symlink(path.fileSystemRepresentation, link.fileSystemRepresentation) == 0 &&
+          openLog(link).loadError.code == ELOOP, "absolute canonical symlink rejected");
+    SGPlay *accent = play(7000, 30000, @"\u0301Song", @"Artist", @"");
+    CHECK([log merge:@[accent]] == 1 && [log merge:@[accent]] == 0 &&
+          [log.plays.lastObject.title isEqual:accent.title] && SGStatsSince(log.plays, 7000, 1).plays == 1,
+          "combining-mark title imported twice counts once in stats");
+
+    SGPlayLog *restorer = openLog(path);
+    __block NSUInteger completions = 0;
+    void (^added)(NSUInteger, NSError *) = ^(NSUInteger n, NSError *error) {
+        CHECK(!error && n == 1, "independent import or restore committed its row");
+        completions++;
+    };
+    syncEntered = dispatch_semaphore_create(0); releaseSync = dispatch_semaphore_create(0);
+    atomic_store(&holdClone, true);
+    [log merge:@[play(8000, 30000, @"Imported", @"Artist", @"")] completion:added];
+    CHECK(!dispatch_semaphore_wait(syncEntered, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC)), "import reached snapshot clone");
+    SGPlay *backup = play(9000, 30000, @"Restored", @"Artist", @""); backup.exactImport = YES;
+    [restorer merge:@[backup] completion:added];
+    dispatch_semaphore_signal(releaseSync);
+    loadAndWait(restorer);
+    CHECK(completions == 2 && openLog(path).plays.count == 4, "both writers preserved in canonical TSV");
 }
 
 static void zip(NSString *dir, NSString *out, NSArray<NSString *> *names, BOOL stored) {
@@ -779,9 +846,7 @@ static void slowRecorderChecks(NSString *dir) {
 }
 
 static void eraseGenerationChecks(NSString *dir) {
-    Method readMethod = class_getClassMethod(NSString.class, @selector(stringWithContentsOfFile:encoding:error:));
     Method removeMethod = class_getInstanceMethod(NSFileManager.class, @selector(removeItemAtPath:error:));
-    originalReadText = (void *)method_setImplementation(readMethod, (IMP)readRaceText);
     originalRemoveItem = (void *)method_setImplementation(removeMethod, (IMP)removeRaceItem);
     NSString *path = [dir stringByAppendingPathComponent:@"erase-generation.tsv"];
     [@"10\t30000\t\tErased\tArtist\t\n" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -800,7 +865,6 @@ static void eraseGenerationChecks(NSString *dir) {
     CHECK(!log.loadError && log.plays.count == 0,
           "a load of pre-erase bytes cannot restore history after an acknowledged erase");
     eraseRacePath = nil;
-    method_setImplementation(readMethod, (IMP)originalReadText);
     method_setImplementation(removeMethod, (IMP)originalRemoveItem);
 }
 
@@ -920,6 +984,7 @@ int main(int argc, const char **argv) {
         }
 
         // A fixed "now" on a whole minute, so the basic export's minute stamps land exactly.
+        snapshotChecks(dir);
         int64_t now = 1790000000 - 1790000000 % 60, day = 86400;
 
         // Extended: Song A twice and Song B 3 days ago, Song C 20 days ago, Song D 200 days ago, Song A

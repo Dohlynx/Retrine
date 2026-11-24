@@ -19,3 +19,4 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi -isysroot "$SDK" \
     "$SRC/Shared/Lyrics/LyricsLanguage.m" "$SRC/Shared/Lyrics/Romanise.m" "$SRC/Shared/Lyrics/LyricsStore.m" "$SRC/Shared/AdBlock/Protobuf.m" "$SRC/Core/SGPrefs.m" "$SRC/Core/SGFileHash.m" "$SRC/Core/SGOptionalWork.m" "$SRC/Core/SGLog.m" "$SRC/Core/SGGlass.m" "$SRC/Shared/LyricsSources/SGTTML.m" \
     -framework UIKit -framework QuartzCore -framework Foundation -framework NaturalLanguage -framework AVFoundation -framework Security -framework Network "$SRC/Core/SGDataRoot.m" -o "$OUT/state-check"
 "$OUT/state-check"
+RETRINE_PRESSURE_ONLY=1 "$OUT/state-check"
