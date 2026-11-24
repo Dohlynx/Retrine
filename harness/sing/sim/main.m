@@ -45,6 +45,7 @@ NSString *SGURIString(id uri) {
 @end
 
 static id sg_watcher, sg_reported, sg_player;
+void SGSpeedPitchSongValuesChanged(NSString *control) {}
 
 // Which clock the mock player keeps (launch argument -clock): Spotify's last report run on by the time, read as it is
 // (report); that report stamped again at every read of the player's state, the same line of the clock (restamp); or
@@ -76,7 +77,12 @@ void SGKaraokeSeek(NSInteger ms) {
 }
 
 // Shared/HeadGestures' head motion, for spatial voice: none in the simulator, so the voice stays ahead.
-void SGHeadMotionListen(NSString *name, void (^handler)(id motion)) {}
+static NSMutableSet *motionListeners;
+void SGHeadMotionListen(NSString *name, void (^handler)(id motion)) {
+    if (!motionListeners) motionListeners = [NSMutableSet new];
+    if (handler) [motionListeners addObject:name];
+    else [motionListeners removeObject:name];
+}
 void SGHeadMotionAskPermission(void) {}
 BOOL SGHeadGesturesAvailable(void) {
     return NO;
@@ -89,6 +95,8 @@ BOOL SGHeadGesturesAvailable(void) {
 @property (nonatomic) BOOL isPaused, isPlaying;
 @property (nonatomic) double duration;
 @property (nonatomic, strong) id track;
+@property (nonatomic, strong) id options;
+@property (nonatomic) BOOL isLoading;
 @end
 
 @implementation SPTPlayerState
@@ -524,6 +532,13 @@ static void check(OSStatus status, const char *what) {
     self.window.rootViewController = [UIViewController new];
     sg_seekResult = [NSObject new];
     sg_player = [SPTEsperantoPlayer new];
+#if SING_BATTERY
+    [self playerReports];
+    SGHeadMotionListen(@"gestures", ^(id motion){});
+    extern void HarnessSingBattery(NSSet *);
+    HarnessSingBattery(motionListeners);
+    exit(0);
+#endif
     NSString *clock = [NSUserDefaults.standardUserDefaults stringForKey:@"clock"];
     sg_clock = [clock isEqualToString:@"restamp"] ? SGHarnessClockRestamp : [clock isEqualToString:@"decoded"] ? SGHarnessClockDecoded : SGHarnessClockReport;
     NSLog(@"[harness] Spotify's clock: %@", @[@"its last report run on", @"its last report stamped again at every read", @"reported again every 0.5 s with what was decoded"][sg_clock]);

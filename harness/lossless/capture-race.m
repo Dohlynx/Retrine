@@ -5,7 +5,8 @@
 #import <pthread.h>
 
 void SGPlayerSetSourceSelector(SGPlayerSourceSelector selector) {}
-uint64_t SGPlayerSourceEpoch(void) { return 1; }
+static _Atomic uint64_t sourceEpoch = 1;
+uint64_t SGPlayerSourceEpoch(void) { return atomic_load(&sourceEpoch); }
 
 static int failures;
 #define CHECK(ok, ...) do { BOOL _ok = (ok); printf("%s ", _ok ? "  ok  " : "  FAIL"); printf(__VA_ARGS__); printf("\n"); if (!_ok) failures++; } while (0)
@@ -24,7 +25,7 @@ static void *recordOneSecond(void *ok) {
     return NULL;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     @autoreleasepool {
         // A render call left a fill from a 4 s recording behind a 1 s one: the next call must not write on.
         uint32_t length = 44100;
@@ -62,6 +63,19 @@ int main(void) {
         pthread_join(thread, NULL);
         CHECK(recorded && atomic_load(&sg_capFill) == atomic_load(&sg_capLength),
               "then records the whole second (%u of %u frames)", atomic_load(&sg_capFill), atomic_load(&sg_capLength));
+
+        NSString *path = @(argv[1]);
+        atomic_store(&sg_writers, 1);
+        NSThread *writer = [[NSThread alloc] initWithBlock:^{
+            fill(path, 44100, 0, 0, 1, malloc(kChunk * sizeof(float)), malloc(kChunk * sizeof(float)));
+        }];
+        [writer start];
+        for (int i = 0; i < 200 && atomic_load(&sg_ringEnd) + 2*kChunk <= kRing; ++i) usleep(5000);
+        CHECK(atomic_load(&sg_ringEnd) + 2*kChunk > kRing && atomic_load(&sg_writers), "writer is blocked on a full ring before EOF");
+        atomic_fetch_add(&sourceEpoch, 1); // pause, without stopPlaying() changing generation
+        for (int i = 0; i < 200 && atomic_load(&sg_writers); ++i) usleep(5000);
+        CHECK(!atomic_load(&sg_writers), "epoch change alone releases the full-ring writer");
+        stopPlaying();
 #endif
         printf("\n%s: %d failed\n", failures ? "FAILED" : "all passed", failures);
         return failures ? 1 : 0;

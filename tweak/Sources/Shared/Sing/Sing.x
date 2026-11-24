@@ -294,6 +294,7 @@ static void wantModel(void) {
 
 // The Neural Engine copy given up on for the rest of the launch: the CPU's carries on alone.
 static void apply(void);
+static void updateSpatial(void);
 static void neuralFailed(NSString *why) {
     if (sg_neuralFailed) return;
     sg_neuralFailed = why;
@@ -330,6 +331,7 @@ static void loaderChanged(void) {
         default: break;
     }
     holdBudget(engine);
+    updateSpatial();
     announce();
 }
 
@@ -394,7 +396,7 @@ static BOOL systemSpatial(void) {
 // place itself; otherwise the voice goes back ahead (HeadGestures hands a listener taken out nil).
 static void updateSpatial(void) {
     SPTPlayerState *player = SGPlayerState();
-    BOOL wanted = SGSingOn() && !SGSingMissing() && SGSingSpatial() && player.isPlaying && !player.isPaused;
+    BOOL wanted = SGSingEngineSeparating(atomic_load(&sg_engine)) && SGSingSpatial() && player.isPlaying && !player.isPaused;
     BOOL listen = wanted && !systemSpatial();
     if (listen == sg_spatialListening) return;
     sg_spatialListening = listen;
@@ -512,6 +514,7 @@ static void apply(void) {
     SGSingEngineSetSeparator(engine, separatorNow());
     holdBudget(engine);
     SGSingEngineSetPaused(engine, held || rest || sg_interrupted);
+    SGSingEngineSetPlaybackPaused(engine, SGPlayerState().isPaused);
     SGSingEngineSetOn(engine, on);
     double lead = SGSingEngineLead(engine);
     if ((!on || held || rest || sg_interrupted) && lead > 0.05) SGLog(@"sing: keeps the %.2f s held ahead, played as it is, until Spotify pauses, seeks or skips", lead);
@@ -1121,6 +1124,7 @@ static void watch(void) {
     // Paused while not separating: the lead is dropped with nothing heard lost. Not through an interruption, which
     // holds the worker and keeps the lead for when Spotify plays again.
     SGSingEngine *engine = atomic_load(&sg_engine);
+    if (engine) SGSingEngineSetPlaybackPaused(engine, state.isPaused);
     if (state.isPaused && !sg_interrupted && !SGSingEngineSeparating(engine)) dropLead(@"paused while not separating", state);
     NSString *track = SGURIString(state.track.URI);
     BOOL another = track && sg_lastTrack && ![track isEqualToString:sg_lastTrack];

@@ -61,6 +61,14 @@ static void contention(void) {
     pthread_t writer;
     pthread_create(&writer, NULL, changeRoom, engine);
     while (!atomic_load(&setterEntered)) usleep(100);
+    // No retired state: maintenance must finish even with configuration admission held.
+    dispatch_semaphore_t collected = dispatch_semaphore_create(0);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
+        SGDSPEngineCollect(engine);
+        dispatch_semaphore_signal(collected);
+    });
+    bool collectedEarly = !dispatch_semaphore_wait(collected, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC));
+    check(collectedEarly, "steady-state collection needs no configuration admission");
     bool ok = true;
     // Every block is processed while the setting remains in flight.
     for (unsigned block = 0; block < 8; ++block) {
@@ -70,6 +78,7 @@ static void contention(void) {
     }
     atomic_store(&releaseSetter, true);
     pthread_join(writer, NULL);
+    if (!collectedEarly) dispatch_semaphore_wait(collected, DISPATCH_TIME_FOREVER);
     atomic_store(&holdParameters, false);
     check(ok, "in-flight effect update never bypasses -12 dB post gain");
     SGDSPEngineFree(engine);
