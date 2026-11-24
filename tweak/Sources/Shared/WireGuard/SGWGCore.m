@@ -35,7 +35,7 @@ NSString *const SGWGKindSOCKS5 = @"socks5";
 
 static atomic_int gState = SGWGStateOff;
 static atomic_bool gActive;       // armed before checking any capability
-static atomic_bool gReady, gGuardsReady, gEngineReady;
+static atomic_bool gReady, gGuardsReady, gNativeGuardsReady, gEngineReady;
 static atomic_bool gHandedOff;
 // Start ownership and retry tickets belong to gQueue.
 static BOOL gStarting, gRetryStart;
@@ -893,6 +893,24 @@ static void RefuseListener(void) {
 
 static int ProxyAdmitted(void) { return SGWGReady(); }
 static void StartEngine(void);
+static void StartExternalProxy(void);
+static void ObserveLifecycle(void);
+
+static BOOL PrepareStart(void) {
+    if (gBlockAll) return NO;
+    BOOL pending = NO;
+    if (!SGWGCheckAdmission(&pending)) {
+        if (!pending) RefuseListener();
+        atomic_store(&gState, SGWGStateBlocked);
+        return NO;
+    }
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        SGWGInstallTransportPatches();
+        ObserveLifecycle();
+    });
+    return YES;
+}
 
 static void FinishStart(enum SGWGStartResult result) {
     gStarting = NO;
@@ -923,15 +941,8 @@ static void FinishStart(enum SGWGStartResult result) {
 // On gQueue. A failed attempt consumes only a dup, never the reservation
 // that existing session configurations refer to.
 static void StartEngine(void) {
-    if (gStarting || gHandedOff || gBlockAll || gListenerFD < 0) return;
+    if (gStarting || gHandedOff || gListenerFD < 0 || !PrepareStart()) return;
     gRetryStart = NO;
-    BOOL pending = NO;
-    if (!SGWGCheckAdmission(&pending)) {
-        if (!pending) RefuseListener();
-        atomic_store(&gState, SGWGStateBlocked);
-        return;
-    }
-    SGWGInstallTransportPatches();
     OSStatus status = errSecSuccess;
     NSString *profile = ReadProfile(&status);
     if (!profile.length) {
@@ -1031,13 +1042,17 @@ static void ObserveLifecycle(void) {
     // not after Control Center or a notification banner, to avoid needless
     // interruptions of a playing stream.
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-    [center addObserverForName:@"UIApplicationWillEnterForegroundNotification" object:nil queue:nil usingBlock:^(NSNotification *note) {
-        SGWGRequestRebind(@"foreground");
-    }];
+    BOOL tunnel = [gKind isEqualToString:SGWGKindWireGuard];
     [center addObserverForName:@"UIApplicationProtectedDataDidBecomeAvailable" object:nil queue:nil usingBlock:^(NSNotification *note) {
         dispatch_async(gQueue, ^{
-            if (SGWGCurrentState() == SGWGStateWaitingProfile) StartEngine();
+            if (SGWGCurrentState() != SGWGStateWaitingProfile) return;
+            if (tunnel) StartEngine();
+            else StartExternalProxy();
         });
+    }];
+    if (!tunnel) return;
+    [center addObserverForName:@"UIApplicationWillEnterForegroundNotification" object:nil queue:nil usingBlock:^(NSNotification *note) {
+        SGWGRequestRebind(@"foreground");
     }];
     static nw_path_monitor_t monitor;
     monitor = nw_path_monitor_create();
@@ -1056,7 +1071,7 @@ static void ObserveLifecycle(void) {
 // HTTP / HTTPS / SOCKS5 server chosen by the user. No local engine runs; the
 // same URLSession hooks apply an nw_proxy_config with failover disabled.
 static void StartExternalProxy(void) {
-    gActive = YES;
+    if (!PrepareStart()) return;
     NSDictionary *cfg = SGWGSettingExternalProxy();
     NSString *host = cfg[@"host"], *port = cfg[@"port"], *user = cfg[@"username"], *pass = nil;
     if (!ValidateExternal(gKind, host, port, user, NULL)) gBlockAll = YES;
@@ -1098,17 +1113,18 @@ void SGWGRefreshReadiness(void) {
     BOOL native = SGWGInstallNativePatches();
     BOOL guards = gSessionGuards && native;
     BOOL pending = NO;
-    BOOL admitted = SGWGCheckAdmission(&pending);
+    BOOL admitted = !gBlockAll && SGWGCheckAdmission(&pending);
     BOOL ready = guards && SGWGIsSupportedOS() && admitted && available && !gBlockAll;
     os_unfair_lock_lock(&gReadinessLock);
     BOOL current = generation == gReadinessGeneration;
     if (current) {
+        atomic_store(&gNativeGuardsReady, native);
         atomic_store(&gGuardsReady, guards);
         atomic_store(&gEngineReady, available);
         atomic_store_explicit(&gReady, ready, memory_order_release);
     }
     os_unfair_lock_unlock(&gReadinessLock);
-    if (current && !admitted && !pending && !gBlockAll && tunnel)
+    if (current && !admitted && !pending && !gBlockAll)
         RefuseListener();
 }
 
@@ -1135,7 +1151,7 @@ __attribute__((constructor)) static void SGWGInit(void) {
         if (supported && tunnel && !ReserveListener()) gBlockAll = YES;
         BOOL pending = NO;
         BOOL admitted = supported && SGWGCheckAdmission(&pending);
-        if (tunnel && !admitted && !pending) RefuseListener();
+        if (!admitted && !pending) RefuseListener();
         gSessionGuards = InstallSessionHooks();
         SGWGRefreshReadiness();
         _dyld_register_func_for_add_image(ImageChanged);
@@ -1144,18 +1160,16 @@ __attribute__((constructor)) static void SGWGInit(void) {
         recovery = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, gQueue);
         dispatch_source_set_timer(recovery, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), 5 * NSEC_PER_SEC, NSEC_PER_SEC);
         dispatch_source_set_event_handler(recovery, ^{
-            if (!SGWGReady()) SGWGRefreshReadiness();
+            // Foundation ABI failures cannot be repaired by rescanning dyld.
+            if (!atomic_load(&gNativeGuardsReady)) SGWGRefreshReadiness();
             if (SGWGCurrentState() == SGWGStateWaitingProfile) {
                 if ([gKind isEqualToString:SGWGKindWireGuard]) StartEngine();
                 else StartExternalProxy();
             } else if (SGWGCurrentState() == SGWGStateBlocked && !gBlockAll &&
                        !atomic_load(&gEngineReady) && !atomic_load(&gCredentialStatus) &&
                        SGWGIsSupportedOS()) {
-                BOOL stillPending = NO;
-                if (SGWGCheckAdmission(&stillPending)) {
-                    if (tunnel) StartEngine();
-                    else StartExternalProxy();
-                } else if (tunnel && !stillPending) RefuseListener();
+                if (tunnel) StartEngine();
+                else StartExternalProxy();
             }
 #ifndef SGWG_TESTING
             if (!SGWGReady()) SGWGNotifyRecovery();
@@ -1169,13 +1183,11 @@ __attribute__((constructor)) static void SGWGInit(void) {
         // A saved opt-in may survive an app update. Do not start a tunnel or
         // touch Spotify's delegates on an uninspected version. The stable Apple
         // entry points still block their covered traffic, not the whole app.
-        if (tunnel && !gBlockAll) ObserveLifecycle();
         if (!admitted) {
             atomic_store(&gState, SGWGStateBlocked);
             return;
         }
-        if (![gKind isEqualToString:SGWGKindWireGuard]) {
-            SGWGInstallTransportPatches();
+        if (!tunnel) {
             StartExternalProxy();
             return;
         }

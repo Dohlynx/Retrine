@@ -48,7 +48,7 @@ func TestStructuralRecoveryIsNotDestinationRecovery(t *testing.T) {
 		}
 	}
 	e := &Engine{dev: device, listener: listener, port: listener.Addr().(*net.TCPAddr).Port,
-		rearm:   func() (net.Listener, error) { return listenReserved(anchor) },
+		rearm:   (&reservedSocket{file: anchor}).listen,
 		clients: map[net.Conn]struct{}{}, pendingAuth: make(chan struct{}, maxUnauthenticatedClients),
 		dialTimeout: time.Second, stateChanged: func(event int) { events <- event }}
 	defer e.Close()
@@ -96,7 +96,7 @@ func TestListenerRecoveryReportsStateChanges(t *testing.T) {
 	defer anchor.Close()
 	events := make(chan int, 4)
 	e := &Engine{listener: listener, port: listener.Addr().(*net.TCPAddr).Port,
-		rearm:   func() (net.Listener, error) { return listenReserved(anchor) },
+		rearm:   (&reservedSocket{file: anchor}).listen,
 		clients: map[net.Conn]struct{}{}, pendingAuth: make(chan struct{}, maxUnauthenticatedClients),
 		stateChanged: func(state int) { events <- state }}
 	done := make(chan struct{})

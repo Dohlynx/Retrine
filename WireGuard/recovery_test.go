@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/exec"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -95,7 +98,7 @@ func TestRebindRequestsDoNotWaitForRepair(t *testing.T) {
 	}
 }
 
-func TestListenerPressureCanRecoverAfterExhaustion(t *testing.T) {
+func TestListenerPressureRecoversWithoutPathChange(t *testing.T) {
 	for _, fault := range []error{syscall.ENOMEM, syscall.ENOBUFS, syscall.ECONNABORTED, syscall.EINTR} {
 		t.Run(fault.Error(), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -117,7 +120,7 @@ func TestListenerPressureCanRecoverAfterExhaustion(t *testing.T) {
 						if pressure.Load() {
 							return nil, &net.OpError{Op: "accept", Err: fault}
 						}
-						return listenReserved(anchor)
+						return (&reservedSocket{file: anchor}).listen()
 					}, stateChanged: func(s int) {
 						if s == engineAvailable {
 							available <- struct{}{}
@@ -128,21 +131,92 @@ func TestListenerPressureCanRecoverAfterExhaustion(t *testing.T) {
 				e.listenerFailed(l)
 				time.Sleep(time.Minute)
 				e.mu.Lock()
-				parked := e.repairDone == nil
+				repairing := e.repairDone != nil
 				e.mu.Unlock()
-				if !parked || attempts.Load() < 2 || len(available) != 0 {
-					t.Fatal("listener did not retry and park unavailable")
+				if !repairing || attempts.Load() < 2 || len(available) != 0 {
+					t.Fatal("listener abandoned retryable pressure")
 				}
 				pressure.Store(false)
-				e.Rebind()
 				select {
 				case <-available:
-				case <-time.After(time.Second):
-					t.Fatal("listener did not recover on a later path update")
+				case <-time.After(time.Minute + time.Second):
+					t.Fatal("listener did not recover without a path update")
 				}
 			})
 		})
 	}
+}
+
+type fixtureListener chan net.Conn
+
+func (l fixtureListener) Accept() (net.Conn, error) {
+	if c := <-l; c != nil {
+		return c, nil
+	}
+	return nil, syscall.EMFILE
+}
+func (l fixtureListener) Close() error   { close(l); return nil }
+func (l fixtureListener) Addr() net.Addr { return nil }
+
+func TestListenerBackoffAndDemand(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := make(fixtureListener)
+		var recoverNext atomic.Bool
+		attempts := make(chan time.Time, 1)
+		e := &Engine{dev: &rebindDevice{}, listener: l, clients: map[net.Conn]struct{}{},
+			user: []byte("user"), pass: []byte("pass"), pendingAuth: make(chan struct{}, 1),
+			rearm: func() (net.Listener, error) {
+				attempts <- time.Now()
+				if recoverNext.Swap(false) {
+					return l, nil
+				}
+				return nil, syscall.EMFILE
+			}}
+		defer e.Close()
+		previous := time.Now()
+		wantGap := func(want time.Duration) {
+			t.Helper()
+			select {
+			case now := <-attempts:
+				if gap := now.Sub(previous); gap != want {
+					t.Fatalf("listener retry interval %v, want %v", gap, want)
+				}
+				previous = now
+			case <-time.After(time.Minute + time.Second):
+				t.Fatal("listener stopped retrying")
+			}
+		}
+		e.listenerFailed(l)
+		wantGap(0)
+		for delay := 100 * time.Millisecond; delay < time.Minute; delay *= 2 {
+			wantGap(delay)
+		}
+		wantGap(time.Minute)
+		synctest.Wait()
+		time.Sleep(time.Second) // interrupt the long wait rather than its expiry
+		e.Rebind()
+		wantGap(time.Second)
+		wantGap(100 * time.Millisecond)
+
+		recoverNext.Store(true)
+		wantGap(200 * time.Millisecond)
+		server, client := net.Pipe()
+		defer client.Close()
+		l <- server
+		l <- nil // a second outage while an accepted client is authenticating
+		wantGap(0)
+		wantGap(100 * time.Millisecond)
+		wantGap(200 * time.Millisecond)
+		time.Sleep(time.Millisecond)
+		if reply := socksHandshake(t, client, []byte{2}, "user", "pass"); reply[1] != 0 {
+			t.Fatal("fixture authentication failed")
+		}
+		wantGap(time.Millisecond)
+		wantGap(100 * time.Millisecond)
+		if e.bindUpdates.Load() != 1 {
+			t.Fatal("listener demand requested an extra UDP update")
+		}
+	})
 }
 
 func TestPathChangeAfterBindDuringListenerRetry(t *testing.T) {
@@ -163,7 +237,7 @@ func TestPathChangeAfterBindDuringListenerRetry(t *testing.T) {
 			<-resume
 			return nil, syscall.EMFILE
 		}
-		return listenReserved(anchor)
+		return (&reservedSocket{file: anchor}).listen()
 	}}
 	defer e.Close()
 	e.Rebind()
@@ -179,6 +253,251 @@ func TestPathChangeAfterBindDuringListenerRetry(t *testing.T) {
 	<-done
 	if e.bindUpdates.Load() != 2 {
 		t.Fatal("path change lost during listener retry")
+	}
+}
+
+type bindFunc struct {
+	rebindDevice
+	update func() error
+}
+
+func (d *bindFunc) BindUpdate() error { return d.update() }
+
+func TestListenerFailureDuringLastBind(t *testing.T) {
+	for _, failAt := range []int{4, 5} {
+		t.Run(fmt.Sprint(failAt), func(t *testing.T) {
+			l, err := net.Listen("tcp4", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			e := &Engine{listener: l}
+			attempt := 0
+			e.dev = &bindFunc{update: func() error {
+				attempt++
+				if attempt == failAt {
+					e.listenerFailed(l)
+				}
+				return syscall.ENETDOWN
+			}}
+			e.rearm = func() (net.Listener, error) { return net.Listen("tcp4", "127.0.0.1:0") }
+			defer e.Close()
+			e.Rebind()
+			e.mu.Lock()
+			done := e.repairDone
+			e.mu.Unlock()
+			<-done
+			if attempt != 5 {
+				t.Fatalf("listener failure renewed UDP budget: %d updates", attempt)
+			}
+			if e.relistens.Load() != 1 || e.unavailable != bindUnavailable {
+				t.Fatal("listener lost during final UDP update was not restored independently")
+			}
+		})
+	}
+}
+
+func TestReservedListenerFDLimit(t *testing.T) {
+	// Limit only a subprocess; restore its descriptors before probing LISTEN.
+	if os.Getenv("SGWG_TEST_EMFILE") == "" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestReservedListenerFDLimit$", "-test.timeout=15s")
+		cmd.Env = append(os.Environ(), "SGWG_TEST_EMFILE=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, output)
+		}
+		return
+	}
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := os.NewFile(uintptr(fd), "reservation")
+	defer file.Close()
+	if err := syscall.Bind(fd, &syscall.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}); err != nil {
+		t.Fatal(err)
+	}
+	var limit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	old := limit
+	limit.Cur = uint64(fd + 1)
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		spare, err := syscall.Dup(fd)
+		if err == syscall.EMFILE {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer syscall.Close(spare)
+	}
+	if l, err := (&reservedSocket{file: file}).listen(); !errors.Is(err, syscall.EMFILE) {
+		t.Fatalf("expected descriptor pressure, got %v, %v", l, err)
+	}
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &old); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := syscall.Accept(fd); err != syscall.EINVAL {
+		t.Fatalf("reservation is not a bound, non-listening socket: %v", err)
+	}
+
+	t.Run("after startup", func(t *testing.T) {
+		s := &reservedSocket{file: file}
+		l, err := s.listen()
+		if err != nil {
+			t.Fatal(err)
+		}
+		available := make(chan struct{})
+		exhausted := make(chan struct{})
+		attempt := 0
+		e := &Engine{listener: l, rearm: func() (net.Listener, error) {
+			listener, err := s.listen()
+			if errors.Is(err, syscall.EMFILE) {
+				attempt++
+				if attempt == 5 {
+					close(exhausted)
+				}
+			}
+			return listener, err
+		}, dev: &rebindDevice{}, admitted: func() bool { return false },
+			stateChanged: func(state int) {
+				if state == engineAvailable {
+					close(available)
+				}
+			}}
+		defer e.Close()
+		// Darwin can dequeue the handshake even when accept returns EMFILE.
+		for range 6 {
+			queued, err := net.Dial("tcp4", l.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer queued.Close()
+		}
+		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
+			t.Fatal(err)
+		}
+		e.listenerFailed(l)
+		select {
+		case <-exhausted:
+		case <-time.After(4 * time.Second):
+			t.Fatal("did not sustain real descriptor pressure through five repairs")
+		}
+		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &old); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-available:
+		case <-time.After(3 * time.Second):
+			t.Fatal("published listener still parked after EMFILE cleared")
+		}
+		fresh, err := net.Dial("tcp4", l.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer fresh.Close()
+		fresh.SetReadDeadline(time.Now().Add(time.Second))
+		if _, err := fresh.Read(make([]byte, 1)); err != io.EOF {
+			t.Fatalf("recovered accept loop did not serve fresh connection: %v", err)
+		}
+	})
+}
+
+func TestCloseDuringRefilledBacklog(t *testing.T) {
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := l.(*net.TCPListener).File()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	fd := int(file.Fd())
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		t.Fatal(err)
+	}
+	refill := func() error {
+		c, err := net.Dial("tcp4", l.Addr().String())
+		if err == nil {
+			c.Close()
+		}
+		return err
+	}
+	if err := refill(); err != nil {
+		t.Fatal(err)
+	}
+	entered, closing := make(chan struct{}), make(chan struct{})
+	var first sync.Once
+	calls := 0
+	e := &Engine{dev: &rebindDevice{}, listener: l, stateChanged: func(s int) {
+		if s == engineStopped {
+			close(closing)
+		}
+	}}
+	e.rearm = func() (net.Listener, error) {
+		return l, drainBacklog(fd, func(fd int) (int, syscall.Sockaddr, error) {
+			first.Do(func() { close(entered); <-closing })
+			calls++
+			// Finite safety cutoff for an implementation that never yields.
+			if calls == 128 {
+				return -1, nil, net.ErrClosed
+			}
+			if err := refill(); err != nil {
+				return -1, nil, err
+			}
+			return syscall.Accept(fd)
+		})
+	}
+	e.listenerFailed(l)
+	<-entered
+	e.Close()
+	if calls == 128 {
+		t.Fatal("Close depended on the backlog producer stopping")
+	}
+}
+
+func TestReservedListenerDrainsQueue(t *testing.T) {
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	file, err := l.(*net.TCPListener).File()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	reservation := reservedSocket{file: file}
+	active, err := reservation.listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer active.Close()
+	var clients []net.Conn
+	for range 3 {
+		c, err := net.Dial("tcp4", l.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		clients = append(clients, c)
+	}
+	_, err = reservation.listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range clients {
+		c.SetReadDeadline(time.Now().Add(time.Second))
+		if _, err := c.Read(make([]byte, 1)); err != io.EOF {
+			t.Fatalf("pre-admission connection not drained: %v", err)
+		}
 	}
 }
 
@@ -260,6 +579,14 @@ func TestPipeDrainsEitherDirection(t *testing.T) {
 					go func() { e.pipe(local, bufio.NewReader(local), remote); local.Close(); close(done) }()
 					if reverse {
 						client, peer = peer, client
+					}
+					if mode == "progress with upload open" {
+						time.Sleep(2 * streamIdleTimeout)
+						go client.Write([]byte{42})
+						var b [1]byte
+						if _, err := io.ReadFull(peer, b[:]); err != nil || b[0] != 42 {
+							t.Fatal("open idle stream no longer forwards data")
+						}
 					}
 					if mode == "payload before FIN" {
 						if _, err := client.Write([]byte{1}); err != nil {

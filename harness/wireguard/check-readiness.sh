@@ -9,6 +9,10 @@ xcrun clang -fobjc-arc -fmodules -DSGWG_TESTING -mmacosx-version-min=14.0 -Wall 
     -framework CoreFoundation -o "$OUT/readiness"
 SGWG_TEST_ENABLED=0 "$OUT/readiness"
 SGWG_TEST_ENABLED=1 SGWG_TEST_KIND=socks5 SGWG_TEST_HOST=127.0.0.1 SGWG_TEST_PORT=1080 "$OUT/readiness" --external-proxy
+for delayed in "" SGWG_TEST_DELAY_ADMISSION=1; do
+    env $delayed SGWG_TEST_REFUSED=1 SGWG_TEST_ENABLED=1 SGWG_TEST_KIND=socks5 "$OUT/readiness" --external-proxy
+done
+SGWG_TEST_DELAY_ADMISSION=1 SGWG_TEST_ENABLED=1 SGWG_TEST_KIND=socks5 SGWG_TEST_LOCKED_PROXY=1 "$OUT/readiness" --external-proxy
 SGWG_TEST_ENABLED=1 SGWG_TEST_KIND=wireguard SGWG_TEST_DELAY_ADMISSION=1 SGWG_TEST_PROFILE="$0" "$OUT/readiness" --delayed-admission
 SGWG_TEST_INVALID=1 SGWG_TEST_ENABLED=1 SGWG_TEST_KIND=wireguard SGWG_TEST_DELAY_ADMISSION=1 SGWG_TEST_PROFILE="$0" "$OUT/readiness" --delayed-admission
 SGWG_TEST_FD_LIMIT=1 SGWG_TEST_ENABLED=1 SGWG_TEST_KIND=wireguard SGWG_TEST_DELAY_ADMISSION=1 SGWG_TEST_PROFILE="$0" "$OUT/readiness" --delayed-admission

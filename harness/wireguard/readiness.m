@@ -3,6 +3,27 @@
 #import <errno.h>
 #import <stdlib.h>
 #import <Network/Network.h>
+#import <Foundation/Foundation.h>
+#import <Security/Security.h>
+static BOOL keychainUnlocked;
+static OSStatus fixtureItem(CFDictionaryRef query, CFTypeRef *result) {
+    if (!getenv("SGWG_TEST_LOCKED_PROXY")) return SecItemCopyMatching(query, result);
+    NSDictionary *attributes = (__bridge NSDictionary *)query;
+    if (![attributes[(__bridge id)kSecAttrAccount] isEqual:@"proxy-password"]) return errSecItemNotFound;
+    if (!keychainUnlocked) return errSecInteractionNotAllowed;
+    NSDictionary *entry = @{@"identity": @[@"socks5", @"127.0.0.1", @"1080", @"fixture"], @"password": @"unlock-test"};
+    *result = CFBridgingRetain([NSJSONSerialization dataWithJSONObject:entry options:0 error:nil]);
+    return errSecSuccess;
+}
+#define SecItemCopyMatching fixtureItem
+static dispatch_source_t recoveryTimer;
+static dispatch_block_t tick;
+static void fixtureHandler(dispatch_source_t source, dispatch_block_t handler) {
+    if (source == recoveryTimer) tick = [handler copy];
+    else dispatch_source_set_event_handler(source, handler);
+}
+#define dispatch_source_set_timer(source, ...) (recoveryTimer = (source))
+#define dispatch_source_set_event_handler fixtureHandler
 static int fixtureDup(int fd) {
     static int failed;
     if (getenv("SGWG_TEST_FD_LIMIT") && !failed++) { errno = EMFILE; return -1; }
@@ -13,12 +34,15 @@ static int fixtureDup(int fd) {
 #define nw_path_monitor_start(monitor) ((void)(monitor))
 #import "Shared/WireGuard/SGWGCore.m"
 #undef nw_path_monitor_start
+#undef dispatch_source_set_timer
+#undef dispatch_source_set_event_handler
 #undef dup
+#undef SecItemCopyMatching
 
 static unsigned notices, rebinds;
 static BOOL admitted = YES, patches = YES;
 static atomic_bool sharedImageLoaded;
-static atomic_uint starts, stops;
+static atomic_uint starts, stops, transports, nativeScans, admissions;
 static dispatch_semaphore_t handoff, releaseHandoff;
 static int sessionPort;
 static CreateSocksFn realCreateSocks;
@@ -29,21 +53,22 @@ static void *recordSocksEndpoint(void *endpoint) {
 static dispatch_semaphore_t admissionEntered, admissionContinue;
 #define CHECK(value) do { if (!(value)) { fprintf(stderr, "FAIL readiness:%d %s\n", __LINE__, #value); exit(1); } } while (0)
 
-BOOL SGWGInstallNativePatches(void) { return patches; }
+BOOL SGWGInstallNativePatches(void) { ++nativeScans; return patches; }
 BOOL SGWGCheckAdmission(BOOL *pendingImages) {
+    ++admissions;
     BOOL ready = SGWGAdmissionReady();
     if (pendingImages) *pendingImages = !ready && !sharedImageLoaded && getenv("SGWG_TEST_DELAY_ADMISSION") != NULL;
     return ready;
 }
 BOOL SGWGAdmissionReady(void) {
-    BOOL result = admitted && (!getenv("SGWG_TEST_DELAY_ADMISSION") || sharedImageLoaded);
+    BOOL result = admitted && !getenv("SGWG_TEST_REFUSED") && (!getenv("SGWG_TEST_DELAY_ADMISSION") || sharedImageLoaded);
     if (admissionEntered) {
         dispatch_semaphore_signal(admissionEntered);
         dispatch_semaphore_wait(admissionContinue, DISPATCH_TIME_FOREVER);
     }
     return result;
 }
-void SGWGInstallTransportPatches(void) {}
+void SGWGInstallTransportPatches(void) { ++transports; }
 NSArray *SGWGNativeReportLines(void) { return @[]; }
 NSArray *SGWGTransportReportLines(void) { return @[]; }
 NSArray *SGWGScanTransportClasses(void) { return @[]; }
@@ -326,8 +351,49 @@ int main(int argc, char **argv) {
         }
         if (argc == 2 && !strcmp(argv[1], "--external-proxy")) {
             CHECK([gKind isEqualToString:SGWGKindSOCKS5]);
-            CHECK(gListenerFD == -1 && !gBlockAll && SGWGCurrentState() == SGWGStateExternalProxy);
-            puts("PASS external proxy starts without reserving a loopback listener");
+            if (getenv("SGWG_TEST_DELAY_ADMISSION")) {
+                CHECK(!SGWGReady() && !transports);
+                if (getenv("SGWG_TEST_LOCKED_PROXY")) {
+                    [NSUserDefaults.standardUserDefaults setVolatileDomain:@{kDefaultsKey:
+                        @{@"host": @"127.0.0.1", @"port": @"1080", @"username": @"fixture"}} forName:NSArgumentDomain];
+                }
+                sharedImageLoaded = true;
+                dispatch_sync(gQueue, tick);
+            }
+            if (getenv("SGWG_TEST_REFUSED")) {
+                drain();
+                CHECK(SGWGActiveThisLaunch() && SGWGGuardsInstalled() && !SGWGReady());
+                unsigned scans = nativeScans, checks = admissions;
+                dispatch_sync(gQueue, tick);
+                CHECK(nativeScans == scans && admissions == checks && !transports);
+                CHECK(SGWGCurrentState() == SGWGStateBlocked);
+                puts("PASS refused proxy stays guarded without periodic image scans");
+                return 0;
+            }
+            if (getenv("SGWG_TEST_LOCKED_PROXY")) {
+                CHECK(SGWGCurrentState() == SGWGStateWaitingProfile && !SGWGReady() && !gProxyPass);
+                CHECK(gCredentialStatus == errSecInteractionNotAllowed);
+                keychainUnlocked = YES;
+                [NSNotificationCenter.defaultCenter postNotificationName:@"UIApplicationProtectedDataDidBecomeAvailable" object:nil];
+                drain();
+                CHECK(gCredentialStatus == errSecSuccess && gProxyUser && !strcmp(gProxyUser, "fixture"));
+                CHECK(gProxyPass && !strcmp(gProxyPass, "unlock-test"));
+            }
+            CHECK(gListenerFD == -1 && SGWGReady() && SGWGCurrentState() == SGWGStateExternalProxy && transports == 1);
+            dispatch_sync(gQueue, ^{
+                // A Foundation ABI mismatch cannot be repaired by native slot scans.
+                gSessionGuards = NO;
+                patches = NO;
+                SGWGRefreshReadiness();
+                patches = YES;
+                unsigned scans = nativeScans;
+                tick();
+                CHECK(nativeScans > scans && !SGWGGuardsInstalled());
+                scans = nativeScans;
+                tick();
+                CHECK(nativeScans == scans && !SGWGReady());
+            });
+            puts("PASS external proxy start; periodic scans limited to incomplete native slots");
             return 0;
         }
         gActive = YES;

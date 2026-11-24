@@ -56,6 +56,7 @@ type Engine struct {
 	wantBind     bool
 	repairCancel context.CancelFunc
 	repairDone   chan struct{}
+	repairWake   chan struct{}
 
 	dialTimeout  time.Duration
 	stopped      atomic.Bool
@@ -308,7 +309,14 @@ func (e *Engine) acceptLoop(l net.Listener) {
 			defer c.Close()
 			release := sync.OnceFunc(func() { <-e.pendingAuth })
 			defer release()
-			e.serve(c, release)
+			e.serve(c, func() {
+				release()
+				e.mu.Lock()
+				if e.deadListener != nil && !e.stopped.Load() {
+					e.startRepairLocked()
+				}
+				e.mu.Unlock()
+			})
 		}()
 	}
 }
@@ -338,6 +346,10 @@ func (e *Engine) Rebind() error {
 
 func (e *Engine) startRepairLocked() {
 	if e.repairDone != nil {
+		if e.repairWake != nil {
+			close(e.repairWake)
+			e.repairWake = nil
+		}
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -347,34 +359,72 @@ func (e *Engine) startRepairLocked() {
 }
 
 func (e *Engine) repair(ctx context.Context, done chan struct{}) {
-	bindFailed := false
+	// A new path requests a bounded UDP retry series. The published TCP
+	// socket instead needs an acceptor as long as the engine is alive.
+	var bindAt, listenAt time.Time
+	var bindAttempts int
+	const quick = 100 * time.Millisecond
+	var listenDelay time.Duration
 	e.mu.Lock()
-	for attempt := 0; ctx.Err() == nil; attempt++ {
-		bind := e.wantBind || bindFailed
+	for ctx.Err() == nil {
+		// Requests coalesce until this worker consumes the wake, even if
+		// they arrive during a syscall rather than during the timer wait.
+		if e.repairWake == nil {
+			e.repairWake = make(chan struct{})
+			listenDelay, listenAt = quick, time.Time{}
+		}
+		now := time.Now()
+		if e.wantBind {
+			bindAttempts, bindAt = 0, now
+		}
+		bind := !bindAt.IsZero() && !bindAt.After(now)
 		dead := e.deadListener
+		if !bind && (dead == nil || listenAt.After(now)) {
+			next := bindAt
+			if dead != nil && (next.IsZero() || listenAt.Before(next)) {
+				next = listenAt
+			}
+			if next.IsZero() {
+				break
+			}
+			wake := e.repairWake
+			e.mu.Unlock()
+			select {
+			case <-wake:
+			case <-ctx.Done():
+			case <-time.After(time.Until(next)):
+			}
+			e.mu.Lock()
+			continue
+		}
 		e.mu.Unlock()
 		if bind {
-			bindFailed = e.dev.BindUpdate() != nil
+			bindFailed := e.dev.BindUpdate() != nil
 			// Only requests overlapping this UDP update were reconciled. A
 			// request during subsequent listener work belongs to the next pass.
 			e.mu.Lock()
 			e.wantBind = false
 			e.mu.Unlock()
+			bindAt = time.Time{}
+			bindAttempts++
 			if bindFailed {
 				e.bindFailures.Add(1)
-				e.setUnavailable(bindUnavailable, true)
+				if bindAttempts < 5 {
+					bindAt = time.Now().Add(100 * time.Millisecond << (bindAttempts - 1))
+				}
 			} else {
 				e.bindUpdates.Add(1)
 			}
-			if !bindFailed {
-				e.setUnavailable(bindUnavailable, false)
-			}
+			e.setUnavailable(bindUnavailable, bindFailed)
 		}
-		if dead != nil && ctx.Err() == nil {
-			dead.Close()
+		if dead != nil && !listenAt.After(time.Now()) && ctx.Err() == nil {
 			replacement, err := e.rearm()
 			if err == nil {
+				listenDelay, listenAt = quick, time.Time{}
 				e.mu.Lock()
+				if replacement != dead {
+					dead.Close()
+				}
 				if e.stopped.Load() {
 					replacement.Close()
 				} else {
@@ -384,32 +434,18 @@ func (e *Engine) repair(ctx context.Context, done chan struct{}) {
 					go e.acceptLoop(replacement)
 				}
 				e.mu.Unlock()
-			} else if !retryableListenerError(err) {
-				// A defunct underlying socket cannot be replaced. Park permanently
-				// with the listener failure bit set and the port still reserved.
-				e.mu.Lock()
-				e.deadListener = nil
-				e.mu.Unlock()
+			} else {
+				// An accept error is not proof that the shared socket has
+				// stopped listening. Keep one cancellable, rate-limited owner.
+				listenAt = time.Now().Add(listenDelay)
+				listenDelay = min(2*listenDelay, time.Minute)
 			}
-		}
-		e.mu.Lock()
-		if e.wantBind {
-			attempt = -1
-			continue
-		}
-		if (e.deadListener == nil && !bindFailed) || attempt >= 4 {
-			break
-		}
-		e.mu.Unlock()
-		select {
-		case <-ctx.Done():
-		case <-time.After(100 * time.Millisecond << attempt):
 		}
 		e.mu.Lock()
 	}
 	e.repairCancel()
 	e.wantBind = false
-	e.repairCancel, e.repairDone = nil, nil
+	e.repairCancel, e.repairDone, e.repairWake = nil, nil, nil
 	close(done)
 	e.mu.Unlock()
 }
@@ -695,20 +731,39 @@ func (e *Engine) serveCONNECT(c net.Conn, r *bufio.Reader, authenticated func())
 }
 
 type countingWriter struct {
-	dst      io.Writer
-	n        *atomic.Int64
-	progress func()
+	dst   net.Conn
+	n     *atomic.Int64
+	start time.Time
+	last  *atomic.Int64
+	other *atomic.Int64
 }
 
 const streamIdleTimeout = 30 * time.Second
 
 func (cw countingWriter) Write(p []byte) (int, error) {
-	n, err := cw.dst.Write(p)
-	cw.n.Add(int64(n))
-	if n > 0 {
-		cw.progress()
+	// A blocked write can hide its reader's FIN. Bound that write, not the
+	// wait for the next byte on a healthy open stream.
+	deadline := time.Now().Add(streamIdleTimeout)
+	written := 0
+	for {
+		if err := cw.dst.SetWriteDeadline(deadline); err != nil {
+			return written, err
+		}
+		n, err := cw.dst.Write(p[written:])
+		written += n
+		cw.n.Add(int64(n))
+		if n > 0 {
+			cw.last.Store(int64(time.Since(cw.start)))
+		}
+		var timeout net.Error
+		if !errors.As(err, &timeout) || !timeout.Timeout() {
+			return written, err
+		}
+		deadline = cw.start.Add(time.Duration(max(cw.last.Load(), cw.other.Load())) + streamIdleTimeout)
+		if !time.Now().Before(deadline) {
+			return written, err
+		}
 	}
-	return n, err
 }
 
 func (e *Engine) pipe(c net.Conn, r *bufio.Reader, upstream net.Conn) {
@@ -726,7 +781,7 @@ func (e *Engine) pipe(c net.Conn, r *bufio.Reader, upstream net.Conn) {
 	done := make(chan error, 2)
 	copyStream := func(i int, dst net.Conn, reader io.Reader, counter *atomic.Int64) {
 		// r may already hold bytes the client sent right after the request.
-		_, err := io.Copy(countingWriter{dst, counter, func() { last[i].Store(int64(time.Since(start))) }}, reader)
+		_, err := io.Copy(countingWriter{dst, counter, start, &last[i], &last[1-i]}, reader)
 		if err == nil {
 			if half, ok := dst.(interface{ CloseWrite() error }); ok {
 				err = half.CloseWrite()
@@ -736,16 +791,21 @@ func (e *Engine) pipe(c net.Conn, r *bufio.Reader, upstream net.Conn) {
 	}
 	go copyStream(0, upstream, r, &e.upBytes)
 	go copyStream(1, c, upstream, &e.downBytes)
-	timer := time.NewTimer(streamIdleTimeout)
-	defer timer.Stop()
+	var drain <-chan time.Time
+	var timer *time.Timer
 	for remaining := 2; remaining > 0; {
 		select {
 		case err := <-done:
 			remaining--
 			if err == nil {
+				if remaining == 1 {
+					timer = time.NewTimer(streamIdleTimeout)
+					defer timer.Stop()
+					drain = timer.C
+				}
 				continue
 			}
-		case <-timer.C:
+		case <-drain:
 			elapsed := time.Since(start)
 			left := streamIdleTimeout + time.Duration(max(last[0].Load(), last[1].Load())) - elapsed
 			if left > 0 {

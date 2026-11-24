@@ -15,6 +15,7 @@ import "C"
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"strings"
@@ -71,24 +72,58 @@ func SGWGInspect(text *C.char) *C.char {
 	return cString(summary)
 }
 
-// Accept readiness is a property of the reserved socket, not of a port number.
-func listenReserved(file *os.File) (net.Listener, error) {
-	fd := int(file.Fd())
+type reservedSocket struct {
+	file     *os.File
+	listener net.Listener
+}
+
+// Called once after bootstrap, then only by the single repair worker.
+func (s *reservedSocket) listen() (net.Listener, error) {
+	fd := int(s.file.Fd())
+	if s.listener == nil {
+		// The ObjC reservation shares this socket: closing a dup cannot
+		// undo listen. Allocate the Go descriptor before enabling the port.
+		l, err := net.FileListener(s.file)
+		if err != nil {
+			return nil, err
+		}
+		if err := syscall.Listen(fd, maxUnauthenticatedClients); err != nil {
+			l.Close()
+			return nil, err
+		}
+		s.listener = l
+		return l, nil
+	}
+	// Reuse the Go listener and reject connections queued while its accept
+	// loop was unavailable, without waiting for any new connection.
 	if err := syscall.SetNonblock(fd, true); err != nil {
 		return nil, err
 	}
-	if err := syscall.Listen(fd, maxUnauthenticatedClients); err != nil {
+	if err := drainBacklog(fd, syscall.Accept); err != nil {
 		return nil, err
 	}
-	client, _, err := syscall.Accept(fd)
-	switch err {
-	case nil:
-		syscall.Close(client) // queued before admission
-	case syscall.EAGAIN:
-	default:
-		return nil, err
+	return s.listener, nil
+}
+
+var errBacklogBusy = errors.New("local listener backlog still draining")
+
+func drainBacklog(fd int, accept func(int) (int, syscall.Sockaddr, error)) error {
+	// A producer can continuously refill the kernel queue. Yield to repair's
+	// cancellation/backoff after one backlog, without declaring it empty.
+	for range maxUnauthenticatedClients {
+		client, _, err := accept(fd)
+		switch err {
+		case nil:
+			syscall.Close(client)
+		case syscall.EINTR, syscall.ECONNABORTED:
+			continue
+		case syscall.EAGAIN:
+			return nil
+		default:
+			return err
+		}
 	}
-	return net.FileListener(file)
+	return errBacklogBusy
 }
 
 //export SGWGStart
@@ -97,8 +132,9 @@ func SGWGStart(text, user, pass *C.char, listenerFD C.int) C.enum_SGWGStartResul
 	p, err := ParseProfile(C.GoString(text))
 	var e *Engine
 	if err == nil {
+		reservation := &reservedSocket{file: file}
 		e, err = StartEngine(p, C.GoString(user), C.GoString(pass), EngineOptions{
-			Listen:       func() (net.Listener, error) { return listenReserved(file) },
+			Listen:       reservation.listen,
 			Admitted:     func() bool { return C.isAdmitted(C.uintptr_t(admissionCallback.Load())) != 0 },
 			StateChanged: func(state int) { C.reportEngineState(C.uintptr_t(stateCallback.Load()), C.int(state)) },
 		})
