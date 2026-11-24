@@ -92,6 +92,7 @@ static NSString *registerCustom(void) {
 
 // What registerCustom answered, published on the main thread by SGRegisterCustomFont or SGRegisterCustomFontAsync.
 static NSString *sg_registeredCustom;
+static NSDictionary *sg_displayIdentity; // main-thread mirror
 static NSUInteger sg_importGeneration; // main thread, like the published family
 static BOOL sg_registrationPending;
 
@@ -102,12 +103,33 @@ static dispatch_queue_t registrationQueue(void) {
     return queue;
 }
 
+// Only the serial worker inspects the files. A superseded completion can compare with the
+// last finished operation without waiting on a copy or Core Text registration.
+static NSDictionary *sg_workerIdentity;
+static NSDictionary *snapshotImport(void) {
+    NSDictionary *identity = importIdentity();
+    @synchronized (registrationQueue()) { sg_workerIdentity = identity; }
+    return identity;
+}
+static BOOL sameIdentity(NSDictionary *a, NSDictionary *b) { return a == b || [a isEqual:b]; }
+static BOOL currentIdentity(NSDictionary *identity) {
+    @synchronized (registrationQueue()) { return sameIdentity(identity, sg_workerIdentity); }
+}
+
+static void publishCustom(NSString *family, NSDictionary *identity);
+
 NSString *SGRegisterCustomFont(void) {
-    ++sg_importGeneration;
+    NSUInteger generation = ++sg_importGeneration;
     sg_registrationPending = NO;
     __block NSString *family;
     dispatch_sync(registrationQueue(), ^{ family = registerCustom(); });
     sg_registeredCustom = family;
+    dispatch_async(registrationQueue(), ^{
+        NSDictionary *identity = snapshotImport();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation == sg_importGeneration) publishCustom(family, identity);
+        });
+    });
     return family;
 }
 
@@ -115,10 +137,12 @@ NSString *SGRegisteredCustomFont(void) {
     return [sg_registeredCustom isEqualToString:[NSUserDefaults.standardUserDefaults stringForKey:SGKeyAppFontName]] ? sg_registeredCustom : nil;
 }
 
-static void publishCustom(NSString *family) {
-    if (sg_registeredCustom == family || [sg_registeredCustom isEqualToString:family]) return;
+static void publishCustom(NSString *family, NSDictionary *identity) {
+    BOOL sameFamily = sg_registeredCustom == family || [sg_registeredCustom isEqualToString:family];
+    if (sameFamily && sameIdentity(identity, sg_displayIdentity)) return;
+    sg_displayIdentity = identity;
     sg_registeredCustom = family;
-    [NSNotificationCenter.defaultCenter postNotificationName:SGFontLibraryChangedNotification object:nil userInfo:@{@"identifier": @"custom"}];
+    [NSNotificationCenter.defaultCenter postNotificationName:SGFontLibraryChangedNotification object:nil userInfo:@{@"identifier": sameFamily ? @"custom-files" : @"custom"}];
 }
 
 // registerCustom on a queue of its own, one registration at a time; the answer is published on main.
@@ -131,11 +155,16 @@ void SGRegisterCustomFontAsync(void) {
     sg_registrationPending = YES;
     NSUInteger generation = sg_importGeneration;
     dispatch_async(registrationQueue(), ^{
+        NSDictionary *identity = snapshotImport();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation != sg_importGeneration || sameIdentity(identity, sg_displayIdentity)) return;
+            publishCustom(sg_registeredCustom, identity);
+        });
         NSString *family = registerCustom();
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation != sg_importGeneration) return;
             sg_registrationPending = NO;
-            publishCustom(family);
+            publishCustom(family, identity);
         });
     });
 }
@@ -163,12 +192,13 @@ static void removeImported(NSDictionary *target, dispatch_block_t done) {
     dispatch_async(registrationQueue(), ^{
         BOOL removed = [target isEqual:importIdentity()];
         if (removed) removeImportedFiles([target[@"files"] allKeys]);
+        NSDictionary *remaining = snapshotImport();
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation == sg_importGeneration) sg_registrationPending = NO;
             // A later request may have failed validation without installing anything.
-            if (removed && !importedFamily()) {
+            if (removed && !remaining && currentIdentity(nil)) {
                 resetCustomSelection();
-                publishCustom(nil);
+                publishCustom(nil, nil);
             }
             done();
         });
@@ -228,23 +258,26 @@ static void import(NSArray<NSURL *> *picked, dispatch_block_t done) {
         if (!registered) removeImportedFiles(storedFiles());
     }
     [files removeItemAtURL:incoming error:nil];
-    NSDictionary *installed = registered ? importIdentity() : nil;
+    NSDictionary *identity = snapshotImport();
+    NSDictionary *installed = registered ? identity : nil;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (generation == sg_importGeneration) sg_registrationPending = NO;
-        else if (![installed isEqual:importIdentity()]) { done(); return; }
-        if (replacing) publishCustom(registered);
+        BOOL current = generation == sg_importGeneration || currentIdentity(installed);
+        if (current && replacing) publishCustom(registered, installed);
         // Keep the imported family available even during a pending restart, but never change its
         // selection: a reset/restore may have left the same (including unset) preference values.
         if (registered) {
-            if (SGFontSelectionUnchanged(selection)) {
+            if (current && SGFontSelectionUnchanged(selection)) {
                 SGSetInt(SGKeyAppFont, SGAppFontCustom);
                 tell(SGL(@"settings.font.imported.alert.title", @"Font imported"), [NSString stringWithFormat:SGL(@"settings.font.imported.alert.message", @"%@ becomes the app's font when Spotify starts again."), family]);
             }
             done();
             return;
         }
-        if (replacing) resetCustomSelection();
-        else SGRegisterCustomFontAsync(); // validation left the old files in place
+        if (current) {
+            if (replacing) resetCustomSelection();
+            else SGRegisterCustomFontAsync(); // validation left the old files in place
+        }
         SGPresentInformation(SGTopController(), SGL(@"settings.font.failed.alert.title", @"Font not imported"), fonts && !family ? SGL(@"settings.font.failed.multiple_families.alert.message", @"These files are more than one family. Pick the files of one family together.")
                                                : SGL(@"settings.font.failed.invalid_files.alert.message", @"Choose valid .ttf, .otf, .ttc or .otc font files."));
         done();
@@ -313,7 +346,7 @@ static UIFont *builtInFont(SGAppFont choice, CGFloat size) {
 static NSString *chosenLabel(void) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     SGAppFont font = SGAppFontChosen();
-    if (font == SGAppFontCustom) return importedFamily() ?: SGL(@"settings.font.choice.custom", @"Your font");
+    if (font == SGAppFontCustom) return sg_displayIdentity[@"family"] ?: SGL(@"settings.font.choice.custom", @"Your font");
     if (font == SGAppFontFamily) return [store stringForKey:SGKeyAppFontFamily] ?: SGAppFontNames()[0];
     if (font == SGAppFontLibrary) return SGFontLibraryFont([store stringForKey:SGKeyAppFontLibrary]).name ?: SGAppFontNames()[0];
     return SGAppFontNames()[font];
@@ -337,6 +370,7 @@ typedef NS_ENUM(NSInteger, SGFontSection) { SGFontBuiltIn, SGFontMore, SGFontFre
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
     self.title = SGL(@"settings.font.title", @"Font");
     _families = SGAppFontFamilies();
+    _displayedImport = sg_displayIdentity;
     return self;
 }
 
@@ -394,6 +428,7 @@ typedef NS_ENUM(NSInteger, SGFontSection) { SGFontBuiltIn, SGFontMore, SGFontFre
 }
 
 - (void)reloadFree {
+    _displayedImport = sg_displayIdentity;
     _free = [SGFontLibrary() filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(SGLibraryFont *font, NSDictionary *bindings) {
         return SGFontLibraryInstalled(font.identifier);
     }]];
@@ -402,7 +437,7 @@ typedef NS_ENUM(NSInteger, SGFontSection) { SGFontBuiltIn, SGFontMore, SGFontFre
 
 // The imported family once its files are registered; nil before that and when they are gone.
 - (NSString *)customFamily {
-    return [SGRegisteredCustomFont() isEqualToString:importedFamily()] ? SGRegisteredCustomFont() : nil;
+    return [sg_registeredCustom isEqualToString:_displayedImport[@"family"]] ? sg_registeredCustom : nil;
 }
 
 // How many faces the imported family has on this iPhone.
@@ -419,7 +454,7 @@ typedef NS_ENUM(NSInteger, SGFontSection) { SGFontBuiltIn, SGFontMore, SGFontFre
     if (section == SGFontBuiltIn) return (NSInteger)SGAppFontNames().count;
     if (section == SGFontMore) return (NSInteger)_families.count;
     if (section == SGFontFree) return (NSInteger)_free.count + 1;
-    return importedFamily().length ? 2 : 1;
+    return _displayedImport ? 2 : 1;
 }
 
 - (UIView *)tableView:(UITableView *)table viewForHeaderInSection:(NSInteger)section {
@@ -440,7 +475,6 @@ typedef NS_ENUM(NSInteger, SGFontSection) { SGFontBuiltIn, SGFontMore, SGFontFre
     NSString *title, *subtitle = nil;
     UIFont *font;
     BOOL selected;
-    if (path.section == SGFontYours && path.row == 0) _displayedImport = importIdentity();
     if (path.section == SGFontBuiltIn) {
         title = SGAppFontNames()[(NSUInteger)path.row];
         font = builtInFont(path.row, size);
@@ -499,7 +533,7 @@ typedef NS_ENUM(NSInteger, SGFontSection) { SGFontBuiltIn, SGFontMore, SGFontFre
     } else if (path.section == SGFontFree) {
         SGShowPage(self, SGFontLibraryPage());
         return;
-    } else if (path.row == 0 && importedFamily().length) {
+    } else if (path.row == 0 && _displayedImport) {
         SGSetInt(SGKeyAppFont, SGAppFontCustom);
     } else {
         __weak SGFontPage *page = self;

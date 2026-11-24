@@ -128,6 +128,18 @@ static NSString *sizeOf(NSArray<NSURL *> *urls) {
 }
 
 static NSString *sg_leftoverSize; // Main-thread snapshot from the last offer.
+static NSUInteger sg_cleanupGeneration;
+static NSHashTable<SGModRow *> *sg_waitingCleanupRows; // weak; a settings visit may already have ended
+
+static NSString *cleanupSubtitle(NSString *size) {
+    return [NSString stringWithFormat:SGL(@"settings.environment.chroma.subtitle", @"%@ Retrine never uses. Tap to delete"), size];
+}
+
+static void publishCleanupSize(NSString *size) {
+    sg_leftoverSize = size;
+    for (SGModRow *row in sg_waitingCleanupRows) row.subtitle = cleanupSubtitle(size);
+    [sg_waitingCleanupRows removeAllObjects];
+}
 
 static void showCleanup(NSArray<NSURL *> *leftovers, NSString *size) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:SGL(@"settings.environment.chroma.alert.title", @"Chroma left %@ on this iPhone"), size]
@@ -135,8 +147,10 @@ static void showCleanup(NSArray<NSURL *> *leftovers, NSString *size) {
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"common.delete", @"Delete") style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         sg_leftoverSize = nil;
+        ++sg_cleanupGeneration;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
             for (NSURL *url in leftovers) [NSFileManager.defaultManager removeItemAtURL:url error:nil];
+            dispatch_async(dispatch_get_main_queue(), ^{ ++sg_cleanupGeneration; sg_leftoverSize = nil; });
             SGLog(@"environment: deleted %@ Chroma left", size);
         });
     }]];
@@ -149,13 +163,16 @@ static void whenClear(NSInteger tries, void (^then)(void));
 
 static void offerCleanup(BOOL automatic) {
     __weak UIViewController *owner = automatic ? nil : SGTopController();
+    NSUInteger generation = ++sg_cleanupGeneration;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         NSArray<NSURL *> *leftovers = chromaLeftovers();
         if (!leftovers.count) return;
         NSString *size = sizeOf(leftovers);
         dispatch_async(dispatch_get_main_queue(), ^{
-            sg_leftoverSize = size;
+            if (generation != sg_cleanupGeneration) return;
+            publishCleanupSize(size);
             whenClear(automatic ? kTries : 0, ^{
+                if (generation != sg_cleanupGeneration) return;
                 if (!automatic && owner != SGTopController()) return;
                 NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
                 if (automatic && [store boolForKey:kCleanupOffered]) return;
@@ -189,18 +206,21 @@ NSArray<SGModRow *> *SGEnvironmentWarningRows(void) {
     NSArray<NSURL *> *leftovers = chromaLeftovers();
     if (leftovers.count) {
         SGModRow *row = SGWarningRow(SGL(@"settings.environment.chroma.title", @"Chroma left files behind"), nil, ^{ offerCleanup(NO); });
-        NSString *format = SGL(@"settings.environment.chroma.subtitle", @"%@ Retrine never uses. Tap to delete");
         if (sg_leftoverSize) {
-            row.subtitle = [NSString stringWithFormat:format, sg_leftoverSize];
+            row.subtitle = cleanupSubtitle(sg_leftoverSize);
         } else {
             // After Keep, there is no automatic offer on the next launch. Let the page's
             // live visibility refresh insert the row once its own size is ready.
             __weak SGModRow *weakRow = row;
+            if (!sg_waitingCleanupRows) sg_waitingCleanupRows = [NSHashTable weakObjectsHashTable];
+            [sg_waitingCleanupRows addObject:row];
+            NSUInteger generation = ++sg_cleanupGeneration;
             row.visible = ^BOOL { return weakRow.subtitle != nil; };
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
                 NSString *size = sizeOf(leftovers);
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    weakRow.subtitle = [NSString stringWithFormat:format, size];
+                    if (generation != sg_cleanupGeneration) return;
+                    publishCleanupSize(size);
                 });
             });
         }

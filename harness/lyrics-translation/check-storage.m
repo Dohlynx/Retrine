@@ -11,7 +11,10 @@ static NSString *flushFailureDirectory, *flushFailureTarget;
 static NSDictionary *flushFailureContents;
 static NSUInteger largestAliasLookup;
 static NSUInteger flushCount;
-BOOL SGLyricsTestProtectedDataAvailable(void) { return NSThread.isMainThread; }
+static BOOL launched;
+BOOL SGLyricsTestProtectedDataAvailable(void) {
+    return NSThread.isMainThread && (!getenv("SG_TEST_PRELAUNCH") || launched);
+}
 void SGLyricsTestAliasLookupSize(NSUInteger count) { largestAliasLookup = MAX(largestAliasLookup, count); }
 int SGLyricsTestFsync(int fd) {
     flushCount++;
@@ -670,6 +673,50 @@ static void checkStartupReclaimRetry(void) {
     waitFor(^BOOL { return listed; });
     CHECK(![NSFileManager.defaultManager fileExistsAtPath:abandoned.path]);
     clearFixture(root);
+}
+static void checkStartupUnlock(void) {
+    // Only substitute the OS base directory. SGDataRoot still inspects, renames and caches it.
+    NSURL *base = storageFixture();
+    Method directories = class_getInstanceMethod(NSFileManager.defaultManager.class, @selector(URLsForDirectory:inDomains:));
+    IMP original = method_getImplementation(directories);
+    IMP isolated = imp_implementationWithBlock(^NSArray *(NSFileManager *fm, NSSearchPathDirectory directory, NSSearchPathDomainMask domain) {
+        if (directory == NSApplicationSupportDirectory) return @[base];
+        return ((NSArray *(*)(id, SEL, NSSearchPathDirectory, NSSearchPathDomainMask))original)(fm, @selector(URLsForDirectory:inDomains:), directory, domain);
+    });
+    method_setImplementation(directories, isolated);
+    NSURL *root = [base URLByAppendingPathComponent:@"Retrine"];
+    NSURL *legacy = [base URLByAppendingPathComponent:@"Vitrine/Legacy/Translations/early.ko.json"];
+    fixtureJSON(legacy, @{@"line":@"migrated"});
+    NSString *orphan = [@"TranslationImports" stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    CHECK([NSFileManager.defaultManager createDirectoryAtURL:[[base URLByAppendingPathComponent:@"Vitrine"] URLByAppendingPathComponent:orphan]
+        withIntermediateDirectories:YES attributes:nil error:nil]);
+    __block BOOL listed = NO;
+    SGSavedRecords(nil, ^(NSArray *records, NSString *next, NSDictionary *summary, NSString *warning) {
+        CHECK(warning.length && !records.count); listed = YES;
+    });
+    waitFor(^BOOL { return listed; });
+    CHECK([NSFileManager.defaultManager fileExistsAtPath:legacy.path]);
+    CHECK(![NSFileManager.defaultManager fileExistsAtPath:root.path]);
+    launched = !getenv("SG_TEST_LOCKED_LAUNCH");
+    [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidFinishLaunchingNotification object:nil];
+    if (!launched) {
+        listed = NO;
+        SGSavedRecords(nil, ^(NSArray *records, NSString *next, NSDictionary *summary, NSString *warning) {
+            CHECK(warning.length && !records.count); listed = YES;
+        });
+        waitFor(^BOOL { return listed; });
+        CHECK([NSFileManager.defaultManager fileExistsAtPath:legacy.path]);
+        [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationProtectedDataDidBecomeAvailable object:nil];
+    }
+    listed = NO;
+    SGSavedRecords(nil, ^(NSArray *records, NSString *next, NSDictionary *summary, NSString *warning) {
+        CHECK(!warning && records.count == 1); listed = YES;
+    });
+    waitFor(^BOOL { return listed; });
+    method_setImplementation(directories, original);
+    CHECK(![NSFileManager.defaultManager fileExistsAtPath:[root URLByAppendingPathComponent:orphan].path]);
+    imp_removeBlock(isolated);
+    clearFixture(base);
 }
 static void checkMigrationWarningPersists(void) {
     SGLyricsDeleteSavedTranslations();

@@ -46,6 +46,7 @@ __attribute__((constructor(101))) static void installTransport(void) {
 @property NSError *error;
 @property BOOL correctQueue;
 @property BOOL rejectResponse;
+@property BOOL respondInline, insideResponse;
 @property dispatch_semaphore_t completed;
 @property dispatch_semaphore_t invalidated;
 @end
@@ -64,11 +65,18 @@ __attribute__((constructor(101))) static void installTransport(void) {
     self.correctQueue &= NSOperationQueue.currentQueue == self.queue;
     [self.events addObject:@"response"];
     self.status = [(NSHTTPURLResponse *)response statusCode];
+    if (self.respondInline) {
+        self.insideResponse = YES;
+        handler(NSURLSessionResponseAllow);
+        self.insideResponse = NO;
+        return;
+    }
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
         handler(self.rejectResponse ? NSURLSessionResponseCancel : NSURLSessionResponseAllow);
     });
 }
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)task didReceiveData:(NSData *)data {
+    self.correctQueue &= !self.insideResponse;
     self.correctQueue &= NSOperationQueue.currentQueue == self.queue;
     [self.events addObject:@"data"];
     [self.body appendData:data];
@@ -159,6 +167,7 @@ static int delegateSessions(void) {
     for (Class cls in @[SPTDataLoaderService.class, _TtC26Connectivity_HttpClientKit20HttpClientURLSession.class,
                         SPTCoreURLSessionDataDelegate.class]) {
         DelegateProbe *delegate = [cls new];
+        delegate.respondInline = cls == SPTCoreURLSessionDataDelegate.class;
         delegate.queue = [NSOperationQueue new];
         delegate.queue.maxConcurrentOperationCount = 1;
         NSURLSessionConfiguration *configuration = NSURLSessionConfiguration.ephemeralSessionConfiguration;

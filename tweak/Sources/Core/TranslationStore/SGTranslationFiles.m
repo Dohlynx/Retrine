@@ -1,29 +1,34 @@
 #import "SGTranslationFiles.h"
 #import "Core/SGFileHash.h"
 #import <TargetConditionals.h>
+NSNotificationName const SGTranslationStorageAvailable = @"retrine.translationStorageAvailable";
 #if (TARGET_OS_IOS && !TARGET_OS_MACCATALYST) || defined(SG_LYRICS_TEST_STORE)
 #import <UIKit/UIKit.h>
 #import <stdatomic.h>
 
 // Files use CompleteUntilFirstUserAuthentication, so availability latches at first unlock.
 static atomic_bool unlocked;
+static void storageAvailable(BOOL recovery) {
+    BOOL alreadyUnlocked = atomic_exchange(&unlocked, true);
+    [NSNotificationCenter.defaultCenter postNotificationName:SGTranslationStorageAvailable object:@(alreadyUnlocked && recovery)];
+}
+static BOOL availableNow(void) {
+#ifdef SG_LYRICS_TEST_STORE
+    extern BOOL SGLyricsTestProtectedDataAvailable(void);
+    return SGLyricsTestProtectedDataAvailable();
+#else
+    return UIApplication.sharedApplication.protectedDataAvailable;
+#endif
+}
 __attribute__((constructor)) static void observeUnlock(void) {
     void (^setup)(void) = ^{
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationProtectedDataDidBecomeAvailable
-            object:nil queue:nil usingBlock:^(NSNotification *note) { atomic_store(&unlocked, true); }];
-#ifdef SG_LYRICS_TEST_STORE
-        extern BOOL SGLyricsTestProtectedDataAvailable(void);
-        BOOL available = SGLyricsTestProtectedDataAvailable();
-#else
-        BOOL available = UIApplication.sharedApplication.protectedDataAvailable;
-        // The injected image can initialize before UIApplicationMain creates the application.
-        if (!UIApplication.sharedApplication)
-            [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification
-                object:nil queue:nil usingBlock:^(NSNotification *note) {
-                    if (UIApplication.sharedApplication.protectedDataAvailable) atomic_store(&unlocked, true);
-                }];
-#endif
-        if (available) atomic_store(&unlocked, true);
+            object:nil queue:nil usingBlock:^(NSNotification *note) { storageAvailable(YES); }];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification
+            object:nil queue:nil usingBlock:^(NSNotification *note) {
+                if (availableNow()) storageAvailable(NO);
+            }];
+        if (availableNow()) storageAvailable(NO);
     };
     // Injected at launch this runs on main, so the first prepare: already sees it. Loaded by a dlopen elsewhere,
     // waiting for main from inside an image initializer could wait on main's own dyld lock.
@@ -32,6 +37,13 @@ __attribute__((constructor)) static void observeUnlock(void) {
 }
 #endif
 #import <fcntl.h>
+BOOL SGTranslationStorageUnlocked(void) {
+#if (TARGET_OS_IOS && !TARGET_OS_MACCATALYST) || defined(SG_LYRICS_TEST_STORE)
+    return atomic_load(&unlocked);
+#else
+    return YES;
+#endif
+}
 #import <unistd.h>
 #import <sys/stat.h>
 #import <errno.h>
@@ -218,10 +230,8 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
     return [self protect:url error:error] && flushURL(url, error) && flushURL(url.URLByDeletingLastPathComponent, error);
 }
 - (BOOL)prepare:(NSError **)error {
+    if (!SGTranslationStorageUnlocked()) return fail(error, @"Storage unavailable before unlock.");
     if (!_root || !_legacy) return fail(error, @"Translation storage is unavailable.");
-#if (TARGET_OS_IOS && !TARGET_OS_MACCATALYST) || defined(SG_LYRICS_TEST_STORE)
-    if (!atomic_load(&unlocked)) return fail(error, @"Storage unavailable before unlock.");
-#endif
     if (![self directory:_root error:error] || ![self directory:self.metadataURL.URLByDeletingLastPathComponent error:error]) return NO;
     struct stat root;
     if (lstat(_root.fileSystemRepresentation, &root) != 0) return posixFailure(error);

@@ -2,6 +2,17 @@
 #import "Settings/SGModPage.h"
 #import "../harness-fail.h"
 
+// Hold only the environment scans' deliveries, so an older row and tap can finish last.
+static NSMutableArray<dispatch_block_t> *deliveries;
+static void scheduleCleanup(dispatch_queue_t queue, dispatch_block_t block) {
+    if (!deliveries) dispatch_async(queue, block);
+    else if (queue == dispatch_get_main_queue()) [deliveries addObject:[block copy]];
+    else block();
+}
+#define dispatch_async scheduleCleanup
+#import "App/Onboarding/Environment.m"
+#undef dispatch_async
+
 @interface CleanupPage : SGModPage
 @property NSString *expectedSubtitle;
 @property SGModRow *cleanup;
@@ -22,6 +33,7 @@
     UIListContentConfiguration *content = (id)cell.contentConfiguration;
     if (![content.text isEqual:self.cleanup.title]) return;
     HARNESS_CHECK([content.secondaryText isEqual:self.expectedSubtitle]);
+    HARNESS_CHECK([SGEnvironmentWarningRows().lastObject.subtitle isEqual:self.expectedSubtitle]);
     dispatch_async(dispatch_get_main_queue(), ^{
         self.sections.firstObject.rows.firstObject.action(); // The harness version triggers the install warning.
         self.cleanup.action();
@@ -37,10 +49,17 @@ void CheckKeptCleanup(UIWindow *window) {
     NSURL *dir = [support URLByAppendingPathComponent:@"spoti.pw/Sing"];
     HARNESS_CHECK([files createDirectoryAtURL:dir withIntermediateDirectories:YES attributes:nil error:nil]);
     NSURL *file = [dir URLByAppendingPathComponent:@"fixture"];
+    HARNESS_CHECK([[NSMutableData dataWithLength:4096] writeToURL:file atomically:YES]);
+    deliveries = [NSMutableArray array];
+    SGEnvironmentWarningRows().lastObject.action();
     HARNESS_CHECK([[NSMutableData dataWithLength:65536] writeToURL:file atomically:YES]);
     NSNumber *bytes;
     HARNESS_CHECK([file getResourceValue:&bytes forKey:NSURLTotalFileAllocatedSizeKey error:nil]);
     NSArray *rows = SGEnvironmentWarningRows();
+    offerCleanup(YES); // supersedes the open row's scan; Keep is already persisted
+    NSArray<dispatch_block_t> *pending = deliveries;
+    deliveries = nil;
+    HARNESS_CHECK(pending.count == 4);
     HARNESS_CHECK(rows.count >= 2);
     CleanupPage *page = [[CleanupPage alloc] initWithTitle:@"Settings" intro:nil sections:@[SGSection(nil, rows)] footer:nil];
     page.cleanup = rows.lastObject;
@@ -49,6 +68,15 @@ void CheckKeptCleanup(UIWindow *window) {
         [NSByteCountFormatter stringFromByteCount:bytes.longLongValue countStyle:NSByteCountFormatterCountStyleFile]];
     window.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
     window.rootViewController = page;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        pending[3]();
+        HARNESS_CHECK(page.cleanup.visible() && [page.cleanup.subtitle isEqual:page.expectedSubtitle]);
+        pending[2]();
+        pending[0]();
+        HARNESS_CHECK([SGEnvironmentWarningRows().lastObject.subtitle isEqual:page.expectedSubtitle]);
+        pending[1]();
+        HARNESS_CHECK([SGEnvironmentWarningRows().lastObject.subtitle isEqual:page.expectedSubtitle]);
+    });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         HARNESS_FAIL(@"cleanup row did not refresh or present its alerts");
     });

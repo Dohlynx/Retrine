@@ -23,3 +23,7 @@ compile -DSG_LYRICS_TEST_STORE \
 "$OUT/check" "$@"
 # A fresh process: startup maintenance must fail before anything else has opened the store.
 if [ $# -eq 0 ]; then "$OUT/check" --startup-reclaim-only; fi
+if [ $# -eq 0 ]; then
+    SG_TEST_PRELAUNCH=1 "$OUT/check" --startup-unlock-only
+    SG_TEST_PRELAUNCH=1 SG_TEST_LOCKED_LAUNCH=1 "$OUT/check" --startup-unlock-only
+fi

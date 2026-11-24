@@ -10,6 +10,7 @@
 static atomic_int sg_mainCalls, sg_workerCalls;
 extern void harnessRemoveCustom(dispatch_block_t done);
 extern void harnessImport(NSURL *url, dispatch_block_t done);
+extern void harnessRejectedImport(NSURL *invalid, void (^done)(BOOL));
 // While set, a registration enters and waits here, as a multi-MB Korean font takes its time in Core Text; the
 // imported font's file waits on a semaphore of its own, so the two kinds land one after the other.
 static dispatch_semaphore_t sg_holdRegistration, sg_holdImported;
@@ -188,7 +189,7 @@ int main(void) { @autoreleasepool {
     HARNESS_CHECK(![pickerPreviewFamily(picker, @"Helvetica") isEqual:@"Helvetica"]);
     // The library's families land first; the imported font is still waiting in Core Text.
     for (int release = 0; release < 2; release++) dispatch_semaphore_signal(sg_holdRegistration);
-    pumpUntil(^BOOL { return pickerAnnounced.count == 2; });
+    pumpUntil(^BOOL { return [pickerAnnounced containsObject:@"dohyeon"] && [pickerAnnounced containsObject:@"gowundodum"]; });
     HARNESS_CHECK([pickerPreviewFamily(picker, @"Do Hyeon") isEqual:@"Helvetica"]);
     HARNESS_CHECK([pickerPreviewFamily(picker, @"Gowun Dodum") isEqual:@"Helvetica"]);
     HARNESS_CHECK(![pickerPreviewFamily(picker, @"Helvetica") isEqual:@"Helvetica"]);
@@ -283,6 +284,11 @@ int main(void) { @autoreleasepool {
     HARNESS_CHECK(atomic_load(&sg_workerCalls) == registered && atomic_load(&sg_mainCalls) == 0);
     sg_holdRegistration = sg_holdImported = nil;
     [NSNotificationCenter.defaultCenter removeObserver:pipToken];
+    __block BOOL rejected = NO;
+    harnessRejectedImport([importedFolder URLByAppendingPathComponent:@"Harness.ttf"], ^(BOOL notified) {
+        HARNESS_CHECK(notified); rejected = YES;
+    });
+    pumpUntil(^BOOL { return rejected; });
 
     // The Lyrics PiP font page (LyricsPiPSettings.m), opened while Core Text holds both registrations: its rows
     // for the two families are not there, and they come in without reopening once the registrations land.

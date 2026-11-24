@@ -1,6 +1,7 @@
 #import <Foundation/Foundation.h>
 
 extern NSUInteger const SGTranslationRecordBytes;
+BOOL SGTranslationStorageUnlocked(void);
 extern NSUInteger const SGTranslationTransferBytes;
 extern NSUInteger const SGTranslationTransferEntries;
 NSError *SGTranslationStorageError(NSString *message);

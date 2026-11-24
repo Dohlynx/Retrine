@@ -61,6 +61,7 @@ static NSURL *legacyRoot(void) {
 #endif
 }
 static SGTranslationFiles *store(void) {
+    if (!SGTranslationStorageUnlocked()) return [[SGTranslationFiles alloc] initWithRoot:nil legacy:nil];
 #ifdef SG_LYRICS_TEST_STORE
     (void)cacheRoot();
 #endif
@@ -98,18 +99,28 @@ static void maintainStore(void) {
     sg_storageError = error;
     refreshSummary();
 }
-static NSURL *folder(void) { return [cacheRoot() URLByAppendingPathComponent:@"Translations" isDirectory:YES]; }
-static NSURL *aiFolder(void) { return [cacheRoot() URLByAppendingPathComponent:@"AI" isDirectory:YES]; }
+// In-memory read/write authority and unsaved records need stable identities even before unlock.
+// Only the store turns a namespace/key into a filesystem path.
+static NSURL *recordFolder(NSString *space) {
+    return [[NSURL URLWithString:@"record:/"] URLByAppendingPathComponent:space isDirectory:YES];
+}
 static dispatch_queue_t writes(void) {
+    extern NSNotificationName const SGTranslationStorageAvailable;
     static dispatch_queue_t queue;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         queue = dispatch_queue_create("retrine.translations", DISPATCH_QUEUE_SERIAL);
-        dispatch_async(queue, ^{ maintainStore(); });
-        // A store first used before UIApplicationMain only learns it is unlocked at launch.
-        for (NSNotificationName name in @[UIApplicationProtectedDataDidBecomeAvailable, UIApplicationDidFinishLaunchingNotification])
-            [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil
-                usingBlock:^(NSNotification *note) { dispatch_async(queue, ^{ maintainStore(); }); }];
+        // Subscribe before the first prepare; Core sends this only after the latch is visible.
+        __block BOOL maintained = NO;
+        dispatch_block_t maintain = ^{
+            maintainStore();
+            maintained = !sg_storageError && !sg_migrationError;
+        };
+        [NSNotificationCenter.defaultCenter addObserverForName:SGTranslationStorageAvailable object:nil queue:nil
+            usingBlock:^(NSNotification *note) {
+                dispatch_async(queue, ^{ if (!maintained || [note.object boolValue]) maintain(); });
+            }];
+        dispatch_async(queue, ^{ if (!maintained) maintain(); });
     });
     return queue;
 }
@@ -127,7 +138,7 @@ static NSURL *fileFor(NSString *track, NSString *language) {
         NSData *identity = [track dataUsingEncoding:NSUTF8StringEncoding];
         track = [@"local-hash-" stringByAppendingString:SGDataSHA256(identity)];
     }
-    return [folder() URLByAppendingPathComponent:[NSString stringWithFormat:@"%@.%@.json", track, tag]];
+    return [recordFolder(@"Translations") URLByAppendingPathComponent:[NSString stringWithFormat:@"%@.%@.json", track, tag]];
 }
 
 // Never silently evict a failed save. It remains visible, retryable and exportable this launch.
@@ -395,7 +406,7 @@ static NSURL *aiFile(NSString *kind, NSString *track, NSString *variant) {
         ? @[kind, track, variant, SGLyricsGeminiLanguage()] : @[kind, track, variant];
     NSData *tuple = [NSJSONSerialization dataWithJSONObject:identity options:0 error:nil];
     NSString *name = SGDataSHA256(tuple);
-    return [aiFolder() URLByAppendingPathComponent:[name stringByAppendingString:@".json"]];
+    return [recordFolder(@"AI") URLByAppendingPathComponent:[name stringByAppendingString:@".json"]];
 }
 static NSDictionary *readAI(NSURL *file, NSError **problem) {
     if (!file) { if (problem) *problem = SGTranslationStorageError(@"Invalid AI record identity."); return nil; }
@@ -496,7 +507,7 @@ void SGSavedRemove(NSArray *selection, BOOL all, void (^done)(NSError *)) {
             }
             else for (NSDictionary *record in selection) {
                 if ([record[@"recovery"] boolValue]) { [sg_memoryRecovery removeObjectForKey:record[@"recoveryKey"] ?: SGTranslationRecoveryKey(record)]; continue; }
-                NSURL *file = [[cacheRoot() URLByAppendingPathComponent:record[@"namespace"]] URLByAppendingPathComponent:record[@"key"]];
+                NSURL *file = [recordFolder(record[@"namespace"]) URLByAppendingPathComponent:record[@"key"]];
                 [sg_unsavedTranslations removeObjectForKey:file];
             }
         }
@@ -592,7 +603,7 @@ void SGSavedImport(NSURL *file, BOOL replace, BOOL preview, void (^done)(NSDicti
             } error:&error] : sg_importPreview;
             sg_importPreview = nil; sg_importURL = nil;
             if (!error) for (NSDictionary *item in report[@"records"]) if (![item[@"recovery"] boolValue]) {
-                NSURL *target = [[cacheRoot() URLByAppendingPathComponent:item[@"namespace"]] URLByAppendingPathComponent:item[@"key"]];
+                NSURL *target = [recordFolder(item[@"namespace"]) URLByAppendingPathComponent:item[@"key"]];
                 [sg_unsavedTranslations removeObjectForKey:target];
             }
         } else error = SGTranslationStorageError(@"Import preview is no longer available.");

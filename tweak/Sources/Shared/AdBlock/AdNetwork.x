@@ -339,8 +339,7 @@ static BOOL completeAd(id<NSURLSessionDataDelegate> delegate, NSURLSession *sess
         };
         // A delegate may answer the response handler asynchronously on another queue.
         // Data and the original completion still belong to Foundation's delegate queue.
-        if (NSOperationQueue.currentQueue == session.delegateQueue) end();
-        else [session.delegateQueue addOperationWithBlock:end];
+        [session.delegateQueue addOperationWithBlock:end];
     };
     // Foundation waits for the response decision before issuing its completion.
     if (objc_getAssociatedObject(task, &kAdResponseKey))
