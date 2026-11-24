@@ -20,5 +20,5 @@ xcrun clang -target arm64-apple-ios17.0-macabi -fobjc-arc -g -O1 -fsanitize=addr
     -I"$SRC" -I"$SRC/Shared/Lossless" -I"$SRC/Shared/Player" -Wall -Wno-unused-function $ONLY \
     "$MAIN" "$SRC/Core/SGLog.m" "$SRC/Core/SGPrefs.m" "$SRC/Core/SGDataRoot.m" \
     -framework UIKit -framework Foundation -framework AudioToolbox -framework Accelerate -o "$OUT/capture-race"
-ffmpeg -v error -f lavfi -i 'anullsrc=r=44100:cl=stereo' -t 16 "$OUT/long.flac"
+ffmpeg -v error -f lavfi -i 'aevalsrc=0.25*gte(t\,10)|-0.25*gte(t\,10):s=44100:d=32' -sample_fmt s32 "$OUT/long.flac"
 "$OUT/capture-race" "$OUT/long.flac"
