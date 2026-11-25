@@ -23,7 +23,7 @@
 // with a unit after it ("1.5s", "500ms"). Negative on a value that is none of these.
 static NSInteger msOfClock(NSString *clock) {
     NSString *text = [clock stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (!text.length) return -1;
+    if (!text.length || text.length > 64) return -1;
     double scale = 1000;
     if ([text hasSuffix:@"ms"]) {
         scale = 1;
@@ -36,9 +36,12 @@ static NSInteger msOfClock(NSString *clock) {
     if (parts.count > 3) return -1;
     for (NSString *part in parts) {
         if (!part.length || [part rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"0123456789."].invertedSet].location != NSNotFound) return -1;
-        total = total * 60 + part.doubleValue;
+        double component;
+        if (!SGLyricsNumber(part, &component)) return -1;
+        total = total * 60 + component;
     }
-    return (NSInteger)llround(total * (parts.count > 1 ? 1000 : scale));
+    double ms = total * (parts.count > 1 ? 1000 : scale);
+    return ms <= SGKaraokeMaxTimeMs ? (NSInteger)llround(ms) : -1;
 }
 
 // The words of one container: a <p>, or the x-bg span inside it.
@@ -178,6 +181,11 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
 
 - (void)parser:(NSXMLParser *)parser foundCharacters:(NSString *)characters {
     if (!_stack.count) return;
+    if (characters.length > 16384 - _plain.length) {
+        self.exhausted = YES;
+        [parser abortParsing];
+        return;
+    }
     [_plain appendString:characters];
     if (_word) {
         [_word appendString:characters];

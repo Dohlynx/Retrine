@@ -1670,7 +1670,7 @@
 "settings.mod.include_betas.subtitle" = "Offer test builds ahead of each release";
 "settings.mod.include_betas.title" = "Include betas";
 "settings.mod.keychain.action.clear" = "Clear Keychain";
-"settings.mod.keychain.alert.message" = "The Gemini, Claude, OpenAI-compatible and DeepL API keys, the Spicy Lyrics key and the Deezer ARL are removed from this iPhone. Settings stay as they are.";
+"settings.mod.keychain.alert.message" = "Removes lyrics and translation keys, the Deezer ARL, and the WireGuard profile and proxy credentials. WireGuard and proxy settings are cleared. Spotify restarts if either connection is active.";
 "settings.mod.keychain.alert.title" = "Clear Keychain?";
 "settings.mod.keychain.failed.message" = "The Keychain could not remove every key, so some are still stored on this iPhone. Please try again.";
 "settings.mod.keychain.failed.title" = "Keychain not cleared";
@@ -3361,7 +3361,7 @@
 "settings.translation.ondevice.subtitle" = "Apple's Translate in the lyrics' translate menu and automatic translation";
 "settings.translation.ondevice.title" = "Translate on iPhone";
 "settings.translation.openai.base.invalid" = "Check it";
-"settings.translation.openai.base.message" = "The service's base URL, before /chat/completions. Use HTTPS; HTTP is also allowed for localhost, 127.0.0.1, .local hosts and Tailscale IPv4 addresses (100.64.0.0/10). Each host keeps its own key.";
+"settings.translation.openai.base.message" = "Use HTTPS. Local and tailnet addresses also accept HTTP, which sends your API key and lyrics without TLS. Only save an HTTP address if you trust the network and server.";
 "settings.translation.openai.base.title" = "Address";
 "settings.translation.openai.diagnose.copy" = "Copy details";
 "settings.translation.openai.diagnose.models.failed.title" = "Connection check failed";

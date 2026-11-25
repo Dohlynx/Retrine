@@ -35,9 +35,10 @@ static NSString *stringIn(id value) {
     return [value isKindOfClass:NSString.class] ? value : [value isKindOfClass:NSNumber.class] ? [value stringValue] : nil;
 }
 
-static NSInteger msIn(NSDictionary *candidate) {
-    id duration = candidate[@"duration"];
-    return [duration respondsToSelector:@selector(integerValue)] ? [duration integerValue] : 0;
+static double msIn(NSDictionary *candidate) {
+    if (!candidate[@"duration"]) return 0;   // unknown, not a malformed supplied duration
+    double duration;
+    return SGLyricsNumber(candidate[@"duration"], &duration) ? duration : -1;
 }
 
 static NSDictionary<NSString *, NSString *> *headers(void) {
@@ -77,7 +78,8 @@ SGLyricsAsk SGKuGouAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *re
         done(nil);
         return;
     }
-    NSInteger ms = query.seconds * 1000;
+    NSInteger ms = SGLyricsSecondsToMs(@(query.seconds));
+    if (ms < 0) { done(nil); return; }
     NSMutableDictionary<NSString *, NSString *> *search = [@{@"ver": @"1", @"man": @"yes", @"client": @"mobi", @"hash": @"",
         @"album_audio_id": @"", @"keyword": [NSString stringWithFormat:@"%@ - %@", lead, query.title]} mutableCopy];
     if (ms > 0) search[@"duration"] = @(ms).stringValue;
@@ -94,11 +96,12 @@ SGLyricsAsk SGKuGouAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *re
             if ([candidate[@"product_from"] isEqual:@"ugc"]) continue;
             if (![SGLyricsMatchKey(candidate[@"song"]) isEqualToString:title]) continue;
             if (!SGLyricsSameArtist(candidate[@"singer"], lead)) continue;
-            if (ms > 0 && msIn(candidate) > 0 && labs(msIn(candidate) - ms) > kLengthSlackMs) continue;
+            double duration = msIn(candidate);
+            if (duration < 0 || (ms > 0 && duration > 0 && fabs(duration - ms) > kLengthSlackMs)) continue;
             [fitting addObject:candidate];
         }
         [fitting sortWithOptions:NSSortStable usingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-            return [@(labs(msIn(a) - ms)) compare:@(labs(msIn(b) - ms))];
+            return [@(fabs(msIn(a) - ms)) compare:@(fabs(msIn(b) - ms))];
         }];
         return [fitting copy];
     }, ^(NSArray *fitting) {

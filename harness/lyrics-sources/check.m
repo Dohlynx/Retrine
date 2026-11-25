@@ -351,6 +351,7 @@ static void checkQQWordsAndArtists(void) {
     sg_answer = ^id(NSURL *url, id body) {
         if ([url.host isEqual:@"krcs.kugou.com"]) return @{@"candidates": @[
             @{@"id": @"wrong", @"accesskey": @"k", @"song": @"Fixture", @"singer": @"MIURA", @"duration": @200000},
+            @{@"id": @"bad-clock", @"accesskey": @"k", @"song": @"Fixture", @"singer": @"IU", @"duration": @999999999},
             @{@"id": @"right", @"accesskey": @"k", @"song": @"Fixture", @"singer": @"IU", @"duration": @200000}
         ]};
         CHECK([url.query containsString:@"id=right"]);

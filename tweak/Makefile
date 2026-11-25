@@ -65,15 +65,15 @@ endif
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
-# Theos caches objects by flags but does not relink when a source list shrinks.
-# Make the mode a link-only prerequisite, excluded from the linker's $^ inputs.
+# Theos caches objects by flags but does not always relink when switching back to
+# already-built objects. Both the driver and WireGuard must match the requested mode.
 # Cached objects are reused; the output path remains the one quick.sh consumes.
 ifeq ($(THEOS_CURRENT_INSTANCE),spotifyglass)
-.PHONY: sg-wireguard-mode
-$(THEOS_OBJ_DIR)/.wireguard-mode: sg-wireguard-mode
+.PHONY: sg-link-mode
+$(THEOS_OBJ_DIR)/.link-mode: sg-link-mode
 	@mkdir -p "$(THEOS_OBJ_DIR)"
-	@printf '%s\n' "$(WIREGUARD)" | cmp -s - "$@" || printf '%s\n' "$(WIREGUARD)" > "$@"
-$(THEOS_OBJ_DIR)/spotifyglass.dylib $(THEOS_OBJ_DIR)/spotifyglass.dylib.$(_THEOS_OUT_FILE_TAG).unsigned: private .EXTRA_PREREQS := $(THEOS_OBJ_DIR)/.wireguard-mode
+	@printf '%s\n' "$(WIREGUARD):$(SG_DRIVER)" | cmp -s - "$@" || printf '%s\n' "$(WIREGUARD):$(SG_DRIVER)" > "$@"
+$(THEOS_OBJ_DIR)/spotifyglass.dylib $(THEOS_OBJ_DIR)/spotifyglass.dylib.$(_THEOS_OUT_FILE_TAG).unsigned: private .EXTRA_PREREQS := $(THEOS_OBJ_DIR)/.link-mode
 endif
 
 # The library is brought up to date before the tweak's instance builds, so the link finds it current.

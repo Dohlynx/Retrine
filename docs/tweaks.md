@@ -2265,7 +2265,9 @@ the Mod page removes by that prefix and has no list to keep up to date. It leave
 which makes every unset switch read off, so a reset is stock Spotify whatever switches exist. The API keys
 (each AI translator's, the OpenAI-compatible server, DeepL's, Spicy Lyrics' key and the Deezer ARL) live in the
 Keychain, which a reset leaves alone; Clear Keychain above it asks first, names what goes, deletes each
-service's items by its own name (no wildcard, every account in it) and keeps the settings.
+service's items by its own name (no wildcard, every account in it). This includes the WireGuard
+profile and proxy password: their connection settings are cleared and an active tunnel or proxy
+requires a restart. Other settings stay as they were.
 
 A hook reads its switch when it runs (`SGEnabled`, `SGHidden`, `SGFlag` from Core/SGPrefs.h), so a
 change shows after Spotify restarts; the tab editor on the Navbar page is the exception and applies as soon as the bar lays
@@ -2326,13 +2328,14 @@ Documents/Lossless folder (Files app › Spotify › Lossless) plays in place of
 
 A build with FLEX in it (`make build`, `make install FLEX=1`) runs `Diagnostics/`: the tree server, the hang
 sampler, and the phone driver, which lets an agent on the Mac work the app without anyone touching the phone.
-The server listens on the phone's loopback only, 127.0.0.1:8085, which the Mac reaches through iproxy over
-USB and nothing on Wi-Fi reaches. `GET /tree` answers with the visible screen's view tree, as `make trees`
+The USB listener binds 127.0.0.1:8085, which the Mac reaches through iproxy. The separate tunnel listener
+requires a token even for the tree; a utun address in the Tailscale range need not belong to Tailscale.
+`GET /tree` answers with the visible screen's view tree, as `make trees`
 records it. The driver adds `GET /<command>?<params>`, each answering JSON with `ok` and either what happened
 or an `error`. A command needs an `X-Phone-Driver` header, which a web page on the phone cannot send to the
 loopback without a CORS preflight the server never grants (`curl -H 'X-Phone-Driver: 1'`). It is compiled only with `SG_DRIVER=1`, which `scripts/pipeline.sh` sets for the builds that
-carry FLEX; `make release` and the release workflow's build leave it out, and it starts only when FLEX is
-there.
+carry FLEX; `make release` and the release workflow's build omit the server and screen dumps entirely.
+Private preferences cannot be driven, except for the read-only token bootstrap over loopback.
 
 `scripts/phone.py` is the client. It uses whatever already answers on 127.0.0.1:8085 or starts iproxy and
 leaves it running. `state`'s screen and the controllers its path holds come from Core's resolver

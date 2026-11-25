@@ -338,6 +338,10 @@ static inline BOOL SGLyricsNumber(id value, double *number) {
     } else return NO;
     return isfinite(*number) && *number >= 0 && *number <= SGKaraokeMaxTimeMs;
 }
+static inline NSInteger SGLyricsSecondsToMs(id value) {
+    double seconds;
+    return SGLyricsNumber(value, &seconds) && seconds <= SGKaraokeMaxTimeMs / 1000.0 ? llround(seconds * 1000) : -1;
+}
 static inline NSString *SGLyricsDecimalID(id value) {
     NSString *text = [value isKindOfClass:NSNumber.class] && CFGetTypeID((__bridge CFTypeRef)value) != CFBooleanGetTypeID()
         ? [value stringValue] : SGLyricsString(value, 20);

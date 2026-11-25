@@ -1,5 +1,7 @@
 #import "SGDSPEffects.h"
 #import <ctype.h>
+#import <limits.h>
+#import <math.h>
 #import <pthread.h>
 #import <stdatomic.h>
 #import <stdio.h>
@@ -57,7 +59,11 @@ static void copyError(char *error, size_t size, const char *text) {
 static void sliderDefault(SGDSPLiveprog *liveprog, const char *line, const char *end) {
     const char *p = line + 6;
     int number = 0;
-    while (p < end && isdigit((unsigned char)*p)) number = number * 10 + (*p++ - '0');
+    while (p < end && isdigit((unsigned char)*p)) {
+        int digit = *p++ - '0';
+        if (number > (INT_MAX - digit) / 10) return;
+        number = number * 10 + digit;
+    }
     if (!number || p >= end || *p++ != ':') return;
     char name[64];
     snprintf(name, sizeof name, "slider%d", number);
@@ -69,7 +75,10 @@ static void sliderDefault(SGDSPLiveprog *liveprog, const char *line, const char 
     }
     char *after;
     double value = strtod(p, &after);
-    if (after != p) *NSEEL_VM_regvar(liveprog->vm, name) = value;
+    if (*name && after != p && after <= end && isfinite(value)) {
+        EEL_F *variable = NSEEL_VM_regvar(liveprog->vm, name);
+        if (variable) *variable = value;
+    }
 }
 
 static bool compile(SGDSPLiveprog *liveprog, const char *script, char *error, size_t errorSize) {
@@ -150,8 +159,14 @@ SGDSPLiveprog *SGDSPLiveprogCreate(const char *script, double rate, bool *slow, 
     liveprog->spl0 = NSEEL_VM_regvar(liveprog->vm, "spl0");
     liveprog->spl1 = NSEEL_VM_regvar(liveprog->vm, "spl1");
     liveprog->samplesblock = NSEEL_VM_regvar(liveprog->vm, "samplesblock");
-    *NSEEL_VM_regvar(liveprog->vm, "srate") = rate;
-    *NSEEL_VM_regvar(liveprog->vm, "num_ch") = 2;
+    EEL_F *srate = NSEEL_VM_regvar(liveprog->vm, "srate"), *channels = NSEEL_VM_regvar(liveprog->vm, "num_ch");
+    if (!liveprog->spl0 || !liveprog->spl1 || !liveprog->samplesblock || !srate || !channels) {
+        copyError(error, errorSize, "Could not register script variables");
+        SGDSPLiveprogFree(liveprog);
+        return NULL;
+    }
+    *srate = rate;
+    *channels = 2;
     *liveprog->samplesblock = kSGDSPEffectMaxFrames;
     if (!script) copyError(error, errorSize, "The script could not be read");
     if (!script || !compile(liveprog, script, error, errorSize)) {

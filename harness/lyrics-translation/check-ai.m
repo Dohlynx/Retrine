@@ -1621,24 +1621,16 @@ static void checkCredentialChangedDuringJob(void) {
         duringProviderReply(provider, nil);
         CHECK(!changes.count);
 
-        // A Save the Keychain refuses says so, posts no change, and does not claim a previous key is in use:
-        // the old key may already be gone when the new one could not be added.
+        // A refused update leaves the old credential usable and posts no change.
         NSString *const notSaved = @"The Keychain could not save this key. Please try again.";
         giveProviderKey(provider);
         [changes removeAllObjects];
-        if (provider == 2) keyWriteFailure = errSecInteractionNotAllowed; else keyDeleteFailure = errSecInteractionNotAllowed;
+        keyWriteFailure = errSecInteractionNotAllowed;
         UIAlertController *refused = keyPromptAction(rows[provider], @"Save", @"refused-save-fixture-key");
         keyWriteFailure = keyDeleteFailure = 0;
         CHECK([refused.title isEqual:@"Key not saved"] && [refused.message isEqual:notSaved] && !changes.count);
-        if (provider != 2) {
-            giveProviderKey(provider);
-            keyWriteFailure = errSecInteractionNotAllowed;
-            refused = keyPromptAction(rows[provider], @"Save", @"unaddable-fixture-key");
-            keyWriteFailure = 0;
-            CHECK([refused.title isEqual:@"Key not saved"] && [refused.message isEqual:notSaved] && !changes.count);
-            CHECK(!(provider == 0 ? SGGeminiKeySet() : provider == 1 ? SGClaudeKeySet() : SGDeepLKeySet()));   // the old key was deleted before the add failed
-            giveProviderKey(provider);
-        }
+        CHECK(provider == 0 ? SGGeminiKeySet() : provider == 1 ? SGClaudeKeySet() :
+              provider == 2 ? SGOpenAIKeySet() : SGDeepLKeySet());
         CHECK(!keyPromptAction(rows[provider], @"Save", @"accepted-save-fixture-key") && changes.count == 1);
     }
     [NSNotificationCenter.defaultCenter removeObserver:observer];

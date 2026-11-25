@@ -1,4 +1,5 @@
 #import <Security/Security.h>
+#import "Core/SGKeychain.h"
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
@@ -190,16 +191,7 @@ static BOOL storeKey(NSString *key) {
     sg_credentialGeneration++;
     sg_keyAvailable = nil;
     [sg_done removeAllObjects];
-    OSStatus deleted = SecItemDelete((__bridge CFDictionaryRef)keyQuery());
-    if (deleted != errSecSuccess && deleted != errSecItemNotFound) {
-        SGLog(@"deepl: the old key could not be removed (%d)", (int)deleted);
-        return NO;
-    }
-    if (!key.length) return YES;
-    NSMutableDictionary *item = [keyQuery() mutableCopy];
-    item[(__bridge id)kSecValueData] = [key dataUsingEncoding:NSUTF8StringEncoding];
-    item[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
-    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)item, NULL);
+    OSStatus status = SGStoreDeviceKey(keyQuery(), key);
     if (status != errSecSuccess) SGLog(@"deepl: the key could not be kept (%d)", (int)status);
     return status == errSecSuccess;
 }

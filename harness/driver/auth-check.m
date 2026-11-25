@@ -61,6 +61,13 @@ int main(int argc, const char *argv[]) {
         HARNESS_CHECK([SGRedactDiagnostics(@"ordinary", @{@"spotifyglass.title": @"ordinary"}) isEqualToString:@"ordinary"]);
         HARNESS_CHECK([SGRedactDiagnostics(@"spotifyglass.lyrics.openai.baseURL=https://example.test/v1",
             @{@"spotifyglass.lyrics.openai.baseURL":@"https://example.test/v1"}) isEqual:@"[redacted]=[redacted]"]);
+        HARNESS_CHECK([SGRedactDiagnostics(@"Bearer fixture.123 sl_pk_fixture sk-fixture AIzafixture", @{})
+            isEqual:@"[redacted] [redacted] [redacted] [redacted]"]);
+        NSString *providerLog = @"Authorization: DeepL-Auth-Key fixture:fx\nstandalone sl_pk_fake!./?=tail done\nBearer sl_pk_fake!tail";
+        HARNESS_CHECK([SGRedactDiagnostics(providerLog, @{}) isEqual:@"Authorization: [redacted]\nstandalone [redacted] done\n[redacted]"]);
+        HARNESS_CHECK([SGRedactDiagnostics(@"proxy proxy.example username example-user",
+            @{@"spotifyglass.wireguard":@{@"host":@"proxy.example",@"username":@"example-user"}})
+            isEqual:@"proxy [redacted] username [redacted]"]);
         puts("driver auth: PASS");
     }
     return 0;

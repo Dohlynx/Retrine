@@ -1754,7 +1754,7 @@
 "settings.mod.storage.open" = "Spotify 저장 공간 설정 열기";
 "settings.mod.storage.footer" = "Spotify가 설정한 크기에 맞춰 캐시를 정리하고 다운로드한 곡은 그대로 둡니다. 캐시가 작으면 Pixie가 스트리밍으로 들은 곡을 내보내기 전에 다시 다운로드해야 할 수 있습니다.";
 "settings.mod.keychain.action.clear" = "키체인 비우기";
-"settings.mod.keychain.alert.message" = "Gemini, Claude, OpenAI 호환, DeepL API 키와 Spicy Lyrics 키, Deezer ARL이 이 iPhone에서 삭제됩니다. 설정은 그대로 남습니다.";
+"settings.mod.keychain.alert.message" = "가사 및 번역 키, Deezer ARL, WireGuard 프로필과 프록시 자격 증명을 삭제합니다. WireGuard와 프록시 설정도 지워지며, 둘 중 하나가 사용 중이면 Spotify를 재시작합니다.";
 "settings.mod.keychain.alert.title" = "키체인을 비울까요?";
 "settings.mod.keychain.title" = "키체인 비우기";
 "settings.mod.licenses.autoeq.subtitle" = "헤드폰 보정 · MIT License";
@@ -3278,7 +3278,7 @@
 "settings.translation.ondevice.subtitle" = "가사 번역 메뉴와 자동 번역에서 Apple 번역 사용";
 "settings.translation.ondevice.title" = "iPhone에서 번역";
 "settings.translation.openai.base.invalid" = "확인 필요";
-"settings.translation.openai.base.message" = "서비스의 기본 URL로, /chat/completions 앞부분입니다. HTTPS를 쓰세요. HTTP는 localhost, 127.0.0.1, .local 호스트와 테일스케일 IPv4 주소(100.64.0.0/10)에서도 사용할 수 있습니다. 키는 호스트마다 따로 보관됩니다.";
+"settings.translation.openai.base.message" = "HTTPS를 쓰세요. 로컬 및 테일넷 주소에서는 HTTP도 사용할 수 있지만, API 키와 가사가 TLS 암호화 없이 전송됩니다. 네트워크와 서버를 신뢰하는 경우에만 HTTP 주소를 저장하세요.";
 "settings.translation.openai.base.title" = "주소";
 "settings.translation.openai.diagnose.copy" = "세부 정보 복사";
 "settings.translation.openai.diagnose.models.failed.title" = "연결 확인 실패";

@@ -323,7 +323,7 @@ static void textField(UITextField *field) {
 // The address alone: the old one migrates its legacy key first, and the new host keeps a key of its own.
 static void askForBase(void) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:SGL(@"settings.translation.openai.base.title", @"Address")
-        message:SGL(@"settings.translation.openai.base.message", @"The service's base URL, before /chat/completions. Use HTTPS; HTTP is also allowed for localhost, 127.0.0.1, .local hosts and Tailscale IPv4 addresses (100.64.0.0/10). Each host keeps its own key.")
+        message:SGL(@"settings.translation.openai.base.message", @"Use HTTPS. Local and tailnet addresses also accept HTTP, which sends your API key and lyrics without TLS. Only save an HTTP address if you trust the network and server.")
         preferredStyle:UIAlertControllerStyleAlert];
     __weak UIAlertController *weakAlert = alert;
     UIAlertAction *save = [UIAlertAction actionWithTitle:SGL(@"common.save", @"Save") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {

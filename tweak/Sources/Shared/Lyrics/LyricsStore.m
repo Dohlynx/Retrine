@@ -24,7 +24,7 @@ static NSURL *creditURL(id value) {
     NSString *text = optionalText(value);
     NSURL *url = text ? [NSURL URLWithString:text] : nil;
     NSString *scheme = url.scheme.lowercaseString;
-    return url.host.length && ([scheme isEqual:@"https"] || [scheme isEqual:@"http"]) ? url : nil;
+    return url.host.length && [scheme isEqual:@"https"] ? url : nil;
 }
 
 static NSArray *encodeLinks(NSArray<SGLyricsLink *> *links) {

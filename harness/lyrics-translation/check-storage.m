@@ -194,6 +194,9 @@ static void checkTransferRejection(void) {
     NSArray *files = [SGTranslationTransfer exportRecords:nil sessionRecords:@{} store:store error:&error];
     CHECK(files && !error);
     NSMutableData *damaged = [[NSData dataWithContentsOfURL:files.firstObject] mutableCopy];
+    NSURL *alias = [target URLByAppendingPathComponent:@"alias.zip"];
+    CHECK([NSFileManager.defaultManager createSymbolicLinkAtURL:alias withDestinationURL:files.firstObject error:nil]);
+    CHECK(![SGTranslationTransfer stageURL:alias store:destination error:nil]);
     // Corrupt the later manifest payload, leaving ZIP structure intact.
     NSData *needle = [@"vitrine.saved-archive" dataUsingEncoding:NSUTF8StringEncoding];
     NSRange range = [damaged rangeOfData:needle options:0 range:NSMakeRange(0, damaged.length)];

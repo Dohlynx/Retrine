@@ -292,6 +292,22 @@ static void abandonment(void) {
 }
 
 static void limits(void) {
+    bool slow = false;
+    char message[128] = "";
+    SGDSPLiveprog *vm = SGDSPLiveprogCreate("slider1:1.5\nslider4294967297:8\n@sample\nspl0 = slider1;", 48000, &slow, message, sizeof message);
+    require(vm != NULL, "slider fixture loads");
+    float l = 0.25f, r = 0.5f;
+    SGDSPLiveprogRun(vm, &l, &r, 1);
+    require(l == 1.5f && r == 0.5f, "oversized slider number cannot overwrite slider1");
+    SGDSPLiveprogFree(vm);
+    vm = SGDSPLiveprogCreate("slider1:1e80\n@sample\n"
+        "mem_set_values(0,7); x=3; spl0=mem_insert_shuffle(slider1,1,9)+mem_multiply_sum(-slider1,0,1)"
+        "+mem_set_values(slider1,8)+mem_get_values(-slider1,x); spl1=x+mem_multiply_sum(-1,0,1);",
+        48000, &slow, message, sizeof message);
+    require(vm != NULL, "RAM range fixture loads");
+    SGDSPLiveprogRun(vm, &l, &r, 1);
+    require(l == 0 && r == 52, "invalid RAM operands return zero without changing values or RAM");
+    SGDSPLiveprogFree(vm);
     synthetic = true; // the clock guard cannot account for these trips
     SGDSPEngine *engine = SGDSPEngineCreate(48000);
     char error[300] = "";

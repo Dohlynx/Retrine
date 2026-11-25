@@ -442,7 +442,7 @@ NSString *const SGRepoURL = @"https://github.com/oneulddu/Retrine";
 
 void SGOpenURL(NSString *url) {
     NSURL *target = url ? [NSURL URLWithString:url] : nil;
-    if (!target) return;
+    if (![target.scheme.lowercaseString isEqual:@"https"] || !target.host.length) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         [UIApplication.sharedApplication openURL:target options:@{} completionHandler:nil];
     });

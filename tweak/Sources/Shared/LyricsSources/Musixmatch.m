@@ -71,7 +71,7 @@ static NSInteger integerOf(id value) {
 }
 
 static NSInteger msOf(id seconds) {
-    return [seconds respondsToSelector:@selector(doubleValue)] ? (NSInteger)llround([seconds doubleValue] * 1000) : 0;
+    return SGLyricsSecondsToMs(seconds);
 }
 
 static id jsonOf(id text) {
@@ -167,6 +167,7 @@ static void withToken(SGLyricsRequestContext *context, void (^use)(NSString *tok
 // o is from the line's start. A space entry ends the word before it; a word can come in more than
 // one entry ("Milion", "+", ","), so everything between two spaces is one word.
 static SGKaraokeLine *richsyncLine(NSDictionary *entry, NSInteger start, NSInteger end) {
+    if (start < 0 || end < 0) return nil;
     NSMutableArray<SGKaraokePiece *> *pieces = [NSMutableArray array];
     id parts = entry[@"l"];
     for (NSDictionary *part in [parts isKindOfClass:NSArray.class] ? parts : @[]) {
@@ -174,7 +175,9 @@ static SGKaraokeLine *richsyncLine(NSDictionary *entry, NSInteger start, NSInteg
         if (![text isKindOfClass:NSString.class]) continue;
         SGKaraokePiece *piece = [SGKaraokePiece new];
         piece.text = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        piece.start = start + msOf(part[@"o"]);
+        NSInteger offset = msOf(part[@"o"]);
+        if (offset < 0 || offset > SGKaraokeMaxTimeMs - start) return nil;
+        piece.start = start + offset;
         [pieces addObject:piece];
     }
     // An entry has no end of its own: a word is sung until the next one starts, past any space between
@@ -229,7 +232,9 @@ static SGLyricsResult *fromSubtitles(id body) {
         id text = dig(lines[i], @"text");
         BOOL last = i + 1 == lines.count;
         if (![text isKindOfClass:NSString.class]) text = @"";
-        [starts addObject:@(msOf(dig(lines[i], @"time/total")))];
+        NSInteger start = msOf(dig(lines[i], @"time/total"));
+        if (start < 0) continue;
+        [starts addObject:@(start)];
         [texts addObject:last ? @"" : ([text length] ? text : @"♪")];
     }
     SGLyricsResult *lyrics = [SGLyricsResult new];

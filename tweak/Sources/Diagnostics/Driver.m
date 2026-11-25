@@ -884,6 +884,11 @@ static NSDictionary<NSString *, SGCommand> *commands(void) {
             @"pref" : ^NSDictionary *(NSDictionary *p) {
                 NSString *key = p[@"key"];
                 if (![key hasPrefix:@"spotifyglass."]) fail(@"pref takes --key spotifyglass.<name>");
+                // USB discovery is the only private read (serve rejects it on the tailnet).
+                if ((SGPrivatePreferenceKey(key) || [key isEqual:@"spotifyglass.wireguard"] ||
+                     [key isEqual:SGKeyLyricsOpenAIBaseURL] || [key isEqual:SGKeySponsorBlockServer]) &&
+                    !([key isEqual:SGKeyDriverToken] && !p[@"remove"] && !p[@"text"] && !p[@"value"]))
+                    fail(@"private preference");
                 NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
                 if (p[@"remove"]) [store removeObjectForKey:key];
                 else if (p[@"text"]) [store setObject:p[@"text"] forKey:key];

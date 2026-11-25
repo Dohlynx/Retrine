@@ -539,6 +539,7 @@ static void embeddedCheck(void) {
     CHECK([SGKaraokeLineText(afterBreaks.karaokeLines.firstObject) isEqual:@"Words after breaks"] &&
           !afterBreaks.synced && !playbackTag(@"only-breaks"));
     CHECK(!playbackTag(@"missing") && !playbackTag(@"frame-clock") && !playbackTag(@"too-large"));
+    CHECK(!playbackTag(@"empty-sylt-entries"));
     atomic_store(&sg_requireWorker, false);
     puts("embedded: ID3 ULT/SLT and v2.3/2.4 USLT/SYLT, FLAC LYRICS/UNSYNCEDLYRICS and tail M4A ©lyr passed");
 }

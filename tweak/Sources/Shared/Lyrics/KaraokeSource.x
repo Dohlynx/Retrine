@@ -484,7 +484,7 @@ static void completed(NSURLSessionTask *task, NSError *error) {
     NSMutableData *body = objc_getAssociatedObject(task, &kBodyKey);
     if (!body) {
         NSString *path = task.currentRequest.URL.path;
-        if (!sg_ownSources && [path.lowercaseString containsString:@"lyrics"]) SGLog(@"karaoke: lyrics request not read: %@ (error %@)", path, error);
+        if (!sg_ownSources && [path.lowercaseString containsString:@"lyrics"]) SGLog(@"karaoke: lyrics request not read: %@ (%ld)", error.domain, (long)error.code);
         return;
     }
     objc_setAssociatedObject(task, &kBodyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -641,9 +641,9 @@ static BOOL requestFromSpotify(NSString *trackID) {
     [SGBoundedRequestTask(request, 0, ^(NSData *body, NSURLResponse *response, NSError *error) {
         NSArray<SGKaraokeLine *> *lines = SGKaraokeLinesFromBody(body);
         NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
-        SGLog(@"karaoke: fetched lyrics for %@: status %ld, %lu lines (%@), error %@", trackID,
+        SGLog(@"karaoke: fetched lyrics for %@: status %ld, %lu lines (%@), error %@ (%ld)", trackID,
               (long)status, (unsigned long)lines.count,
-              SGKaraokeLinesTiming(lines) == SGKaraokeTimingNone ? @"untimed" : @"line timed", error);
+              SGKaraokeLinesTiming(lines) == SGKaraokeTimingNone ? @"untimed" : @"line timed", error.domain, (long)error.code);
         // A refused authorization is lost too: the captured one may have expired, and Spotify's next
         // spclient request brings a fresh one.
         BOOL lost = SGLyricsReplyFailed(response, error) || status == 401 || status == 403;

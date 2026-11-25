@@ -320,6 +320,8 @@ static bool process(SGDSPEngine *engine, float *left, float *right) {
                 atomic_store_explicit(&engine->collectPending, true, memory_order_release);
                 atomic_store_explicit(&sg_liveprogQuarantined, true, memory_order_release);
             }
+            // Let runBlock silence and count the fault, before it enters a stateful effect.
+            if (!allFinite(left, right)) return true;
         }
         active = true;
     }

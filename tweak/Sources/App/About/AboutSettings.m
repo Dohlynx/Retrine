@@ -9,6 +9,10 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/LyricsSources/LyricsSources.h"
 #import "Shared/LyricsTranslation/LyricsTranslation.h"
+#import "Shared/WireGuard/SGWGCredentials.h"
+#if SG_WIREGUARD
+#import "Shared/WireGuard/SGWGCore.h"
+#endif
 
 // Every key of the mod's is under one prefix, so a reset is a sweep of the defaults with the stock
 // marker of SGPrefs.h left behind; the hooks read them at launch, so it ends in a restart.
@@ -42,7 +46,7 @@ static void confirmReset(void) {
 // by each service's own name, and keeps the settings.
 static void confirmClearKeychain(void) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:SGL(@"settings.mod.keychain.alert.title", @"Clear Keychain?")
-                                                                  message:SGL(@"settings.mod.keychain.alert.message", @"The Gemini, Claude, OpenAI-compatible and DeepL API keys, the Spicy Lyrics key and the Deezer ARL are removed from this iPhone. Settings stay as they are.")
+                                                                  message:SGL(@"settings.mod.keychain.alert.message", @"Removes lyrics and translation keys, the Deezer ARL, and the WireGuard profile and proxy credentials. WireGuard and proxy settings are cleared. Spotify restarts if either connection is active.")
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:SGL(@"settings.mod.keychain.action.clear", @"Clear Keychain") style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
         // Every service is asked even after one refuses, so a locked Keychain leaves as little as possible behind.
@@ -53,6 +57,12 @@ static void confirmClearKeychain(void) {
         cleared &= SGDeepLForgetKey();
         cleared &= SGSpicyLyricsForgetKey();
         cleared &= SGDeezerForgetKey();
+        BOOL networkCleared = SGWGForgetAllCredentials();
+        cleared &= networkCleared;
+        BOOL restart = NO;
+#if SG_WIREGUARD
+        restart = networkCleared && SGWGActiveThisLaunch();
+#endif
         // The translators' rows, their pages and the lyrics menu follow this notification, as their own
         // Remove does. The lyrics sources read their key at each ask; their rows and the lyrics view hear
         // the sources' own change, so the track playing is announced reloaded and builds its lines again.
@@ -61,13 +71,16 @@ static void confirmClearKeychain(void) {
         if (playing.length) [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsDidReloadNotification object:playing];
         if (cleared) {
             SGLog(@"reset: keychain cleared");
+            if (restart) SGRestartSpotify();
             return;
         }
         SGLog(@"reset: keychain not cleared, the Keychain refused a delete");
         UIAlertController *failed = [UIAlertController alertControllerWithTitle:SGL(@"settings.mod.keychain.failed.title", @"Keychain not cleared")
                                                                         message:SGL(@"settings.mod.keychain.failed.message", @"The Keychain could not remove every key, so some are still stored on this iPhone. Please try again.")
                                                                  preferredStyle:UIAlertControllerStyleAlert];
-        [failed addAction:[UIAlertAction actionWithTitle:SGL(@"common.ok", @"OK") style:UIAlertActionStyleCancel handler:nil]];
+        [failed addAction:[UIAlertAction actionWithTitle:SGL(@"common.ok", @"OK") style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
+            if (restart) SGRestartSpotify();
+        }]];
         SGPresentDark(failed);
         [SGTopController() presentViewController:failed animated:YES completion:nil];
     }]];

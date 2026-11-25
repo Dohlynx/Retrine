@@ -127,19 +127,18 @@ static BOOL AllowSend(int fd, const struct sockaddr *address, socklen_t length) 
     int kind = 0;
     socklen_t size = sizeof(kind);
     if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &kind, &size)) return NO;
-    if (kind == SOCK_DGRAM) {
-        if (!address) {
-            length = sizeof(peer);
-            if (getpeername(fd, (struct sockaddr *)&peer, &length)) return NO;
-            address = (const struct sockaddr *)&peer;
-        }
-        if (!LocalAddress(address, length)) {
-            atomic_fetch_add(&bsdDenied, 1);
-            errno = ENETUNREACH;
-            return NO;
-        }
+    // Connected streams use their peer even when a caller supplies a destination.
+    if (address && !LocalAddress(address, length)) goto denied;
+    if (!address || kind == SOCK_STREAM) {
+        length = sizeof(peer);
+        if (getpeername(fd, (struct sockaddr *)&peer, &length)) return NO;
+        if (!LocalAddress((struct sockaddr *)&peer, length)) goto denied;
     }
     return NoSIGPIPE(fd);
+denied:
+    atomic_fetch_add(&bsdDenied, 1);
+    errno = ENETUNREACH;
+    return NO;
 }
 
 static ssize_t HookSendto(int fd, const void *bytes, size_t size, int flags,

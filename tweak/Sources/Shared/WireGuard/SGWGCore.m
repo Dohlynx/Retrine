@@ -23,9 +23,10 @@
 
 NSString *const SGWGVersion = @"1.0";
 
-static NSString *const kDefaultsKey = @"spotifyglass.wireguard";
+#import "SGWGCredentials.h"
+static NSString *const kDefaultsKey = SGWGDefaultsKey;
 // Stable Keychain service for existing profiles, including deletion.
-static NSString *const kKeychainService = @"Vitrine.WireGuard";
+static NSString *const kKeychainService = SGWGKeychainService;
 static NSString *const kKeychainAccount = @"profile";
 static NSString *const kKeychainProxyAccount = @"proxy-password";
 
@@ -705,6 +706,11 @@ static NSArray *ProxyIdentity(NSString *kind, NSString *host, NSString *port, NS
     return @[kind ?: @"", host.lowercaseString ?: @"", @(port.integerValue).stringValue, user ?: @""];
 }
 
+static BOOL ValidProxyCredential(NSString *value) {
+    return [value isKindOfClass:NSString.class] && [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding] <= 255 &&
+        [value rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound;
+}
+
 static NSString *ReadProxyPassword(OSStatus *outStatus) {
 #ifdef SGWG_TESTING
     if (TestEnv(@"SGWG_TEST_HOST")) {
@@ -724,7 +730,7 @@ static NSString *ReadProxyPassword(OSStatus *outStatus) {
     NSDictionary *settings = SGWGSettingExternalProxy();
     NSArray *identity = ProxyIdentity(SGWGSettingKind(), settings[@"host"], settings[@"port"], settings[@"username"]);
     if (![value isKindOfClass:NSDictionary.class] || ![value[@"identity"] isEqual:identity] ||
-        ![value[@"password"] isKindOfClass:NSString.class] || ![value[@"password"] length]) {
+        !ValidProxyCredential(value[@"password"]) || ![value[@"password"] length]) {
         if (outStatus) *outStatus = errSecDecode;
         return nil;
     }
@@ -746,7 +752,7 @@ static BOOL ValidateExternal(NSString *kind, NSString *host, NSString *port, NSS
              [port rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location != NSNotFound ||
              port.integerValue < 1 || port.integerValue > 65535)
         failure = @"port must be a number from 1 to 65535";
-    else if (username.length > 255 || [username rangeOfCharacterFromSet:NSCharacterSet.newlineCharacterSet].location != NSNotFound)
+    else if (!ValidProxyCredential(username ?: @""))
         failure = @"invalid user name";
     if (reason) *reason = failure;
     return failure == nil;
@@ -772,6 +778,10 @@ BOOL SGWGSaveConnection(NSString *kind, NSString *host, NSString *port, NSString
     port = [port stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
     username = username ?: @"";
     if (!ValidateExternal(kind, host, port, username, reason)) return NO;
+    if (password && !ValidProxyCredential(password)) {
+        if (reason) *reason = @"password must fit in 255 UTF-8 bytes and contain no control characters";
+        return NO;
+    }
     NSDictionary *previous = SGWGSettingExternalProxy();
     NSArray *identity = ProxyIdentity(kind, host, port, username);
     if (![identity isEqual:ProxyIdentity(SGWGSettingKind(), previous[@"host"], previous[@"port"], previous[@"username"])]) {

@@ -114,6 +114,12 @@ OSStatus SGLyricsTestKeyAdd(CFDictionaryRef query, CFTypeRef *result) {
 OSStatus SGLyricsTestKeyUpdate(CFDictionaryRef query, CFDictionaryRef attributes) {
     NSString *account = ((__bridge NSDictionary *)query)[(__bridge id)kSecAttrAccount];
     if (keyWriteFailure) return keyWriteFailure;
+    NSString *service = ((__bridge NSDictionary *)query)[(__bridge id)kSecAttrService];
+    if (![service isEqual:@"Vitrine.OpenAI"]) {
+        if (![testKeys containsObject:service]) return errSecItemNotFound;
+        lastStoredCredential = ((__bridge NSDictionary *)attributes)[(__bridge id)kSecValueData];
+        return errSecSuccess;
+    }
     if (!openAIKeys[account]) return errSecItemNotFound;
     NSString *renamed = ((__bridge NSDictionary *)attributes)[(__bridge id)kSecAttrAccount];
     if (renamed) {

@@ -1,7 +1,8 @@
 # Third-party code of the audio effects
 
 Built by `Makefile` into `build/<platform>/libsgaudio.a`, which `tweak/Makefile` links. Only the files the
-effects compile are here, each unchanged, with its project's license beside it.
+effects compile are here, with their projects' licenses beside them. Retrine's EEL2 changes
+meter script work and bound the offsets and lengths of bulk RAM operations.
 
 | Directory | What for | Upstream | Commit | License |
 |---|---|---|---|---|

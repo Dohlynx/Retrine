@@ -30,6 +30,15 @@ static OSStatus fixtureItem(CFDictionaryRef query, CFTypeRef *result) {
 }
 #define SecItemCopyMatching fixtureItem
 #define SecItemUpdate fixtureUpdate
+static BOOL clearedService;
+static OSStatus fixtureDelete(CFDictionaryRef raw) {
+    NSDictionary *query = (__bridge NSDictionary *)raw;
+    if (![query[(__bridge id)kSecClass] isEqual:(__bridge id)kSecClassGenericPassword] ||
+        ![query[(__bridge id)kSecAttrService] isEqual:@"Vitrine.WireGuard"]) return errSecParam;
+    if (!query[(__bridge id)kSecAttrAccount]) clearedService = YES;
+    return errSecSuccess;
+}
+#define SecItemDelete fixtureDelete
 static dispatch_source_t recoveryTimer;
 static dispatch_queue_t gQueue;
 static dispatch_block_t tick;
@@ -91,6 +100,7 @@ static void registerImages(void (*callback)(const struct mach_header *, intptr_t
 #undef dup
 #undef SecItemCopyMatching
 #undef SecItemUpdate
+#undef SecItemDelete
 
 static unsigned notices, rebinds;
 static BOOL presenterAvailable;
@@ -372,6 +382,18 @@ static void checkStaleRefresh(void) {
 int main(int argc, char **argv) {
     @autoreleasepool {
         CHECK(SGWGIsSupportedOS());
+        if (argc == 2 && !strcmp(argv[1], "--clear-credentials")) {
+            NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+            id previous = [defaults objectForKey:kDefaultsKey];
+            [defaults setObject:@{@"enabled":@YES, @"kind":@"socks5", @"host":@"example.test"} forKey:kDefaultsKey];
+            BOOL reset = SGWGSettingEnabled() && SGWGForgetAllCredentials() && clearedService && ![defaults objectForKey:kDefaultsKey] &&
+                [SGWGSettingKind() isEqual:SGWGKindWireGuard] && !SGWGSettingEnabled();
+            if (previous) [defaults setObject:previous forKey:kDefaultsKey];
+            else [defaults removeObjectForKey:kDefaultsKey];
+            CHECK(reset);
+            puts("PASS service-wide credential deletion and unconfigured defaults");
+            return 0;
+        }
         if (argc == 2 && !strcmp(argv[1], "--delayed-admission")) {
             CHECK(!SGWGAdmissionReady() && !SGWGReady());
             realCreateSocks = pCreateSocks;
@@ -475,6 +497,9 @@ int main(int argc, char **argv) {
             }
             if (getenv("SGWG_TEST_SAVE_PASSWORD")) {
                 CHECK(SGWGCurrentState() == SGWGStateBlocked && !gBlockAll && gCredentialStatus == errSecItemNotFound);
+                CHECK(!SGWGSaveConnection(gKind, @"127.0.0.1", @"1080", @"fixture", @"not\nvalid", nil));
+                CHECK(!SGWGSaveConnection(gKind, @"127.0.0.1", @"1080", @"fixture",
+                      [@"" stringByPaddingToLength:100 withString:@"한" startingAtIndex:0], nil));
                 CHECK(SGWGSaveConnection(gKind, @"127.0.0.1", @"1080", @"fixture", @"replacement", nil));
                 drain();
                 if (previousSettings) [defaults setObject:previousSettings forKey:kDefaultsKey];

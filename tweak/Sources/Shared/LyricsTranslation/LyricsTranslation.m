@@ -1,4 +1,5 @@
 #import <Security/Security.h>
+#import "Core/SGKeychain.h"
 #import <stdatomic.h>
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
@@ -107,16 +108,7 @@ static BOOL storeKey(NSString *key) {
     SGLyricsCredentialChanged(SGLyricsAIGemini);
     sg_keyAvailable = nil;
     [sg_done removeAllObjects];
-    OSStatus deleted = SecItemDelete((__bridge CFDictionaryRef)keyQuery());
-    if (deleted != errSecSuccess && deleted != errSecItemNotFound) {
-        SGLog(@"gemini: the old key could not be removed (%d)", (int)deleted);
-        return NO;
-    }
-    if (!key.length) return YES;
-    NSMutableDictionary *item = [keyQuery() mutableCopy];
-    item[(__bridge id)kSecValueData] = [key dataUsingEncoding:NSUTF8StringEncoding];
-    item[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
-    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)item, NULL);
+    OSStatus status = SGStoreDeviceKey(keyQuery(), key);
     if (status != errSecSuccess) SGLog(@"gemini: the key could not be kept (%d)", (int)status);
     return status == errSecSuccess;
 }

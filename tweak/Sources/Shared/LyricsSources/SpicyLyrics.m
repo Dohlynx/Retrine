@@ -12,6 +12,7 @@
 // entry allowed, as the API's docs ask; a secret key is for a server. Answers and misses are kept per
 // track for the session, a rate limit is waited out, and a refused key is not tried again for a while.
 #import <Security/Security.h>
+#import "Core/SGKeychain.h"
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
@@ -70,16 +71,7 @@ static NSString *storedKey(SGLyricsRequestContext *context) {
 static BOOL storeKey(NSString *key) {
     sg_key = nil;
     sg_keyLoaded = NO;
-    OSStatus deleted = SecItemDelete((__bridge CFDictionaryRef)keyQuery());
-    if (deleted != errSecSuccess && deleted != errSecItemNotFound) {
-        SGLog(@"spicy lyrics: the old key could not be removed (%d)", (int)deleted);
-        return NO;
-    }
-    if (!key.length) return YES;
-    NSMutableDictionary *item = [keyQuery() mutableCopy];
-    item[(__bridge id)kSecValueData] = [key dataUsingEncoding:NSUTF8StringEncoding];
-    item[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
-    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)item, NULL);
+    OSStatus status = SGStoreDeviceKey(keyQuery(), key);
     if (status != errSecSuccess) SGLog(@"spicy lyrics: the key could not be kept (%d)", (int)status);
     return status == errSecSuccess;
 }
@@ -91,7 +83,12 @@ BOOL SGSpicyLyricsKeySet(void) {
 #pragma mark - the response
 
 static NSInteger ms(id seconds) {
-    return [seconds respondsToSelector:@selector(doubleValue)] ? (NSInteger)llround([seconds doubleValue] * 1000) : 0;
+    return SGLyricsSecondsToMs(seconds);
+}
+
+// A missing optional time inherits the enclosing timing; a malformed one rejects the line.
+static NSInteger optionalMs(id seconds, NSInteger missing) {
+    return !seconds || seconds == NSNull.null ? missing : ms(seconds);
 }
 
 // A flag the response gives. A null one is NSNull, which does not answer boolValue.
@@ -121,7 +118,9 @@ static SGKaraokeLine *syllableLine(NSDictionary *part, NSString *field) {
         SGKaraokeWord *word = [SGKaraokeWord new];
         word.text = text;
         word.start = ms(syllable[@"StartTime"]);
-        word.end = MAX(ms(syllable[@"EndTime"]), word.start);
+        NSInteger end = optionalMs(syllable[@"EndTime"], word.start);
+        if (word.start < 0 || end < 0) return nil;
+        word.end = MAX(end, word.start);
         word.joined = words.count && runsOn;
         [words addObject:word];
         runsOn = flagIn(syllable[@"IsPartOfWord"]);
@@ -129,9 +128,10 @@ static SGKaraokeLine *syllableLine(NSDictionary *part, NSString *field) {
     if (!words.count) return nil;
     SGKaraokeLine *line = [SGKaraokeLine new];
     line.words = words;
-    id start = part[@"StartTime"], end = part[@"EndTime"];
-    line.start = [start respondsToSelector:@selector(doubleValue)] ? ms(start) : words.firstObject.start;
-    line.end = MAX([end respondsToSelector:@selector(doubleValue)] ? ms(end) : words.lastObject.end, line.start);
+    line.start = optionalMs(part[@"StartTime"], words.firstObject.start);
+    NSInteger end = optionalMs(part[@"EndTime"], words.lastObject.end);
+    if (line.start < 0 || end < 0) return nil;
+    line.end = MAX(end, line.start);
     return line;
 }
 
@@ -191,7 +191,8 @@ static BOOL isBreak(NSString *text) {
 static NSArray<SGKaraokeLine *> *lineLines(NSArray *content) {
     NSMutableArray<NSDictionary *> *kept = [NSMutableArray array];
     for (NSDictionary *item in content) {
-        if (!isBreak(stringIn(item, @"Text"))) [kept addObject:item];
+        if (!isBreak(stringIn(item, @"Text")) && ms(item[@"StartTime"]) >= 0 && optionalMs(item[@"EndTime"], 0) >= 0)
+            [kept addObject:item];
     }
     NSMutableArray<NSNumber *> *starts = [NSMutableArray array];
     NSMutableArray<NSString *> *texts = [NSMutableArray array];
@@ -253,7 +254,7 @@ static NSString *creditFor(NSDictionary *body, NSArray<SGLyricsLink *> **links) 
         NSString *name = stringIn(person[1], @"username");
         NSURL *url = [NSURL URLWithString:stringIn(person[1], @"url") ?: @""];
         NSString *scheme = url.scheme.lowercaseString;
-        if (!name || !url.host.length || !([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"])) continue;
+        if (!name || !url.host.length || ![scheme isEqualToString:@"https"]) continue;
         if ([[found valueForKey:@"url"] containsObject:url]) continue;   // one person both made and uploaded it
         SGLyricsLink *link = [SGLyricsLink new];
         link.title = [NSString stringWithFormat:@"%@: %@", person[0], name];
@@ -426,7 +427,7 @@ void SGSpicyLyricsAskWith(NSString *key, SGLyricsQuery *query, void (^done)(SGLy
         if (status == 401 || status == 403) {
             sg_refused = errorCodeIn(root) ?: @"";
             sg_refusedUntil = uptime() + kRefusedWait;
-            SGLog(@"spicy lyrics: the key was refused (%ld, %@), not asking for %.0fs", (long)status, sg_refused, kRefusedWait);
+            SGLog(@"spicy lyrics: the key was refused (%ld), not asking for %.0fs", (long)status, kRefusedWait);
             done(nil);
             return;
         }
@@ -435,8 +436,8 @@ void SGSpicyLyricsAskWith(NSString *key, SGLyricsQuery *query, void (^done)(SGLy
         if (status == 200 && !result) [query.requestContext noteFailure:YES];
         if (!query.requestContext.failed && (status == 200 || status == 404 || status == 400)) keepAnswer(trackID, result ?: NSNull.null);
         SGLog(@"spicy lyrics: %@ %@", trackID, result
-              ? [NSString stringWithFormat:@"has %lu %@ lines, credited to %@", (unsigned long)result.karaokeLines.count,
-                 result.wordTimed ? @"word timed" : result.synced ? @"line timed" : @"untimed", result.provider]
+              ? [NSString stringWithFormat:@"has %lu %@ lines", (unsigned long)result.karaokeLines.count,
+                 result.wordTimed ? @"word timed" : result.synced ? @"line timed" : @"untimed"]
               : [NSString stringWithFormat:@"has nothing (%ld)", (long)status]);
         done(result);
     });
