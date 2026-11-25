@@ -697,6 +697,11 @@ static void layoutHeader(UIViewController *page) {
 
 %ctor {
     if (!SGRedesignedUI()) return;
+    // The filter pill needs the mod's strings on its first layout. Start reading on
+    // the first main turn (outside dyld); an earlier caller still gets its own language.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ SGLanguage(); });
+    });
     %init;
     SGRequireClasses(@[
         @"_TtC19Home_FunkisPageImpl20FunkisViewController",

@@ -28,3 +28,4 @@ xcrun clang -target arm64-apple-ios26.0-macabi -isysroot "$SDK" -iframework "$SD
 "$OUT/now-playing"
 LSL=1 "$OUT/now-playing"
 OUT="$OUT/resend" sh "$(dirname "$0")/build-resend.sh"
+OUT="$OUT/upgrade" sh "$(dirname "$0")/build-artwork-upgrade.sh"

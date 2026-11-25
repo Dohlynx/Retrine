@@ -538,7 +538,7 @@ void SGSetSingOn(BOOL on) {
     sg_giveUps = 0;
     SGLog(@"sing: the mic is %@", on ? @"on" : @"off");
     // Read only while on: what it was when last on may be gone.
-    readRefusal();
+    if (on) readRefusal();
     apply();
     announce();
 }
@@ -1349,8 +1349,10 @@ static void readHeat(void) {
         sg_active = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
         SGSingLoaderSetForeground(sg_active);
         readHeat();
-        readRefusal();
-        if (SGSingOn()) apply();
+        if (SGSingOn()) {
+            readRefusal();
+            apply();
+        }
         prepareAheadSoon();
     });
 }

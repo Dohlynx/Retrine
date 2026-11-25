@@ -703,9 +703,10 @@ static void tick(void) {
 }
 @end
 
-%ctor {
+#import "Shared/AnimatedArtwork/SGLockArtworkStart.h"
+
+static void startLyricsArtwork(BOOL replay) {
     if (@available(iOS 26.0, *)) {
-        %init;
         sg_lock = [NSObject new];
         sg_queue = dispatch_queue_create("spotifyglass.lockscreen.lyrics", DISPATCH_QUEUE_SERIAL);
         sg_clipRequests = [NSMutableArray array];
@@ -834,7 +835,15 @@ static void tick(void) {
         // A hot phone puts the lines over the cover, and they go back over the motion once it cools.
         [NSNotificationCenter.defaultCenter addObserverForName:NSProcessInfoThermalStateDidChangeNotification object:nil queue:nil
                                                     usingBlock:^(NSNotification *note) { tickSoon(); }];
-        SGLog(@"lock lyrics: %@, the lock screen takes %@", !SGLockArtworkShowsLyrics(choice) ? @"off" : choice == SGLockArtworkLyrics ? @"on" : @"on over the moving artwork",
-              MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys);
+        if (replay) [observer playerStateDidChange:SGPlayerState()];
+    }
+}
+
+%ctor {
+    if (@available(iOS 26.0, *)) {
+        // Keep these inside NowPlayingExtras' hooks even if lyrics are first selected mid-song.
+        %init;
+        SGLockArtworkStartWhen(^BOOL { return SGLockArtworkShowsLyrics(SGLockScreenArtwork()); },
+                               ^(BOOL replay) { startLyricsArtwork(replay); });
     }
 }

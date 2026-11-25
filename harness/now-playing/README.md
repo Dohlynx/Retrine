@@ -73,6 +73,8 @@ The activity clock drives the production timer handler with virtual time: a seek
 boundary, a quiet panel's refresh, an empty player, pause, a closed background card, a refused
 start, renewal and expiry. Player reports, intents and PiP return run between deadlines.
 `build-resend.sh` checks deferred background resend cancellation and the encoded payload budget.
+`build-artwork-upgrade.sh` checks that a legacy-only lock-screen motion setting migrates and starts
+at launch without reentering its migration.
 
 Device ActivityKit delivery,
 actual video decoding/encoding, and lock-screen presentation still need a device check.

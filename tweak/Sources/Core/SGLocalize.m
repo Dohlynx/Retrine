@@ -96,10 +96,11 @@ static NSDictionary<NSString *, NSString *> *sg_table;
 static void load(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        NSBundle *bundle = resourceBundle();
-        if (!bundle) return;
         NSInteger choice = [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLanguage];
         NSString *wanted = choice == 1 ? @"en" : choice == 2 ? @"ko" : appLanguage();
+        if ([wanted isEqualToString:@"en"]) return;
+        NSBundle *bundle = resourceBundle();
+        if (!bundle) return;
         NSString *language = matchLanguage(wanted, bundle.localizations);
         if ([language isEqualToString:@"en"]) return;
         NSString *path = [bundle pathForResource:@"Localizable" ofType:@"strings" inDirectory:nil forLocalization:language];

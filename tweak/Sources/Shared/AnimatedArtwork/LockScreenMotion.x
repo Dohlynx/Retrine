@@ -18,6 +18,7 @@
 #import "Core/SGCore.h"
 #import <CommonCrypto/CommonDigest.h>
 #import "AnimatedArtwork.h"
+#import "SGLockArtworkStart.h"
 #import "SGFluidClip.h"
 #import "SGMotionClip.h"
 #import "Shared/LockScreenLyrics/LockScreenLyrics.h"
@@ -374,7 +375,7 @@ static void retryPresentation(void) {
 }
 @end
 
-%ctor {
+static void startLockMotion(void) {
     if (@available(iOS 26.0, *)) {
         sg_choice = SGLockScreenArtwork();
         if (sg_choice != SGLockArtworkOff) sg_background = SGLyricsBackgroundRead(@"spotifyglass.lockscreen.background");
@@ -449,7 +450,11 @@ static void retryPresentation(void) {
                 [sg_follower restart];
             });
         }];
-        SGLog(@"lock motion: %@, the lock screen takes %@", motionOn(sg_choice) ? (sg_choice == SGLockArtworkEverySong ? @"on for every song" : @"on") : @"off",
-              MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys);
+    }
+}
+
+%ctor {
+    if (@available(iOS 26.0, *)) {
+        SGLockArtworkStartWhen(^BOOL { return motionOn(SGLockScreenArtwork()); }, ^(BOOL replay) { startLockMotion(); });
     }
 }

@@ -130,7 +130,7 @@ static void InstallKeychainHook(void) {
   sOrigBaseDictionary = (void *)method_setImplementation(m, (IMP)SGBaseDictionary);
 }
 
-__attribute__((constructor)) static void SGAppGroupsInit(void) {
+static void InstallAppGroups(void) {
   sLog = os_log_create("spotifyglass", "appgroups");
   InstallKeychainHook();
   sEntitled = EntitledGroups(CFSTR("com.apple.security.application-groups"));
@@ -140,4 +140,8 @@ __attribute__((constructor)) static void SGAppGroupsInit(void) {
   sOrigContainerURL = (void *)method_setImplementation(m, (IMP)SGContainerURL);
   m = class_getInstanceMethod(NSUserDefaults.class, @selector(initWithSuiteName:));
   sOrigInitWithSuiteName = (void *)method_setImplementation(m, (IMP)SGInitWithSuiteName);
+}
+
+__attribute__((constructor)) static void SGAppGroupsInit(void) {
+  @autoreleasepool { InstallAppGroups(); }
 }
