@@ -69,7 +69,7 @@ static CGFloat screenRadius(void) {
     CALayer *_mask;
     CGRect _card, _barArtwork;
     CGFloat _cardRadius, _barArtworkRadius;
-    CGColorRef _overlayColor;
+    id _overlayColor; // ARC owns the layer's original CGColor even if the transition is abandoned
     BOOL _coverHidden;
     UIView *_musicMask, *_dim;
     CGRect _musicOpenFrame, _musicCoverFrame;
@@ -103,7 +103,7 @@ static CGFloat screenRadius(void) {
 
     // The player's own paint is not a sublayer, so the content's transform would leave it where Spotify
     // put the player, a band below the sheet's top edge; the sheet paints instead.
-    _overlayColor = CGColorRetain(overlay.layer.backgroundColor);
+    _overlayColor = (__bridge id)overlay.layer.backgroundColor;
     overlay.layer.backgroundColor = NULL;
 
     _mask = [CALayer layer];
@@ -286,9 +286,8 @@ static CGFloat screenRadius(void) {
     }
     overlay.layer.sublayerTransform = CATransform3DIdentity;
     if (overlay.layer.mask == _mask) overlay.layer.mask = nil;
-    if (!overlay.layer.backgroundColor) overlay.layer.backgroundColor = _overlayColor;
-    CGColorRelease(_overlayColor);
-    _overlayColor = NULL;
+    if (!overlay.layer.backgroundColor) overlay.layer.backgroundColor = (__bridge CGColorRef)_overlayColor;
+    _overlayColor = nil;
     [_sheet removeFromSuperview];
     [_cover removeFromSuperview];
     [CATransaction commit];

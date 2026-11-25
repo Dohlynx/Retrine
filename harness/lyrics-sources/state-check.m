@@ -381,14 +381,14 @@ static void checkHookPins(void) {
     HarnessTask *task = [HarnessTask new];
     task.originalRequest = lyricsRequestFor([NSURLRequest requestWithURL:url]);
     task.currentRequest = task.originalRequest;
-    NSUInteger generation = SGLyricsPinGeneration(track);
-    CHECK([[NSURLProtocol propertyForKey:kPinGenerationKey inRequest:task.originalRequest] unsignedIntegerValue] == generation);
-    CHECK(!SGLyricsPin(track, @{@"id": @1}) && SGLyricsPinGeneration(track) == generation);
+    SGLyricsPinStamp *generation = SGLyricsPinGeneration(track);
+    CHECK([[NSURLProtocol propertyForKey:kPinGenerationKey inRequest:task.originalRequest] isEqual:generation]);
+    CHECK(!SGLyricsPin(track, @{@"id": @1}) && [SGLyricsPinGeneration(track) isEqual:generation]);
     CHECK(SGLyricsPin(track, plain));
-    CHECK([[NSURLProtocol propertyForKey:kPinGenerationKey inRequest:lyricsRequestFor(task.originalRequest)] unsignedIntegerValue] == generation);
+    CHECK([[NSURLProtocol propertyForKey:kPinGenerationKey inRequest:lyricsRequestFor(task.originalRequest)] isEqual:generation]);
     NSHTTPURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:url statusCode:200 HTTPVersion:@"HTTP/2" headerFields:nil];
     state = classify((id)task, response);
-    CHECK(state.pinGeneration == generation && !currentChoice(state));
+    CHECK([state.pinGeneration isEqual:generation] && !currentChoice(state));
     ended = nil;
     finishSpotify(delegate, nil, (id)task, state, body, nil, ^(NSError *error) { ended = error; });
     CHECK(ended.code == NSURLErrorCancelled && !delegate.deliveries);
@@ -903,9 +903,9 @@ static void checkWalkEarlyAnswer(void) {
             sg_pinnedReply(pinned);
             CHECK([pinAnswer.karaokeLines isEqual:pinned.karaokeLines] && !sg_waiting[track] && asked.count == 2);
         } else if ([action isEqual:@"reload"]) {
-            NSUInteger generation = SGLyricsPinGeneration(track);
+            SGLyricsPinStamp *generation = SGLyricsPinGeneration(track);
             SGLyricsReload(track);
-            CHECK(SGLyricsPinGeneration(track) == generation + 1);
+            CHECK(![SGLyricsPinGeneration(track) isEqual:generation]);
             CHECK(!sg_kept[track] && !SGKaraokeLinesForTrack(track) && !SGLyricsCreditFor(track));
             late(words);
             CHECK(!sg_kept[track] && !SGKaraokeLinesForTrack(track) && !SGLyricsCreditFor(track));
@@ -2424,7 +2424,7 @@ static void checkReload(void) {
     NSString *track = @"reload-song";
     NSDictionary *record = @{@"id": @456, @"syncedLyrics": @"[00:01]Before reload"};
     CHECK(SGLyricsPin(track, record));
-    NSUInteger generation = SGLyricsPinGeneration(track);
+    SGLyricsPinStamp *generation = SGLyricsPinGeneration(track);
     __block NSUInteger notes = 0;
     id observer = [NSNotificationCenter.defaultCenter addObserverForName:SGLyricsDidReloadNotification object:track queue:nil usingBlock:^(NSNotification *note) {
         CHECK(NSThread.isMainThread && !sg_kept[track] && !SGKaraokeLinesForTrack(track) && !SGLyricsCreditFor(track));
@@ -2434,7 +2434,7 @@ static void checkReload(void) {
     [sg_missing addObject:track]; sg_losses[track] = @3;
     sg_pinnedReply = nil;
     SGLyricsReload(track);
-    CHECK(notes == 1 && [SGLyricsPinnedID(track) isEqual:@456] && SGLyricsPinGeneration(track) == generation + 1);
+    CHECK(notes == 1 && [SGLyricsPinnedID(track) isEqual:@456] && ![SGLyricsPinGeneration(track) isEqual:generation]);
     pumpUntil(^BOOL { return sg_pinnedReply != nil; });
     void (^old)(SGLyricsResult *) = sg_pinnedReply;
     sg_pinnedReply = nil;

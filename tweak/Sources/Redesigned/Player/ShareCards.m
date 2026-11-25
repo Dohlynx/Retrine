@@ -51,15 +51,18 @@ static void songText(SPTPlayerTrack *track, NSString *trackID, NSString **title,
     *title = SGRShownTitle(trackID, track.trackTitle, track.artistName, artist);
 }
 
-static UIGraphicsImageRenderer *cardRenderer(CGSize size) {
+// Snapshot the display-dependent range on main. The worker draws strings and
+// images into private bitmap contexts; it never needs a view or a screen.
+static UIGraphicsImageRendererFormat *cardFormat(void) {
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
     format.scale = 1;
     format.opaque = YES;
-    return [[UIGraphicsImageRenderer alloc] initWithSize:size format:format];
+    return format;
 }
 
-static UIImage *blurred(UIImage *cover) {
-    UIImage *small = [cardRenderer(CGSizeMake(kBlurPixels, kBlurPixels)) imageWithActions:^(UIGraphicsImageRendererContext *context) {
+static UIImage *blurred(UIImage *cover, UIGraphicsImageRendererFormat *format) {
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(kBlurPixels, kBlurPixels) format:format];
+    UIImage *small = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
         [cover drawInRect:CGRectMake(0, 0, kBlurPixels, kBlurPixels)];
     }];
     CIImage *input = [CIImage imageWithCGImage:small.CGImage];
@@ -75,11 +78,11 @@ static UIImage *blurred(UIImage *cover) {
 }
 
 // Black, then the cover blurred over the whole card and darkened by `shade`.
-static void drawBackdrop(UIImage *cover, CGFloat shade) {
+static void drawBackdrop(UIImage *cover, CGFloat shade, UIGraphicsImageRendererFormat *format) {
     CGRect bounds = {CGPointZero, kCardPixels};
     [UIColor.blackColor setFill];
     UIRectFill(bounds);
-    UIImage *back = cover ? blurred(cover) : nil;
+    UIImage *back = cover ? blurred(cover, format) : nil;
     if (!back) return;
     CGFloat side = MAX(kCardPixels.width, kCardPixels.height) * kBackdropOverfill;
     [back drawInRect:CGRectMake((kCardPixels.width - side) / 2, (kCardPixels.height - side) / 2, side, side)];
@@ -135,9 +138,10 @@ static NSDictionary *oneLine(UIFont *font, UIColor *color, NSTextAlignment align
 
 // `rightToLeft`: the phone's language reads right to left, so the cover leads from the right.
 static UIImage *lyricCardImage(NSArray<SGRLyricCardLine *> *lines, BOOL pronunciation, NSString *title, NSString *artist,
-                               UIImage *cover, BOOL rightToLeft) {
-    return [cardRenderer(kCardPixels) imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        drawBackdrop(cover, kLyricShade);
+                               UIImage *cover, BOOL rightToLeft, UIGraphicsImageRendererFormat *format) {
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:kCardPixels format:format];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        drawBackdrop(cover, kLyricShade, format);
         CGFloat width = kCardPixels.width;
         CGRect thumb = CGRectMake(rightToLeft ? width - kMarginPixels - kThumbPixels : kMarginPixels, kMarginPixels, kThumbPixels, kThumbPixels);
         drawRounded(cover, thumb, kThumbRadius, context.CGContext);
@@ -169,9 +173,10 @@ static UIImage *lyricCardImage(NSArray<SGRLyricCardLine *> *lines, BOOL pronunci
     }];
 }
 
-static UIImage *songCardImage(UIImage *cover, NSString *title, NSString *artist) {
-    return [cardRenderer(kCardPixels) imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        drawBackdrop(cover, kSongShade);
+static UIImage *songCardImage(UIImage *cover, NSString *title, NSString *artist, UIGraphicsImageRendererFormat *format) {
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:kCardPixels format:format];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        drawBackdrop(cover, kSongShade, format);
         CGContextRef cg = context.CGContext;
         CGRect art = CGRectMake((kCardPixels.width - kArtPixels) / 2, kArtTop, kArtPixels, kArtPixels);
         CGContextSaveGState(cg);
@@ -227,9 +232,10 @@ void SGRShareSongCard(UIView *source) {
     songText(track, SGKaraokePlayingTrack(), &title, &artist);
     UIImage *cover = playingCover();
     __weak UIView *anchor = source;
+    UIGraphicsImageRendererFormat *format = cardFormat();
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         CFAbsoluteTime began = CFAbsoluteTimeGetCurrent();
-        UIImage *card = songCardImage(cover, title, artist);
+        UIImage *card = songCardImage(cover, title, artist, format);
         CFAbsoluteTime took = CFAbsoluteTimeGetCurrent() - began;
         dispatch_async(dispatch_get_main_queue(), ^{
             SGLog(@"share card: the song's, %@ cover, drawn in %.0f ms", cover ? @"with its" : @"without a", took * 1000);
@@ -246,9 +252,10 @@ void SGRShareLyricCard(NSArray<SGRLyricCardLine *> *lines, BOOL pronunciation, N
     BOOL rightToLeft = UIApplication.sharedApplication.userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
     NSArray<SGRLyricCardLine *> *shown = [lines copy];
     __weak UIViewController *presenter = host;
+    UIGraphicsImageRendererFormat *format = cardFormat();
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         CFAbsoluteTime began = CFAbsoluteTimeGetCurrent();
-        UIImage *card = lyricCardImage(shown, pronunciation, title, artist, cover, rightToLeft);
+        UIImage *card = lyricCardImage(shown, pronunciation, title, artist, cover, rightToLeft, format);
         CFAbsoluteTime took = CFAbsoluteTimeGetCurrent() - began;
         dispatch_async(dispatch_get_main_queue(), ^{
             UIViewController *on = presenter;

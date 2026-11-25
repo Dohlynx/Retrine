@@ -449,15 +449,21 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
     return [self writeJSON:merged to:url grandfather:grandfather allowed:allowed error:error];
 }
 - (BOOL)migrate:(NSError **)error {
+    return [self migrateSpace:nil key:nil error:error];
+}
+- (BOOL)migrateSpace:(NSString *)onlySpace key:(NSString *)onlyKey error:(NSError **)error {
     if (![self prepare:error]) return NO;
+    if (onlySpace && (![@[@"Translations", @"AI"] containsObject:onlySpace] || !SGTranslationRecordKeyValid(onlyKey)))
+        return fail(error, @"Invalid translation identity.");
     [_unresolved removeAllObjects];
     if ([_metadata[@"allSuppressed"] boolValue]) return YES;
     for (NSURL *base in _legacyConflicts ? @[_legacy, _legacyConflicts] : @[_legacy]) {
       struct stat st;
       if (lstat(base.fileSystemRepresentation, &st)) { if (errno == ENOENT) continue; return posixFailure(error); }
       if (!S_ISDIR(st.st_mode)) return fail(error, @"Invalid legacy cache directory.");
-      for (NSString *space in @[@"Translations", @"AI"]) {
-        if (![self visitDirectory:[base URLByAppendingPathComponent:space] visit:^BOOL(NSURL *file, NSError **listingError) {
+      for (NSString *space in onlySpace ? @[onlySpace] : @[@"Translations", @"AI"]) {
+        NSURL *directory = [base URLByAppendingPathComponent:space];
+        BOOL (^visit)(NSURL *, NSError **) = ^BOOL(NSURL *file, NSError **listingError) {
             NSString *key = file.lastPathComponent, *identity = [space stringByAppendingFormat:@"/%@", key];
             NSString *receipt = [base isEqual:self->_legacy] ? identity : [@"leftover/" stringByAppendingString:identity];
             if ([self->_metadata[@"suppressed"][identity] boolValue]) return YES;
@@ -484,7 +490,21 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
             }
             if (problem) [self->_unresolved addObject:@{@"namespace":space, @"key":key, @"url":file, @"error":problem.localizedDescription}];
             return YES;
-        } error:error]) return NO;
+        };
+        if (!onlySpace) {
+            if (![self visitDirectory:directory visit:visit error:error]) return NO;
+        } else {
+            if (lstat(directory.fileSystemRepresentation, &st)) { if (errno == ENOENT) continue; return posixFailure(error); }
+            if (!S_ISDIR(st.st_mode)) return fail(error, @"Invalid legacy cache directory.");
+            NSURL *file = [directory URLByAppendingPathComponent:onlyKey];
+            if (lstat(file.fileSystemRepresentation, &st)) { if (errno == ENOENT) continue; return posixFailure(error); }
+            // A lookup can match another Unicode spelling (or case). Feed
+            // the same directory-entry name to visit as readdir would.
+            NSString *storedName = nil;
+            if (![file getResourceValue:&storedName forKey:NSURLNameKey error:error]) return NO;
+            if (!storedName) return fail(error, @"Missing legacy translation filename.");
+            if (!visit([directory URLByAppendingPathComponent:storedName], error)) return NO;
+        }
       }
     }
     if (_unresolved.count) return fail(error, @"Legacy migration is incomplete. Original files remain available.");
@@ -537,14 +557,26 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
 - (BOOL)removeRecords:(NSArray<NSDictionary *> *)records all:(BOOL)all error:(NSError **)error {
     if (![self prepare:error]) return NO;
     NSMutableDictionary *state = [_metadata mutableCopy];
-    state[@"suppressed"] = [_metadata[@"suppressed"] mutableCopy];
-    state[@"deletedAt"] = [_metadata[@"deletedAt"] mutableCopy];
     NSNumber *version = @([state[@"deleteVersion"] unsignedLongLongValue] + 1);
     state[@"deleteVersion"] = version;
-    if (all) { state[@"allSuppressed"] = @YES; state[@"allDeletedAt"] = version; }
-    for (NSDictionary *record in records) state[@"deletedAt"][SGTranslationRecordIdentity(record)] = version;
-    for (NSDictionary *record in records) if (![record[@"recovery"] boolValue])
-        state[@"suppressed"][[record[@"namespace"] stringByAppendingFormat:@"/%@", record[@"key"]]] = @YES;
+    // A global tombstone supersedes the individual ones. A receipt is never
+    // consulted again once migration of that legacy identity is suppressed.
+    BOOL noMigration = all || [state[@"allSuppressed"] boolValue];
+    state[@"receipts"] = noMigration ? [NSMutableDictionary dictionary] : [_metadata[@"receipts"] mutableCopy];
+    state[@"suppressed"] = noMigration ? [NSMutableDictionary dictionary] : [_metadata[@"suppressed"] mutableCopy];
+    state[@"deletedAt"] = all ? [NSMutableDictionary dictionary] : [_metadata[@"deletedAt"] mutableCopy];
+    if (all) {
+        state[@"allSuppressed"] = @YES;
+        state[@"allDeletedAt"] = version;
+    } else for (NSDictionary *record in records) {
+        state[@"deletedAt"][SGTranslationRecordIdentity(record)] = version;
+        if (!noMigration && ![record[@"recovery"] boolValue]) {
+            NSString *identity = [record[@"namespace"] stringByAppendingFormat:@"/%@", record[@"key"]];
+            state[@"suppressed"][identity] = @YES;
+            [state[@"receipts"] removeObjectForKey:identity];
+            [state[@"receipts"] removeObjectForKey:[@"leftover/" stringByAppendingString:identity]];
+        }
+    }
     if (![self writeJSON:state to:self.metadataURL grandfather:YES allowed:nil error:error]) return NO;
     _metadata = state;
     NSMutableArray<NSURL *> *targets = [NSMutableArray array];

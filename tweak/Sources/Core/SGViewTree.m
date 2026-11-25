@@ -1,6 +1,7 @@
 #import "SGViewTree.h"
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
+#import <os/lock.h>
 
 static NSString *fileprivateKey(const char *name) {
     const char *marker = strstr(name, "P33_");
@@ -104,13 +105,17 @@ BOOL SGClassNamed(Class cls, NSString *marker) {
     if (!cls || !marker) return NO;
     // Markers are literals, so the outer level goes by the pointer and never hashes the string.
     static NSMapTable<NSString *, NSMutableDictionary *> *cache;
+    static os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
+    os_unfair_lock_lock(&lock);
     if (!cache) cache = [NSMapTable mapTableWithKeyOptions:NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality
                                               valueOptions:NSPointerFunctionsStrongMemory];
     NSMutableDictionary *answers = [cache objectForKey:marker];
     if (!answers) [cache setObject:(answers = [NSMutableDictionary dictionary]) forKey:marker];
     NSNumber *answer = answers[(id<NSCopying>)cls];
     if (!answer) answers[(id<NSCopying>)cls] = answer = @([NSStringFromClass(cls) containsString:marker]);
-    return answer.boolValue;
+    BOOL matches = answer.boolValue;
+    os_unfair_lock_unlock(&lock);
+    return matches;
 }
 
 BOOL SGHasClass(UIView *root, NSString *marker) {

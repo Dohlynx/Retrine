@@ -34,7 +34,6 @@
 // (a 19x19 UIImageView glyph and a MarqueeLabel with the device name), a spacer, a hidden media trimmer,
 // ElementView > EncoreButton id=ShareButtonNowPlayingView 44x44, ElementView > Queue control
 // id=QueueButtonNowPlaying 47x32 (an 18x18 SPTEncoreIconView id=Encore.IconView glyph, out/rep/ptree.txt:1228-1279).
-#import <substrate.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Redesigned/Kit/SGRPress.h"
@@ -407,7 +406,7 @@ void SGRPlayerCoverConnect(UIView *arranged, UIView *glyph) {
     NSString *name = NSStringFromClass(arranged.class);
     if (!sg_origPointInside[name]) {
         IMP orig = NULL;
-        MSHookMessageEx(arranged.class, @selector(pointInside:withEvent:), (IMP)connectPointInside, &orig);
+        _logos_register_hook(arranged.class, @selector(pointInside:withEvent:), (IMP)connectPointInside, &orig);
         sg_origPointInside[name] = [NSValue valueWithPointer:(void *)orig];
     }
     CGRect drawn = [glyph convertRect:glyph.bounds toView:arranged];

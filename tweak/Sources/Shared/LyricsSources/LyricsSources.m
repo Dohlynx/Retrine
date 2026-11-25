@@ -481,8 +481,9 @@ static NSMutableSet<NSString *> *sg_missing;
 static NSMutableSet<NSString *> *sg_failed;
 static NSMutableSet<NSString *> *sg_spotifyFailed;
 static NSMutableDictionary<NSString *, NSNumber *> *sg_pins;
-// Guarded by sg_pins; generations survive unpinning and source picks to reject old hook deliveries.
-static NSMutableDictionary<NSString *, NSNumber *> *sg_pinGenerations;
+// A request, walk or pending callback owns its stamp and the stamp owns the
+// canonical track key. With no reader there is no generation to remember.
+static NSMapTable<NSString *, SGLyricsPinStamp *> *sg_pinGenerations;
 // Main-owned, only outstanding preparations. Tokens distinguish overlapping choices for one track.
 static NSMutableDictionary<NSString *, NSObject *> *sg_pinSelections;
 NSNotificationName const SGLyricsPinDidChangeNotification = @"spotifyglass.lyrics.pinDidChange";
@@ -524,7 +525,7 @@ static void setUp(void) {
         sg_credits = [NSMutableDictionary dictionary];
         sg_spotifyHas = [NSMutableDictionary dictionary];
         sg_pins = [NSMutableDictionary dictionary];
-        sg_pinGenerations = [NSMutableDictionary dictionary];
+        sg_pinGenerations = [NSMapTable weakToWeakObjectsMapTable];
         sg_pinSelections = [NSMutableDictionary dictionary];
         id stored = [NSUserDefaults.standardUserDefaults objectForKey:SGKeyLyricsPins];
         if ([stored isKindOfClass:NSDictionary.class]) {
@@ -543,9 +544,18 @@ NSNumber *SGLyricsPinnedID(NSString *trackID) {
     @synchronized (sg_pins) { return trackID ? sg_pins[trackID] : nil; }
 }
 
-NSUInteger SGLyricsPinGeneration(NSString *trackID) {
+SGLyricsPinStamp *SGLyricsPinGeneration(NSString *trackID) {
+    if (!trackID) return nil;
     setUp();
-    @synchronized (sg_pins) { return trackID ? sg_pinGenerations[trackID].unsignedIntegerValue : 0; }
+    @synchronized (sg_pins) {
+        SGLyricsPinStamp *stamp = [sg_pinGenerations objectForKey:trackID];
+        if (!stamp) {
+            stamp = @[[trackID copy], NSUUID.UUID.UUIDString];
+            [sg_pinGenerations removeObjectForKey:trackID];
+            [sg_pinGenerations setObject:stamp forKey:stamp.firstObject];
+        }
+        return stamp;
+    }
 }
 
 void SGLyricsInvalidateDelivery(NSString *trackID) {
@@ -553,7 +563,7 @@ void SGLyricsInvalidateDelivery(NSString *trackID) {
     setUp();
     SGLyricsRetire(trackID);
     @synchronized (sg_pins) {
-        sg_pinGenerations[trackID] = @(sg_pinGenerations[trackID].unsignedIntegerValue + 1);
+        [sg_pinGenerations removeObjectForKey:trackID];
     }
 }
 
@@ -597,11 +607,11 @@ void SGLyricsPickRecord(NSString *trackID, NSDictionary *record, BOOL (^current)
     record = [record copy];
     NSObject *selection = [NSObject new];
     sg_pinSelections[trackID] = selection;
-    NSUInteger generation = SGLyricsPinGeneration(trackID);
+    SGLyricsPinStamp *generation = SGLyricsPinGeneration(trackID);
     SGLyricsTransform(^id { return SGLrcLibRecordResult(record); }, ^(SGLyricsResult *result) {
         BOOL latest = sg_pinSelections[trackID] == selection;
         if (latest) [sg_pinSelections removeObjectForKey:trackID];
-        BOOL valid = latest && generation == SGLyricsPinGeneration(trackID) && (!current || current());
+        BOOL valid = latest && [generation isEqual:SGLyricsPinGeneration(trackID)] && (!current || current());
         done(valid && pinResult(trackID, record, result));
     });
 }
@@ -665,7 +675,11 @@ void SGLyricsNoteCredit(SGLyricsResult *result) {
     if (!result.provider.length || !(result.creditRequired || result.creditLinks.count)) return;
     if (!sg_noted) sg_noted = [NSMutableDictionary dictionary];
     if (sg_noted.count >= kNotedCredits) [sg_noted removeAllObjects];
-    sg_noted[result.provider] = result;
+    SGLyricsResult *credit = [SGLyricsResult new];
+    credit.provider = result.provider;
+    credit.creditLinks = result.creditLinks;
+    credit.creditRequired = result.creditRequired;
+    sg_noted[credit.provider] = credit;
 }
 
 BOOL SGLyricsCreditRequired(NSString *credit) {
@@ -725,7 +739,8 @@ void SGLyricsOpenCreditLinks(NSArray<SGLyricsLink *> *links, UIView *from) {
 @property (nonatomic, strong) NSMutableArray *waiting;
 // Sources that needed a name the query did not have when their turn came.
 @property (nonatomic, strong) NSMutableArray<NSString *> *passedOver;
-@property (nonatomic) NSUInteger generation, retries;
+@property (nonatomic, strong) SGLyricsPinStamp *generation;
+@property (nonatomic) NSUInteger retries;
 @property (nonatomic, strong) SGLyricsLease *lease;
 @property (nonatomic, strong) NSMutableSet<NSString *> *failures;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, SGLyricsResult *> *answers;
@@ -761,7 +776,7 @@ static dispatch_source_t afterSeconds(NSTimeInterval seconds, dispatch_block_t b
 }
 
 static BOOL ownsWalk(SGLyricsWalk *walk) {
-    return sg_walks[walk.query.trackID] == walk && walk.generation == SGLyricsPinGeneration(walk.query.trackID);
+    return sg_walks[walk.query.trackID] == walk && [walk.generation isEqual:SGLyricsPinGeneration(walk.query.trackID)];
 }
 
 void SGLyricsRetire(NSString *track) {
@@ -1680,9 +1695,9 @@ void SGLyricsKeepChosen(NSString *trackID, SGLyricsResult *result) {
     @synchronized (sg_missing) { [sg_missing removeObject:trackID]; }
     NSArray *waiting = [sg_waiting[trackID] copy];
     [sg_waiting removeObjectForKey:trackID];
-    NSUInteger generation = SGLyricsPinGeneration(trackID);
+    SGLyricsPinStamp *generation = SGLyricsPinGeneration(trackID);
     for (void (^done)(SGLyricsResult *) in waiting) {
-        if (generation != SGLyricsPinGeneration(trackID)) break;
+        if (![generation isEqual:SGLyricsPinGeneration(trackID)]) break;
         done(result);
     }
 }

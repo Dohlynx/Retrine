@@ -171,9 +171,10 @@ static void refreshPaint(void) {
 
 %group SGRAccentPaint
 %hook UIColor
-- (UIColor *)initWithRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a {
+// instancetype makes Logos emit the consumed receiver and retained return ABI.
+- (instancetype)initWithRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a {
     SGRAccentToken *source = componentSource(r,g,b,a);
-    if (source) return (__bridge UIColor *)CFBridgingRetain(source.color);
+    if (source) return source.color;
     return %orig;
 }
 + (UIColor *)colorWithRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a {

@@ -66,8 +66,9 @@ extern NSNotificationName const SGLyricsPinDidChangeNotification;
 // synced first then closest length when seconds > 0. Main queue; an empty array on failure, never nil.
 void SGLrcLibSearch(NSString *title, NSString *artist, NSInteger seconds, void (^done)(NSArray<NSDictionary *> *records));
 NSNumber *SGLyricsPinnedID(NSString *trackID);
-// Safe from any thread. A hook request must discard its delivery if this changes.
-NSUInteger SGLyricsPinGeneration(NSString *trackID);
+// Safe from any thread. Keep the stamp with the request until delivery; compare by value.
+typedef NSArray<NSString *> SGLyricsPinStamp;
+SGLyricsPinStamp *SGLyricsPinGeneration(NSString *trackID);
 // Main queue: a menu source pick or Automatic also invalidates in-flight hook deliveries.
 void SGLyricsInvalidateDelivery(NSString *trackID);
 // Prepare off main, then keep on main only while this selection and the track's pin generation

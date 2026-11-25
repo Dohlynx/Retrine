@@ -130,7 +130,7 @@ NSString *SGSingSummary(void) { return @"Off"; }
 BOOL SGSingSpatialAvailable(void) { return YES; }
 BOOL SGSingSpatial(void) { return NO; }
 
-void SGCheckForUpdate(BOOL force) {}
+BOOL SGCheckForUpdate(BOOL force) { return NO; }
 void SGWatchForUpdates(void) {}
 // Signing.m is the real one: its row stays away while the harness's own signature is sound, and its
 // "Signed until" row shows once the .app holds an embedded.mobileprovision (README).

@@ -286,9 +286,9 @@ static BOOL hasChoice(NSString *track) {
 static void translate(NSString *track) {
     NSString *language = SGRedesignedUI() ? SGLyricsTranslationLanguage() : nil;
     if (!language || SGLyricsHasTranslations(sg_lyrics[track])) return;
-    NSUInteger generation = SGLyricsPinGeneration(track);
+    SGLyricsPinStamp *generation = SGLyricsPinGeneration(track);
     SGMusixmatchTranslations(track, language, ^(NSDictionary<NSString *, NSString *> *byLine) {
-        if (generation != SGLyricsPinGeneration(track) || sg_sheetAuthorities[track] == fileAuthority) return;
+        if (![generation isEqual:SGLyricsPinGeneration(track)] || sg_sheetAuthorities[track] == fileAuthority) return;
         // Whatever is kept by now, which may be Spotify's timed lines in place of the plain ones asked for.
         NSArray<SGKaraokeLine *> *kept = sg_lyrics[track];
         if (!byLine || !kept.count || ![language isEqualToString:SGLyricsTranslationLanguage()]
@@ -382,12 +382,12 @@ static void keep(NSString *track, NSArray<SGKaraokeLine *> *lines, BOOL fromStor
         SGKaraokeWrite *token = [SGKaraokeWrite new];
         token.track = track;
         [sg_storeWrites addObject:token];
-        NSUInteger generation = SGLyricsPinGeneration(track);
+        SGLyricsPinStamp *generation = SGLyricsPinGeneration(track);
         // Most callers set the provider immediately after keep; pins set it before.
         // End-of-turn capture supports both without changing every producer's API.
         dispatch_async(dispatch_get_main_queue(), ^{
             if (![sg_storeWrites containsObject:token]) return;
-            if (generation != SGLyricsPinGeneration(track) || !SGLyricsMayPersist(track, authority)) return;
+            if (![generation isEqual:SGLyricsPinGeneration(track)] || !SGLyricsMayPersist(track, authority)) return;
             if (SGFlag(SGKeyLyricsOffline, YES)) SGLyricsStoreSaveWithLease(track, lines, SGLyricsCreditFor(track), token);
         });
     }

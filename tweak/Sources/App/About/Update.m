@@ -272,12 +272,13 @@ static void ask(NSString *url, NSData *body, void (^done)(NSArray<NSDictionary *
     [session finishTasksAndInvalidate];
 }
 
-void SGCheckForUpdate(BOOL force) {
+BOOL SGCheckForUpdate(BOOL force) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     NSTimeInterval last = [store doubleForKey:kChecked];
-    if (!SGUpdateURL || sg_running) return;
+    if (sg_running) return YES;
+    if (!SGUpdateURL) return NO;
     if (!force && last > 0 && NSDate.date.timeIntervalSince1970 - last < kInterval &&
-        [[store stringForKey:kCheckedBuild] isEqualToString:@(SG_VERSION)]) return;
+        [[store stringForKey:kCheckedBuild] isEqualToString:@(SG_VERSION)]) return NO;
 
     // Consume the build-change bypass even if this request fails. kChecked still dates the last success.
     [store setObject:@(SG_VERSION) forKey:kCheckedBuild];
@@ -301,4 +302,5 @@ void SGCheckForUpdate(BOOL force) {
         });
     };
     ask(SGUpdateURL, nil, finish);
+    return YES;
 }

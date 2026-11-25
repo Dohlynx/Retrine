@@ -2114,6 +2114,7 @@ typedef struct {
 
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
+    [self stopWatchingTranslationCover];
     if (_holdingAwake) SGRLyricsHoldAwake(self, NO);
     free(_spans);
     free(_breaks);

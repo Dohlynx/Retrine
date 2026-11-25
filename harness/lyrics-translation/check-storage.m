@@ -666,6 +666,86 @@ static void checkPreviewSurvivesUnlock(void) {
     clearFixture(root);
     SGLyricsDeleteSavedTranslations();
 }
+// An individual delete leaves files in the pre-rename cache. APFS accepts
+// either spelling, but a cold lookup must use the enumerated tombstone.
+static void checkColdDeletedAlias(void) {
+    NSURL *root = storageFixture();
+    NSURL *active = [root URLByAppendingPathComponent:@"Support"];
+    NSURL *cache = [root URLByAppendingPathComponent:@"Retrine"];
+    NSURL *legacy = [root URLByAppendingPathComponent:@"Vitrine/Translations/caf\u00e9.ko.json"];
+    fixtureJSON(legacy, @{@"line":@"deleted"});
+    SGTranslationFiles *store = [[SGTranslationFiles alloc] initWithRoot:active renamedCache:cache];
+    CHECK([store migrate:nil]);
+    NSArray *records = fixtureRecords(store);
+    CHECK(records.count == 1 && [store removeRecords:records all:NO error:nil]);
+    NSString *key = records.firstObject[@"key"];
+    NSString *alias = key.decomposedStringWithCanonicalMapping;
+    if ([key compare:alias options:NSLiteralSearch] == NSOrderedSame) alias = key.precomposedStringWithCanonicalMapping;
+    CHECK([key compare:alias options:NSLiteralSearch] != NSOrderedSame);
+    CHECK([NSFileManager.defaultManager fileExistsAtPath:[legacy.URLByDeletingLastPathComponent URLByAppendingPathComponent:alias].path]);
+    store = [[SGTranslationFiles alloc] initWithRoot:active renamedCache:cache];
+    CHECK([store migrateSpace:@"Translations" key:alias error:nil]);
+    CHECK(![store read:@"Translations" key:alias error:nil]);
+    // On a case-insensitive volume this spelling also opens the very same file.
+    NSString *caseAlias = [alias stringByReplacingOccurrencesOfString:@"caf" withString:@"Caf"];
+    if ([NSFileManager.defaultManager fileExistsAtPath:[legacy.URLByDeletingLastPathComponent URLByAppendingPathComponent:caseAlias].path]) {
+        CHECK([store migrateSpace:@"Translations" key:caseAlias error:nil]);
+        CHECK(![store read:@"Translations" key:caseAlias error:nil]);
+    }
+    clearFixture(root);
+}
+
+static void checkColdReadFailure(void) {
+    NSURL *root = SGLyricsTestCacheRoot();
+    fixtureJSON([root URLByAppendingPathComponent:@"Legacy/Translations/broken.ko.json"], @[@"invalid legacy map"]);
+    NSArray<SGKaraokeLine *> *lines = aiLines(@[@"line"]);
+    lines[0].translationMade = YES;
+    lines[0].translation = @"on screen";
+    __block BOOL finished = NO;
+    SGLyricsLoadTranslation(@"broken", @"ko", lines, ^BOOL { return YES; }, ^{ finished = YES; });
+    waitFor(^BOOL { return finished; });
+    CHECK(lines[0].translationMade && [lines[0].translation isEqual:@"on screen"]);
+    // The full maintenance scheduled behind the read must finish before teardown.
+    finished = NO;
+    SGSavedRecords(nil, ^(NSArray *records, NSString *next, NSDictionary *stats, NSString *warning) {
+        CHECK(warning.length); finished = YES;
+    });
+    waitFor(^BOOL { return finished; });
+    clearFixture(root);
+}
+
+// The first delivery includes same-key legacy lines even while migration of the
+// rest of the library is held. Listing afterwards must see the whole library.
+static void checkFirstRecordRead(void) {
+    NSURL *root = SGLyricsTestCacheRoot();
+    fixtureJSON([root URLByAppendingPathComponent:@"Translations/first.ko.json"], @{@"a":@"primary"});
+    fixtureJSON([root URLByAppendingPathComponent:@"Legacy/Translations/first.ko.json"], @{@"a":@"conflict", @"b":@"legacy"});
+    fixtureJSON([root URLByAppendingPathComponent:@"Legacy/Translations/other.ko.json"], @{@"c":@"other"});
+    dispatch_semaphore_t delivered = dispatch_semaphore_create(0);
+    Method method = class_getInstanceMethod(SGTranslationFiles.class, @selector(migrate:));
+    IMP original = method_getImplementation(method);
+    IMP gated = imp_implementationWithBlock(^BOOL(SGTranslationFiles *store, NSError **error) {
+        CHECK(!dispatch_semaphore_wait(delivered, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)));
+        return ((BOOL (*)(id, SEL, NSError **))original)(store, @selector(migrate:), error);
+    });
+    method_setImplementation(method, gated);
+    NSArray<SGKaraokeLine *> *lines = aiLines(@[@"a", @"b"]);
+    __block BOOL loaded = NO, listed = NO;
+    SGLyricsLoadTranslation(@"first", @"ko", lines, ^BOOL { return YES; }, ^{
+        CHECK([lines[0].translation isEqual:@"primary"] && [lines[1].translation isEqual:@"legacy"]);
+        dispatch_semaphore_signal(delivered);
+        loaded = YES;
+    });
+    waitFor(^BOOL { return loaded; });
+    SGSavedRecords(nil, ^(NSArray *records, NSString *next, NSDictionary *stats, NSString *warning) {
+        CHECK(!warning && records.count == 3); // first, its recovery, and other
+        listed = YES;
+    });
+    waitFor(^BOOL { return listed; });
+    method_setImplementation(method, original);
+    imp_removeBlock(gated);
+    clearFixture(root);
+}
 // Runs in its own process before anything opens the store: a failed startup pass leaves abandoned
 // import stages, and the next maintenance chance must still reclaim them.
 static void checkStartupReclaimRetry(void) {

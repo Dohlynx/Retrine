@@ -229,7 +229,7 @@ static UIImage *glyphOfIcon(UIView *live, BOOL active) {
     Class viewClass = NSClassFromString(@"SPTEncoreIconView");
     if (icon && viewClass) {
         static NSCache<NSString *, UIImage *> *cache;
-        if (!cache) cache = [NSCache new];
+        if (!cache) { cache = [NSCache new]; cache.countLimit = 16; }
         NSString *key = [NSString stringWithFormat:@"%@ %d %@", iconName(icon) ?: icon, active, NSStringFromCGSize(size)];
         UIImage *cached = [cache objectForKey:key];
         if (cached) return cached;
@@ -258,7 +258,7 @@ static UIImage *glyphOf(UIView *item, BOOL active) {
 // included. One object per name, so setGlyphs sees the same image again and leaves the item alone.
 static UIImage *symbolGlyph(NSString *symbol, BOOL active) {
     static NSCache<NSString *, UIImage *> *cache;
-    if (!cache) cache = [NSCache new];
+    if (!cache) { cache = [NSCache new]; cache.countLimit = 16; }
     NSString *filled = [symbol stringByAppendingString:@".fill"];
     NSString *name = active && [UIImage systemImageNamed:filled] ? filled : symbol;
     UIImage *image = [cache objectForKey:name];
