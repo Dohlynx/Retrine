@@ -48,6 +48,7 @@ enum { MaxStartRetries = 5 };
 static uint64_t gRetryTicket;
 static os_unfair_lock gReadinessLock = OS_UNFAIR_LOCK_INIT;
 static uint64_t gReadinessGeneration;
+static BOOL gImageRefreshPending; // protected by gReadinessLock
 static atomic_bool gRegisteringImages;
 static uint64_t gOutage = 1, gPresentedOutage; // protected by gReadinessLock
 static BOOL gEngineAvailable;    // unvalidated engine event, protected by gReadinessLock
@@ -1351,8 +1352,17 @@ static void ImageChanged(const struct mach_header *header, intptr_t slide) {
     os_unfair_lock_lock(&gReadinessLock);
     gReadinessGeneration++;
     atomic_store_explicit(&gReady, false, memory_order_release);
+    BOOL enqueue = !gImageRefreshPending;
+    gImageRefreshPending = YES;
     os_unfair_lock_unlock(&gReadinessLock);
-    dispatch_async(gQueue, ^{ SGWGRefreshReadiness(); });
+    if (enqueue) dispatch_async(gQueue, ^{
+        // Relinquish this wake before the snapshot: changes during validation
+        // invalidate its commit and can claim a successor.
+        os_unfair_lock_lock(&gReadinessLock);
+        gImageRefreshPending = NO;
+        os_unfair_lock_unlock(&gReadinessLock);
+        SGWGRefreshReadiness();
+    });
 }
 
 __attribute__((constructor)) static void SGWGInit(void) {

@@ -84,6 +84,7 @@ static int fixtureDup(int fd) {
 static atomic_uint nativeScans;
 static unsigned scansAtRegistration;
 static void (*registeredAdd)(const struct mach_header *, intptr_t);
+static void (*registeredRemove)(const struct mach_header *, intptr_t);
 static void registerImages(void (*callback)(const struct mach_header *, intptr_t)) {
     if (getenv("SGWG_TEST_REPLAY")) {
         registeredAdd = callback;
@@ -92,6 +93,11 @@ static void registerImages(void (*callback)(const struct mach_header *, intptr_t
     } else _dyld_register_func_for_add_image(callback);
 }
 #define _dyld_register_func_for_add_image registerImages
+static void registerRemovals(void (*callback)(const struct mach_header *, intptr_t)) {
+    if (getenv("SGWG_TEST_REPLAY")) registeredRemove = callback;
+    else _dyld_register_func_for_remove_image(callback);
+}
+#define _dyld_register_func_for_remove_image registerRemovals
 #import "Shared/WireGuard/SGWGCore.m"
 #undef nw_path_monitor_start
 #undef dispatch_source_set_timer
@@ -188,6 +194,65 @@ void SGWGFree(char *text) { free(text); }
 void SGWGSetStateCallback(uintptr_t callback, uintptr_t gate) { if (!getenv("SGWG_TEST_DELAY_ADMISSION") || !gate) unexpected(); }
 
 static void drain(void) { dispatch_sync(gQueue, ^{}); }
+
+static void imageBurst(void) {
+    for (int i = 0; i < 100; ++i) {
+        registeredRemove(NULL, 0);
+        registeredAdd(NULL, 0);
+    }
+}
+
+static void checkImageBursts(void) {
+    drain();
+    CHECK(registeredAdd && registeredRemove && scansAtRegistration > 0);
+    CHECK(!SGWGReady() && gAdmissionPending && !gBlockAll);
+    sharedImageLoaded = true;
+    registeredAdd(NULL, 0);
+    dispatch_sync(gQueue, ^{
+        CHECK(!SGWGReady() && !gAdmissionPending && !gBlockAll);
+        CHECK(fireRecovery() == 1 && SGWGReady()); // start still pending, even without a rescan
+    });
+
+    unsigned before = nativeScans;
+    dispatch_sync(gQueue, ^{
+        registeredRemove(NULL, 0);
+        CHECK(!SGWGReady());
+        SGWGRefreshReadiness(); // independent refresh with an image worker already queued
+        CHECK(SGWGReady());
+        registeredAdd(NULL, 0);
+        CHECK(!SGWGReady());
+        imageBurst();
+    });
+    drain();
+    CHECK(nativeScans == before + 2 && SGWGReady()); // one direct pass, one image pass
+
+    before = nativeScans;
+    admissionEntered = dispatch_semaphore_create(0);
+    admissionContinue = dispatch_semaphore_create(0);
+    dispatch_sync(gQueue, ^{ imageBurst(); CHECK(!SGWGReady()); });
+    CHECK(!dispatch_semaphore_wait(admissionEntered, dispatch_time(DISPATCH_TIME_NOW, 3*NSEC_PER_SEC)));
+    // Queue this observation ahead of any successor. Admission has already
+    // sampled "present", but its generation is about to become stale.
+    dispatch_async(gQueue, ^{
+        CHECK(!SGWGReady() && nativeScans == before + 1);
+        admissionEntered = admissionContinue = nil;
+    });
+    sharedImageLoaded = false;
+    imageBurst();
+    registeredRemove(NULL, 0);
+    dispatch_semaphore_signal(admissionContinue);
+    drain();
+    CHECK(nativeScans == before + 2 && !SGWGReady() && gAdmissionPending && !gBlockAll);
+    sharedImageLoaded = true;
+    registeredAdd(NULL, 0);
+    drain();
+    CHECK(SGWGReady());
+    admitted = NO;
+    registeredAdd(NULL, 0);
+    drain();
+    CHECK(!SGWGReady() && gBlockAll && !gAdmissionPending);
+    puts("PASS image bursts coalesce, stale pass cannot publish, missing target recovers, mismatch refuses");
+}
 static void checkPublishedSink(void) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in addr = {.sin_len = sizeof(addr), .sin_family = AF_INET,
@@ -382,6 +447,10 @@ static void checkStaleRefresh(void) {
 int main(int argc, char **argv) {
     @autoreleasepool {
         CHECK(SGWGIsSupportedOS());
+        if (argc == 2 && !strcmp(argv[1], "--image-bursts")) {
+            checkImageBursts();
+            return 0;
+        }
         if (argc == 2 && !strcmp(argv[1], "--clear-credentials")) {
             NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
             id previous = [defaults objectForKey:kDefaultsKey];

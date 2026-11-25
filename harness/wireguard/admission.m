@@ -4,6 +4,7 @@
 #import "../../tweak/Sources/Shared/WireGuard/SGWGCore.h"
 
 static NSString *version, *build;
+static const char *mainName = "Spotify", *sharedName = "SpotifyShared";
 static struct {
     struct mach_header_64 header;
     struct uuid_command uuid;
@@ -16,13 +17,13 @@ static struct {
 @implementation AdmissionBundle
 + (instancetype)mainBundle { return [self new]; }
 - (id)objectForInfoDictionaryKey:(NSString *)key {
-    return @{@"CFBundleVersion": build, @"CFBundleExecutable": @"Spotify"}[key];
+    return @{@"CFBundleVersion": build, @"CFBundleExecutable": @"RenamedSpotify"}[key];
 }
 @end
 
 NSString *SGWGAppVersion(void) { return version; }
 static uint32_t imageCount(void) { return 2; }
-static const char *imageName(uint32_t index) { return index ? "SpotifyShared" : "Spotify"; }
+static const char *imageName(uint32_t index) { return index ? sharedName : mainName; }
 static const struct mach_header *imageHeader(uint32_t index) { return (void *)&images[index]; }
 
 // Exercise production admission, not its SGWG_TESTING shortcut; only bundle/dyld inputs are fixtures.
@@ -70,6 +71,14 @@ int main(void) {
             images[1].uuid.uuid[0] ^= 1;
             passed &= expect(NO, [version stringByAppendingString:@" wrong shared UUID"]);
         }
+        images[1].uuid.uuid[0] ^= 1; // restore the final admitted fixture
+        mainName = "/Applications/Test.app/RenamedSpotify";
+        sharedName = "/Frameworks/SpotifyShared.framework/SpotifyShared";
+        passed &= expect(YES, @"bundle executable alias and shared basename");
+        mainName = "/RenamedSpotify/notSpotify";
+        passed &= expect(NO, @"non-target basename");
+        mainName = NULL;
+        passed &= expect(NO, @"missing dyld name");
         if (!passed) return 1;
         puts("PASS: exact 9.1.90/9.2.0 admission and wrong-build/main/shared UUID rejection");
         return 0;

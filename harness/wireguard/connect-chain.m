@@ -10,6 +10,7 @@
 #import "../harness-fail.h"
 
 BOOL SGWGReady(void) { return YES; }
+NSString *SGWGAppVersion(void) { return nil; }
 id SGWGCreateNativeProxyConfig(void) { return nil; }
 
 static ssize_t (*systemSendto)(int, const void *, size_t, int, const struct sockaddr *, socklen_t);
