@@ -32,11 +32,16 @@ quota-field shift. The host also routes nebula account attributes through Pixie'
 conversion. Downloading, keeping a download across an app restart, and deleting
 it were verified on a real device. Jailbreak packaging remains 9.1.90-only.
 
-**9.2.2 is admitted on Eevee `8c08046`'s layout, without a device run.** Its manager
+**Downloads also work on 9.2.2,** admitted on Eevee `8c08046`'s layout. Its manager
 fields sit 0x80 further than 9.2.0's (shift 136, proven by the setter's loads), and every
 patch site is beyond branch range of the header padding, so all trampolines live in the
-zero padding after the last `__TEXT` section. The queue flags keep the unshifted base as
-upstream does; their 9.2.2 position is unproven.
+zero padding after the last `__TEXT` section. On a real device (iOS 27.2.1) a single track
+and a 16-track album downloaded, stayed across a restart, played in Spotify's offline mode,
+exported as M4A and Ogg, and deleted cleanly.
+
+The queue flags (online, sync level and the like) keep the unshifted base on every target.
+They read `online=0` or invalid on the phone under 9.1.90, 9.2.0 and 9.2.2 alike, so they
+are diagnostic only; downloads do not depend on them.
 
 All builds reject existing Pixie
 payloads, partial overlays, malformed inputs and encrypted executables.

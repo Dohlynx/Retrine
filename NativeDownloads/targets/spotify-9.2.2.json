@@ -20,7 +20,8 @@
         "caves": "Every patched site is more than 128 MiB from the header padding, so all caves sit in the zero padding after the last __TEXT section (0x10d11a894..0x10d11c000)."
       },
       "local_static_proof": "NativeDownloads/tests/profiles.py:StaticProfile922 pins clean IPA setter bytes: LDR at 0x1098eb380 -> +0x348, 0x1098eb384 -> +0x340, 0x1098eb394 -> +0x358, 0x1098eb3a4 -> +0x350, 0x1098eb3b4 -> +0x360 (9.2.0 offsets +0x80), and provider+0x28 mov x28,x8.",
-      "unverified": "Queue flags keep the unshifted 0x220 base as upstream does; their 9.2.2 position has no local proof. No device run."
+      "device_check": "iPhone 13 Pro, iOS 27.2.1, 2026-11-26: the quota read 0/1000000 at the shifted block; single-track and 16-track album downloads, persistence across a restart, playback in Spotify's offline mode, deletion, and M4A and Ogg export all worked.",
+      "unverified": "Queue flags keep the unshifted 0x220 base as upstream does. They read online=0 or invalid on this phone under 9.1.90, 9.2.0 and 9.2.2 alike, so they are diagnostic only and unproven on every target."
     }
   },
   "runtime": "runtime-1.2.json",

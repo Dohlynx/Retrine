@@ -239,7 +239,7 @@ Full coverage and limitations: [docs/wireguard.md](docs/wireguard.md)
 
 IPA builds include Pixie's native download manager by default. Only the exact supported Spotify
 9.2.0, 9.2.2 and 9.1.90 builds are accepted. To build without it, use `PIXIE=0` (`--no-pixie` with the pipeline).
-On 9.2.0, downloads, persistence across a restart and deletion were verified on a real device; 9.2.2 has not been run on one yet.
+On 9.2.0 and 9.2.2, downloads, persistence across a restart and deletion were verified on a real device; on 9.2.2 also album downloads, offline playback and M4A/Ogg export.
 Long-term offline licence renewal remains unverified.
 See [docs/pixie.md](docs/pixie.md) for supported builds and limitations.
 
