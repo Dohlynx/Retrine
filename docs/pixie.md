@@ -40,8 +40,10 @@ and a 16-track album downloaded, stayed across a restart, played in Spotify's of
 exported as M4A and Ogg, and deleted cleanly.
 
 The queue flags (online, sync level and the like) keep the unshifted base on every target.
-They read `online=0` or invalid on the phone under 9.1.90, 9.2.0 and 9.2.2 alike, so they
-are diagnostic only; downloads do not depend on them.
+They read `online=0` or invalid on the phone under 9.1.90, 9.2.0 and 9.2.2 alike. Downloads
+do not depend on them, but the compatibility check behind restoring key request mode 0
+(`SAPModeChangeBlockReason`) still requires `online` and `connection_allows_offlining`, so
+that restore stays refused while they read this way.
 
 All builds reject existing Pixie
 payloads, partial overlays, malformed inputs and encrypted executables.
