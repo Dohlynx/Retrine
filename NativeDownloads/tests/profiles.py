@@ -65,6 +65,19 @@ class StaticProfile922(unittest.TestCase):
         changed=bytearray(self.raw);changed[V9202.caves[4]-0x100000000]=1
         with self.assertRaises(ValueError):prepare_native(bytes(changed),V9202)
 
+    def test_tail_caves_need_mapped_text(self):
+        # The same bytes and UUID, but __TEXT mapping a page less than it stores: its tail caves are not executable.
+        shrunk=bytearray(self.raw);cursor=32
+        for _ in range(struct.unpack_from("<I",shrunk,16)[0]):
+            command,length=struct.unpack_from("<II",shrunk,cursor)
+            if command==0x19 and shrunk[cursor+8:cursor+24].split(b"\0")[0]==b"__TEXT":
+                filesize=struct.unpack_from("<Q",shrunk,cursor+48)[0]
+                struct.pack_into("<Q",shrunk,cursor+32,filesize-0x4000)
+                break
+            cursor+=length
+        else:self.fail("no __TEXT")
+        with self.assertRaisesRegex(ValueError,"maps less"):prepare_native(bytes(shrunk),V9202)
+
 
 class StaticProfile(unittest.TestCase):
     @classmethod
