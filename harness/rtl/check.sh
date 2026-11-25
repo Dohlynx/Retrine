@@ -51,12 +51,9 @@ cat > "$APP/Info.plist" <<'PLIST'
 PLIST
 codesign -f -s - "$APP" >/dev/null 2>&1
 if [ -z "$UDID" ]; then
-    # What a killed run left behind: only simulators of this check's own name.
-    for stale in $(xcrun simctl list devices -j | python3 -c '
-import json, sys
-for devices in json.load(sys.stdin)["devices"].values():
-    for d in devices:
-        if d["name"].startswith(sys.argv[1]): print(d["udid"])' "$PREFIX"); do
+    # What a killed run left behind: only simulators of this check's own name. One line, because
+    # scripts/harness-plan.py audits each line of a registered script on its own.
+    for stale in $(xcrun simctl list devices | sed -nE "s/^ *${PREFIX}[0-9]+ \(([0-9A-F-]+)\).*/\1/p"); do
         xcrun simctl shutdown "$stale" >/dev/null 2>&1 || true
         xcrun simctl delete "$stale"
     done
