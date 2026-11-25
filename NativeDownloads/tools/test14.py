@@ -33,6 +33,7 @@ SCRIPTED = {
         "packaging_admission", "track_api_binary", "profile_runtime",
         "runtime_effects", "native_admission", "package_publication")},
     "native_share_defaults": ("export", ROOT/"tests/native_share_notifications.py"),
+    "offline_delegate_admission": ("admission", ROOT/"tests/offline_delegate_admission.py"),
 }
 
 

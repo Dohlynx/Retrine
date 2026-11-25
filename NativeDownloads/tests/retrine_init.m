@@ -3,6 +3,21 @@
 #import <objc/runtime.h>
 #import "../../harness/harness-fail.h"
 #import "AudioProbeUI.h"
+#import "PixiePageController.h"
+#import "PixiePageNavigation.h"
+
+@interface FixturePageOwner : UIViewController
+@property(nonatomic,strong) UIViewController *sheet;
+@end
+@implementation FixturePageOwner
+- (void)presentViewController:(UIViewController *)page animated:(BOOL)animated completion:(void (^)(void))completion {
+    self.sheet=page;
+}
+@end
+@interface FixtureHostStack : UINavigationController @end
+@implementation FixtureHostStack @end
+@interface FixtureIncompletePage : UIViewController @end
+@implementation FixtureIncompletePage @end
 
 static NSUInteger destroyed;
 static NSArray *receivedSections;
@@ -73,7 +88,28 @@ int main(void) {
             id page=[[SGModPage alloc] initWithTitle:@"Other" intro:nil sections:@[@"existing"] footer:nil];
             HARNESS_CHECK(page && receivedSections.count==1);
         }
-        puts("PASS: both Retrine and Vitrine roots open Pixie Download Manager; unrelated pages and init ownership preserved");
+        FixturePageOwner *owner=[FixturePageOwner new];
+        UINavigationController *stack=[[FixtureHostStack alloc]initWithRootViewController:owner];
+        SAPPixiePageController *page=[[SAPPixiePageController alloc]initWithStyle:UITableViewStyleGrouped];
+        SAPShowPixiePage(owner,page);
+        HARNESS_CHECK(stack.topViewController==page && !owner.sheet);
+        [stack popViewControllerAnimated:NO];
+        // Reproduce stale conformance metadata without creating a duplicate
+        // runtime protocol. The host fixture already declares both spellings.
+        FixtureIncompletePage *incomplete=[FixtureIncompletePage new];
+        for(NSString *name in @[@"SPTPageController",@"_TtP19Tome_PageAttributes17SPTPageController_"]) {
+            Protocol *protocol=NSProtocolFromString(name);
+            HARNESS_CHECK(protocol!=nil);
+            class_addProtocol(incomplete.class,protocol);
+            HARNESS_CHECK([incomplete conformsToProtocol:protocol]);
+        }
+        SAPShowPixiePage(owner,incomplete);
+        UINavigationController *sheet=(id)owner.sheet;
+        HARNESS_CHECK(stack.topViewController==owner && [sheet isKindOfClass:UINavigationController.class] && sheet.topViewController==incomplete);
+        UIViewController *child=[UIViewController new];
+        SAPShowPixiePage(incomplete,child);
+        HARNESS_CHECK(sheet.topViewController==child);
+        puts("PASS: both roots open Pixie; incompatible page presents separately with working nested navigation");
     }
     return 0;
 }

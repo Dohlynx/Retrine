@@ -242,7 +242,7 @@ static char kSearchKey;
 - (void)didDismissSearchController:(UISearchController *)search {
     UIViewController *page = _destination;
     _destination = nil;
-    if (page) [self.owner.navigationController pushViewController:page animated:YES];
+    if (page) SGShowPage(self.owner,page);
 }
 
 @end

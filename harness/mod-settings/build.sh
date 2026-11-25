@@ -20,7 +20,7 @@ xcrun -sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator -fobjc-ar
     "$SRC"/Redesigned/Kit/SGRAccentContext.m "$SRC"/Core/SGTopController.m \
     "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGLocalize.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGFlagForce.m "$SRC"/Core/SGUIMode.m \
     "${PROMPT_SOURCE:-$SRC/Shared/LyricsTranslation/TranslationPrompt.m}" \
-    -framework UIKit -framework QuartzCore -framework CoreGraphics -framework CoreImage -framework Foundation \
+    -framework UIKit -framework QuartzCore -framework CoreGraphics -framework CoreImage -framework Foundation -framework Security \
     -o "$OUT/ModSettingsHarness.app/ModSettingsHarness"
 
 cat > "$OUT/ModSettingsHarness.app/Info.plist" <<'PLIST'

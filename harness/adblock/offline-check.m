@@ -368,6 +368,7 @@ static int reviewRegressions(const char *libraryPath) {
     void (*admit)(bool) = dlsym(library, "SGTestSetAdmitted");
     void (*observe)(dispatch_block_t) = dlsym(library, "SGTestSetAdmissionObserver");
     admit(true);
+    dispatch_sync(offlineInstallQueue, ^{});
     [stream URLSession:session dataTask:(id)task didReceiveData:suffix];
     [stream URLSession:session task:task didCompleteWithError:nil];
     check([stream.body isEqual:join(prefix, suffix)], @"R3 late loading cannot rewrite a partial stream");
@@ -414,6 +415,7 @@ static void realTransformerCases(void *library, void (*admit)(bool), BOOL legacy
     check(legacy ? withStatus == NULL : withStatus != NULL, @"real companion has the requested exported ABI");
     for (NSNumber *allowed in @[@NO, @YES]) {
         admit(allowed.boolValue);
+        dispatch_sync(offlineInstallQueue, ^{});
         for (NSNumber *valid in @[@NO, @YES]) {
             NSData *input = valid.boolValue ? account(NO) : hex("0a00");
             if (withStatus) {
@@ -426,8 +428,9 @@ static void realTransformerCases(void *library, void (*admit)(bool), BOOL legacy
             }
             BOOL recognized = NO;
             NSData *host = SGPatchOfflineAccountAttributes(input, &recognized);
-            check(recognized == (!legacy && valid.boolValue), @"host consumes real recognition, including rejected hosts");
-            if (valid.boolValue && allowed.boolValue)
+            BOOL usable=!legacy && valid.boolValue && allowed.boolValue;
+            check(recognized == usable, @"host trusts recognition only from an admitted provider");
+            if (usable)
                 attributesMatch(host, 2, YES, NO, NO);
             else check(host == input, @"host preserves the real transformer's no-op object");
             NSURL *url = [NSURL URLWithString:[urlFor(2).absoluteString stringByAppendingFormat:@"?real-schema=%d&admission=%d",
@@ -435,8 +438,8 @@ static void realTransformerCases(void *library, void (*admit)(bool), BOOL legacy
             AttributeDelegate *live = receive(SPTCoreURLSessionDataDelegate.class, url, 200, input, nil);
             check([live.body isEqual:host], @"delegate uses real companion output");
             AttributeDelegate *replay = receive(SPTCoreURLSessionDataDelegate.class, url, 304, nil, nil);
-            if (!legacy && valid.boolValue)
-                check(replay.status == 200 && [replay.body isEqual:host], @"recognized real input is replayable independently of admission");
+            if (usable)
+                check(replay.status == 200 && [replay.body isEqual:host], @"recognized input from admitted host is replayable");
             else check(replay.status == 304 && !replay.body.length, @"unrecognized or old-symbol-only input cannot seed replay");
         }
     }
@@ -543,25 +546,25 @@ int main(int argc, const char **argv) {
         realTransformerCases(library, admit, getenv("OLD_COMPANION") != NULL);
         if (getenv("OLD_COMPANION")) {
             admit(true);
+            dispatch_sync(offlineInstallQueue, ^{});
+            check(!dlsym(library,"SAPRuntimeProfileAdmitted") && !SGOfflineCompanionLoaded(), @"pre-admission ABI cannot enable offline hooks");
             for (NSUInteger shape = 0; shape < 3; shape++) {
                 AttributeDelegate *live = receive(SPTCoreURLSessionDataDelegate.class, urlFor(shape), 200, envelope(account(NO), shape), nil);
-                attributesMatch(live.body, shape, shape == 2, NO, NO);
+                attributesMatch(live.body, shape, NO, NO, NO);
                 check(receive(SPTCoreURLSessionDataDelegate.class, urlFor(shape), 304, nil, nil).status == 304,
                       @"old companion cannot certify cache recognition");
             }
+            printf("legacy companion without admission export: %u failures\n",failures);
             return failures ? 1 : 0;
         }
-        protocolCases(YES, NO);
-        // The rejected server bytes are cached; admission must be checked again at replay.
+        protocolCases(NO, NO);
+        // A response received without admission must not seed a future replay.
+        [offlineInputs removeAllObjects];
+        receive(SPTDataLoaderService.class, urlFor(2), 200, envelope(account(YES), 2), nil);
         admit(true);
-        for (NSUInteger shape = 2; shape < 3; shape++) {
-            // Seed a valid rejected response after the malformed-body cases.
-            admit(false);
-            receive(SPTDataLoaderService.class, urlFor(shape), 200, envelope(account(YES), shape), nil);
-            admit(true);
-            AttributeDelegate *replay = receive(SPTDataLoaderService.class, urlFor(shape), 304, nil, nil);
-            attributesMatch(replay.body, shape, YES, premium && shape != 2, YES);
-        }
+        dispatch_sync(offlineInstallQueue, ^{});
+        AttributeDelegate *replay = receive(SPTDataLoaderService.class, urlFor(2), 304, nil, nil);
+        check(replay.status==304 && !replay.body.length, @"rejected input did not seed a cache");
         protocolCases(YES, YES);
         splitCases(YES);
         completionCases();

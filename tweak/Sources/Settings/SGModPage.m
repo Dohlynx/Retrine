@@ -1116,7 +1116,7 @@ static void light(UITableViewCell *cell, NSTimeInterval hold, NSTimeInterval fad
     }
     // A switch is seen when it is flipped and a menu when it is picked from, not when their row is touched.
     if (!row.key && !row.readSwitch && !row.menu && markSeen(row)) dropNew([table cellForRowAtIndexPath:path], row);
-    if (row.page) [self.navigationController pushViewController:row.page() animated:YES];
+    if (row.page) SGShowPage(self,row.page());
     if (!row.action) return;
     row.action();
     [table deselectRowAtIndexPath:path animated:YES];

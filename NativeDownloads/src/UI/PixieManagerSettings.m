@@ -15,6 +15,7 @@
 #import "TrackJournal.h"
 #import "TrackDownload.h"
 #import "GitHubIcon.h"
+#import "PixiePageNavigation.h"
 #import "PixiePageController.h"
 #include <math.h>
 
@@ -555,7 +556,7 @@ static UITableViewCell *SAPPlainSettingsCell(NSString *label,NSString *value) {
     if(index.section==3 && index.row==3){[SAPSettingsActions perform:SAPSettingsResetJournal];return;}
     if(index.section==1) {
         if(self.checkingCompatibility)return;
-        if(index.row==2){[self.navigationController pushViewController:[SAPOfflineDevicesSettings new] animated:YES];return;}
+        if(index.row==2){SAPShowPixiePage(self,[SAPOfflineDevicesSettings new]);return;}
         if(index.row==1) {
             self.checkingCompatibility=YES;[self.tableView reloadData];
             [SAPSettingsActions refreshDownloadCompatibility:^(NSDictionary *result){
@@ -580,7 +581,7 @@ static UITableViewCell *SAPPlainSettingsCell(NSString *label,NSString *value) {
     }
     if(index.section==3 && index.row==1) {
         SAPDetailsSettings *page=[SAPDetailsSettings new];
-        [self.navigationController pushViewController:page animated:YES];return;
+        SAPShowPixiePage(self,page);return;
     }
     SAPSettingsAction action;
     if(index.section==0) {
@@ -628,7 +629,7 @@ static UITableViewCell *SAPPlainSettingsCell(NSString *label,NSString *value) {
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index {
     [table deselectRowAtIndexPath:index animated:YES];
-    if(index.row==0)[self.settingsHost.navigationController pushViewController:[SAPDownloadsSettings new] animated:YES];
+    if(index.row==0)SAPShowPixiePage(self.settingsHost,[SAPDownloadsSettings new]);
 }
 @end
 

@@ -14,6 +14,7 @@
 #import "../UI/ArtistDownloadComponents.h"
 #import "../UI/ArtistListAppearance.h"
 #import "PixiePageController.h"
+#import "PixiePageNavigation.h"
 #import <QuartzCore/QuartzCore.h>
 
 static NSString * const SAPOfflineUnknownArtist = @"Unknown artist";
@@ -865,15 +866,19 @@ static NSString *SAPOfflineReleaseKey(NSDictionary *row) {
     SAPOfflineLibraryController *next = SAPOfflineLibraryController.new; next.state = self.state;next.artistKey=self.artistKey;
     if (self.level == 0) { NSDictionary *artist = [self artists][indexPath.row]; next.level = 1; next.pageTitle = artist[@"name"]; next.artistKey = artist[@"key"]; next.scope = artist[@"tracks"]; next.releaseSections = [next buildReleaseSections]; }
     else { NSDictionary *release = self.releaseSections[indexPath.section][@"releases"][indexPath.row]; next.level = 2; next.pageTitle = release[@"name"]; next.releaseKey = release[@"key"]; next.scope = release[@"tracks"]; }
-    next.title = next.pageTitle; [self.navigationController pushViewController:next animated:YES];
+    next.title = next.pageTitle; SAPShowPixiePage(self,next);
 }
 @end
 
 void SAPShowOfflineLibrary(UIViewController *presenter) {
     if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{SAPShowOfflineLibrary(presenter);});return;}
     UINavigationController *navigation=presenter.navigationController;
-    if(!navigation || presenter.presentedViewController)return;
-    SAPOfflineLibraryState *state=SAPOfflineLibraryState.new;state.navigation=navigation;state.originalToolbarHidden=navigation.toolbarHidden;
+    if(presenter.presentedViewController)return;
+    SAPOfflineLibraryState *state=SAPOfflineLibraryState.new;
     SAPOfflineLibraryController *root=SAPOfflineLibraryController.new;root.state=state;root.level=0;root.title=SAPL(@"settings.pixie.library.title",@"Downloaded tracks");state.root=root;
-    [navigation pushViewController:root animated:YES];
+    BOOL push=SAPCanPushPage(navigation,root);
+    if(!push)navigation=SAPFallbackPageStack(root);
+    state.navigation=navigation;state.originalToolbarHidden=navigation.toolbarHidden;
+    if(push)[navigation pushViewController:root animated:YES];
+    else [presenter presentViewController:navigation animated:YES completion:nil];
 }

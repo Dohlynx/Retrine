@@ -15,6 +15,12 @@ the exact short version, bundle build, main UUID and SpotifyShared UUID.
 IPA packaging may patch a 9.2.0 executable. Jailbreak remains 9.1.90-only.
 Changing the profile's enabled flag is not runtime-layout verification.
 
+**Minimum companion for Retrine’s offline delegates:** the bundled Pixie 1.4
+build that exports `SAPRuntimeProfileAdmitted` and an offline attribute
+transformer. The ABI matters: older builds can also identify as 1.4. A
+transformer alone does not enable the delegates, even on a supported Spotify
+version. Install the matching tweak and companion together, as shipped in the IPA.
+
 IPA builds include Pixie by default and require an enabled exact profile.
 The primary 9.2.0 artifact is
 `out/retrine-<version>-pixie.ipa`; the compatibility artifact is

@@ -41,6 +41,15 @@
 
 // A page of the search's own: rows whose titles stand in for real settings, and one row that opens a page under it.
 // The real SGSettingsResults and the real UISearchController are what the checks drive.
+@interface SGSearchFixturePage : SGModPage
+@property(nonatomic,strong) UINavigationController *fallback;
+@end
+@implementation SGSearchFixturePage
+- (void)presentViewController:(UIViewController *)page animated:(BOOL)animated completion:(void (^)(void))completion {
+    if ([page isKindOfClass:UINavigationController.class]) self.fallback=(id)page;
+    else [super presentViewController:page animated:animated completion:completion];
+}
+@end
 static SGModPage *searchHarnessPage(void) {
     SGModRow *plain = SGModRow.new;
     plain.title = @"Plain row";
@@ -50,9 +59,12 @@ static SGModPage *searchHarnessPage(void) {
     under.key = @"spotifyglass.harness.search.second";
     SGModRow *page = SGPageRow(@"Live Activity", ^UIViewController *{ return nil; });
     page.searchIdentifier = @"page.liveactivity";
-    return [[SGModPage alloc] initWithTitle:@"Search" intro:nil sections:@[
+    SGModRow *foreign = SGPageRow(@"Pixie Download Manager", ^UIViewController *{
+        UIViewController *result=[UIViewController new];result.title=@"Unregistered page";return result;
+    });
+    return [[SGSearchFixturePage alloc] initWithTitle:@"Search" intro:nil sections:@[
         SGSection(nil, @[plain]),
-        SGSection(nil, @[page]),
+        SGSection(nil, @[page,foreign]),
     ] footer:nil];
 }
 
@@ -114,6 +126,15 @@ static NSUInteger searchControllerChecks(void) {
     // Up again with nothing typed: the table comes back, the recents with it.
     search.showsSearchResultsController = YES;
     check([table.dataSource tableView:table numberOfRowsInSection:0] == 2, @"up again, the recents are shown once more");
+
+    search.searchBar.text=@"Pixie Download Manager";
+    [updater updateSearchResultsForSearchController:search];
+    if ([table.dataSource tableView:table numberOfRowsInSection:1]==1) {
+        [table.delegate tableView:table didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:1]];
+        [search.delegate didDismissSearchController:search];
+        check(nav.topViewController==page && [((SGSearchFixturePage *)page).fallback.topViewController.title isEqual:@"Unregistered page"],
+              @"nonconforming search destination is presented outside the host stack");
+    }else check(NO,@"Pixie row is indexed");
 
     SGSearchForgetRecents();
     window.hidden = YES;

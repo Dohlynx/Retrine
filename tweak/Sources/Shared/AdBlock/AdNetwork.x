@@ -642,7 +642,7 @@ static NSURLRequest *unconditional(NSURLRequest *request) {
 
 typedef void (^SGDataCompletion)(NSData *, NSURLResponse *, NSError *);
 static NSURLRequest *offlineRequest(NSURLRequest *request) {
-    if (!isOfflineConfig(request.URL)) return request;
+    if (!isOfflineConfig(request.URL) || !SGOfflineCompanionLoaded()) return request;
     NSMutableURLRequest *plain = [request mutableCopy];
     [plain setValue:nil forHTTPHeaderField:@"If-None-Match"];
     [plain setValue:nil forHTTPHeaderField:@"If-Modified-Since"];
@@ -815,6 +815,9 @@ static void offlineImageAdded(const struct mach_header *image, intptr_t slide) {
     // A verified provider is pinned. Only a miss needs replay and future add-image notifications.
     if (!installOfflineHooks()) {
         offlineInstallQueue = dispatch_queue_create("com.retrine.offline-loader", DISPATCH_QUEUE_SERIAL);
+        [NSNotificationCenter.defaultCenter addObserverForName:@"SAPOfflineProfileReady" object:nil queue:nil usingBlock:^(NSNotification *note){
+            dispatch_async(offlineInstallQueue, ^{ installOfflineHooks(); });
+        }];
         _dyld_register_func_for_add_image(offlineImageAdded);
     }
 }
