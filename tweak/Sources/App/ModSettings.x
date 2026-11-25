@@ -378,9 +378,11 @@ static BOOL isSettingsRoot(UIViewController *list) {
 %end
 
 // The drawer's list (trees/test6.txt: SideDrawerListCollectionView under the profile header, Your
-// plan its first cell) is one of several collection views on the page, so it is known by its private
-// class, looked up once at launch. Another file holds a class of the same name, so only that class
-// counts, and the list gets its row on its first layout, even before its controller's.
+// plan its first cell) is one of several collection views on the page, so it is found by name, and
+// its class is kept for the list's own layout below to know it by. Spotify 9.1.90 and 9.2.0 both
+// hold two classes of that name (hashes 1D8CA7A9… and EC26843C…) and the drawer shows EC26843C…,
+// which is looked up at launch so the list gets its row on its first layout, even before its
+// controller's; the controller still records whichever one it holds.
 static Class sg_drawerList;
 
 // Spotify can take the list's subviews away and fill it again while keeping the list itself, so a
@@ -398,9 +400,9 @@ static void attachDrawerRow(UICollectionView *list) {
 %hook _TtC23SideDrawer_ListPageImpl18ListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (!sg_drawerList) return;
     SGForEachView(((UIViewController *)self).view, ^(UIView *v) {
-        if (![v isKindOfClass:sg_drawerList]) return;
+        if (![v isKindOfClass:UICollectionView.class] || ![NSStringFromClass(v.class) containsString:@"SideDrawerListCollectionView"]) return;
+        sg_drawerList = v.class;
         attachDrawerRow((UICollectionView *)v);
     });
 }
@@ -421,7 +423,7 @@ static void attachDrawerRow(UICollectionView *list) {
 %end
 
 %ctor {
-    sg_drawerList = SGFileprivateViewClass("_TtC23SideDrawer_ListPageImplP33_1D8CA7A9CC41E8D184AF8B9AAE4E684E28SideDrawerListCollectionView", UICollectionView.class);
+    sg_drawerList = SGFileprivateViewClass("_TtC23SideDrawer_ListPageImplP33_EC26843CE7F7B34D401C435D0D00839328SideDrawerListCollectionView", UICollectionView.class);
     %init;
     SGRequireClasses(@[@"_TtC21Settings_PlatformImpl26SettingsListViewController", @"_TtC23SideDrawer_ListPageImpl18ListViewController"]);
     SGRegisterPages();
