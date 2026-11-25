@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from zipfile import ZipFile
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -22,6 +23,14 @@ import patch_imports as audio
 
 
 class HeldProfile(unittest.TestCase):
+    def test_matching_layout_with_disabled_admission_is_never_patchable(self):
+        disabled = replace(V9190, enabled=False)
+        info = {"CFBundleShortVersionString": disabled.version, "CFBundleVersion": disabled.build}
+        with patch("pixie_target.TARGETS", (disabled,)):
+            for options in ({}, {"require_enabled": False}, {"jailbreak": True, "require_enabled": False}):
+                with self.subTest(options=options), self.assertRaises(ValueError):
+                    select_profile(info, disabled.main_uuid, disabled.shared_uuid, **options)
+
     def test_unqualified_layout_cannot_be_selected(self):
         info = {"CFBundleShortVersionString": "9.2.2", "CFBundleVersion": "920202587"}
         main = bytes.fromhex("bedf0071845d39bbb2d096f9a8095e66")
