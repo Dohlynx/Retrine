@@ -115,16 +115,27 @@ V9190 = load_target(ROOT / "targets/spotify-9.1.90.json")
 V9200 = load_target(ROOT / "targets/spotify-9.2.0.json")
 PROFILES = (V9190, V9200)
 
+# Identity only: never hand an unqualified layout to patchers, even for a static build.
+def _held_targets():
+    data = json.loads((ROOT / "targets/spotify-9.2.2.json").read_text())
+    key = (data["spotify_version"], data["spotify_build"],
+           bytes.fromhex(data["uuid"]), bytes.fromhex(data["shared_uuid"]))
+    return {key: data["admission"]["reason"]}
+
+
+HELD_TARGETS = _held_targets()
+
 def artifact_name(mod_version, profile=None):
     suffix = "" if profile is None else "-pixie" + ("" if profile.primary else f"-spotify-{profile.version}")
     return f"retrine-{mod_version}{suffix}.ipa"
 
 
 def select_profile(info, main_uuid, shared_uuid, *, require_enabled=True, jailbreak=False):
+    key = (info.get("CFBundleShortVersionString"), str(info.get("CFBundleVersion")), main_uuid, shared_uuid)
+    if key in HELD_TARGETS:
+        raise ValueError(f"Pixie disabled for Spotify {key[0]} ({key[1]}): {HELD_TARGETS[key]}")
     for profile in PROFILES:
-        if (info.get("CFBundleShortVersionString"), str(info.get("CFBundleVersion")),
-                main_uuid, shared_uuid) == (
-                profile.version, profile.build, profile.main_uuid, profile.shared_uuid):
+        if key == (profile.version, profile.build, profile.main_uuid, profile.shared_uuid):
             if jailbreak and not profile.jailbreak:
                 raise ValueError("Jailbreak Pixie supports only the exact Spotify 9.1.90 profile")
             if require_enabled and not profile.enabled:

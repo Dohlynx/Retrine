@@ -1,0 +1,20 @@
+{
+  "spotify_version": "9.2.2",
+  "spotify_build": "920202587",
+  "uuid": "bedf0071845d39bbb2d096f9a8095e66",
+  "shared_uuid": "527ccb30a88f3dadb1b985336d3bcad6",
+  "primary": false,
+  "admission": {
+    "enabled": false,
+    "jailbreak": false,
+    "runtime_layout_verified": false,
+    "reservation_counters_verified": false,
+    "reason": "Native patch sites and manager layout have not been qualified for the Retrine companion"
+  },
+  "provenance": {
+    "repository": "EeveeSpotifyReincarnated",
+    "commit": "8c080468989d9ae1cc5b8ce1787815bd9907c3bb",
+    "license": "GPL-3.0",
+    "scope": "Upstream port reference only. Version, build and both image UUIDs were independently read from the clean IPA. No executable layout is admitted."
+  }
+}

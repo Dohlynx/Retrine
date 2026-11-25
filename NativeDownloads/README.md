@@ -11,6 +11,7 @@ the exact short version, bundle build, main UUID and SpotifyShared UUID.
 | --- | --- | --- | --- |
 | 9.1.90 | 919002269 | Enabled | Verified old target |
 | 9.2.0 | 920002054 | Primary IPA enabled | Runtime admitted using pinned Eevee layout and static setter proofs below |
+| 9.2.2 | 920202587 | Not admitted | Retrine IPA only (`PIXIE=0`); no locally qualified native layout |
 
 IPA packaging may patch a 9.2.0 executable. Jailbreak remains 9.1.90-only.
 Changing the profile's enabled flag is not runtime-layout verification.

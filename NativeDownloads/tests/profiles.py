@@ -21,6 +21,18 @@ import patch_native_trace as trace
 import patch_imports as audio
 
 
+class HeldProfile(unittest.TestCase):
+    def test_unqualified_layout_cannot_be_selected(self):
+        info = {"CFBundleShortVersionString": "9.2.2", "CFBundleVersion": "920202587"}
+        main = bytes.fromhex("bedf0071845d39bbb2d096f9a8095e66")
+        shared = bytes.fromhex("527ccb30a88f3dadb1b985336d3bcad6")
+        for options in ({}, {"require_enabled": False}, {"jailbreak": True}):
+            with self.assertRaisesRegex(ValueError, "Pixie disabled for Spotify 9.2.2"):
+                select_profile(info, main, shared, **options)
+        with self.assertRaisesRegex(ValueError, "No exact Pixie profile"):
+            select_profile(info, main, main)
+
+
 class StaticProfile(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

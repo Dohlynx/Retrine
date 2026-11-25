@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Spotify-9.1.90%20%7C%209.2.0-1ED760?style=for-the-badge&logo=spotify&logoColor=white" alt="Spotify 9.1.90 | 9.2.0">
+  <img src="https://img.shields.io/badge/Spotify-9.1.90%20%7C%209.2.0%20%7C%209.2.2-1ED760?style=for-the-badge&logo=spotify&logoColor=white" alt="Spotify 9.1.90 | 9.2.0 | 9.2.2">
   <img src="https://img.shields.io/badge/Redesign-iOS%2026%2B-000000?style=for-the-badge&logo=apple&logoColor=white" alt="재설계: iOS 26+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge" alt="라이선스: GPL-3.0"></a>
 </p>
@@ -118,11 +118,11 @@ Spotify 화면을 직접 그리지 않는 기능(광고, 개인정보 보호, �
 
 | | |
 |---|---|
-| Spotify | **9.1.90** 또는 **9.2.0**(배포 기준 버전)의 복호화된 IPA. 다른 버전에서는 경고를 표시하지만 실행을 막지는 않습니다. |
+| Spotify | **9.1.90**, **9.2.0**(배포 기준 버전), **9.2.2**(Pixie 제외)의 복호화된 IPA. 다른 버전에서는 경고를 표시하지만 실행을 막지는 않습니다. |
 | 재설계 화면 | **iOS 26 이상** |
 | Spotify 기본 화면 | iOS 16.1 이상 |
 | Live Activity | iOS 17 이상 |
-| WireGuard / 프록시 | Spotify 9.1.90 또는 9.2.0, 프록시 라우팅은 iOS 17 이상 |
+| WireGuard / 프록시 | Spotify 9.1.90, 9.2.0 또는 9.2.2. 프록시 라우팅은 iOS 17 이상 |
 
 이 모드는 Spotify 내부 클래스를 후킹하는데, 이 클래스들은 버전마다 바뀝니다. 그래서 다른 버전은 빌드는
 되더라도 동작이 깨질 수 있습니다. 재설계 화면은 iOS 26부터 있는 `UIGlassEffect`를 씁니다. 그보다 낮은
@@ -150,7 +150,7 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 | Where to put the result | `artifacts` | `artifacts`, `filebin`, `both` 중 선택. filebin을 고르면 실행 요약에 filebin.net 링크가 표시되며, 며칠 동안 쓰지 않으면 삭제됩니다. |
 | Remove every app extension (PlugIns/) | 꺼짐 | IPA에서 앱 확장을 모두 제거합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 | Include app-local WireGuard / proxy | 켜짐 | 라우팅 요구 사항은 [WireGuard](#wireguard--프록시) 항목을 참고하세요. |
-| Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0 또는 9.1.90 빌드와 정확히 일치해야 합니다. |
+| Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0 또는 9.1.90 빌드와 정확히 일치해야 합니다. 9.2.2에서는 선택을 해제하세요(로컬 빌드: `PIXIE=0`). |
 | Bundle ID | `app.retrine.player` | 서명할 App ID와 같아야 하며, 앱 확장 ID도 이를 따라갑니다. Spotify의 ID를 유지하려면 `com.spotify.client`를 직접 입력합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 
 내려받은 파일은 먼저 검사하므로, HTML 로그인 페이지나 중간에 끊긴 파일이면 바로 실패합니다.

@@ -22,6 +22,9 @@ The direct pipeline includes Pixie unless given `--no-pixie` or `PIXIE=0`.
 Packaging accepts the exact decrypted Spotify **9.2.0** (`920002054`) and
 **9.1.90** (`919002269`) profiles. Main and SpotifyShared UUIDs are recorded in
 `NativeDownloads/targets/spotify-9.2.0.json` and `spotify-9.1.90.json`.
+Spotify **9.2.2** (`920202587`) is supported **without Pixie**. Use
+`make release IPA=ipa/Spotify-9.2.2.ipa PIXIE=0`. Requesting Pixie fails before
+packaging; the WireGuard allowlist does not admit a Pixie companion.
 Version, build, both UUIDs, instruction windows, import bindings and unused executable
 padding are checked before the base build; requested Pixie mismatches fail closed.
 
