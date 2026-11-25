@@ -95,11 +95,13 @@ The log says what the redesign answered with.
 2.5 s its first frame was ready and it had faded in and was playing, and that taken out of the window at 4.5 s it
 stopped and put back it played again.
 
-`bash harness/album/motion-visibility.sh <simulator UUID>` checks the album and artist clips with a generated
-local video. After the viewport checks it overrides the process's thermal and Low Power Mode readings and
-posts their notifications off main. Both the clip's playback rate and the Fluid layer's moving state must
-stop at Serious or Critical, return at Nominal or Fair, and stop in Low Power Mode alone. This checks the
-response to a reported state, not actual device temperature.
+`bash harness/album/motion-visibility.sh` creates a temporary CI simulator; locally pass the booted Vitrine UUID. With
+Pillow and ffmpeg it builds a numbered 720px clip. The host samples the composited album and artist
+headers through a cancelled and completed interactive pop, a held seek, failed seek and delayed AV surface;
+the resumed video itself must match the crop, number and scrim seen before the push. It also exercises
+replacement, failed capture, warnings, backgrounding, clipping, coverage, Reduce Motion and the Fluid
+layer and clip's response to thermal and Low Power Mode changes posted off main. The final reading
+compares the same five stacked pages with and without their stills and checks queue and output teardown.
 
 `SGLog` goes to the unified log rather than stdout, so the redesign's own lines are read with
 

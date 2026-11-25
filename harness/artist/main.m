@@ -412,6 +412,10 @@ static void verifyTitle(UIView *root, BOOL rtl) {
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"motion-visibility"]) {
+        motionVisibilityCheck(self.window, YES);
+        return YES;
+    }
     CGFloat W = self.window.bounds.size.width, H = self.window.bounds.size.height;
     BOOL collapsed = [NSProcessInfo.processInfo.arguments containsObject:@"collapsed"];
     BOOL late = [NSProcessInfo.processInfo.arguments containsObject:@"late"];
@@ -687,7 +691,6 @@ static void verifyTitle(UIView *root, BOOL rtl) {
               pinned ? NSStringFromCGRect(pinned.frame) : @"MISSING", pinned.alpha);
     });
     UIView *rootView = root.view;
-    motionVisibilityCheck(rootView, YES);
     if ([NSProcessInfo.processInfo.arguments containsObject:@"verify-play"])
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ verifyPlay(rootView); });
     if ([NSProcessInfo.processInfo.arguments containsObject:@"verify-title"]) {

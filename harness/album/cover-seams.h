@@ -9,4 +9,5 @@ void SGRAlbumTestRowMatcher(NSString *artist, NSString *album, CGFloat pixels, v
 void SGRAlbumTestPoster(NSURL *file, void (^done)(UIImage *));
 BOOL SGRAlbumTestStillRead(UIImage *image, void (^done)(SGRCoverReading *));
 AVPlayerLayer *SGRAlbumTestPlayerLayer(AVPlayer *player);
+Class SGRAlbumTestClipClass(void);
 NSCache *SGRAlbumTestRenderCache(void);

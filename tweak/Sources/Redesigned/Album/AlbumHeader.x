@@ -29,6 +29,7 @@
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Redesigned/Kit/SGRMotionBudget.h"
+#import "Redesigned/Kit/SGRHeaderClip.h"
 #import "Redesigned/Player/Player.h"
 #import "Redesigned/Kit/SGRCoverRead.h"
 #import "Redesigned/Kit/SGRCoverViewer.h"
@@ -444,10 +445,11 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
     __weak UIView *_motionPage;
     NSString *_motionRelease;
     NSUInteger _motionGeneration;
-    AVPlayerLayer *_motion;
-    AVQueuePlayer *_player;
+    CALayer *_motion;
+    SGRHeaderClip *_clip;
+    SGRHeaderPage *_clipPage;
     NSHashTable *_motionScrolls;
-    AVPlayerLooper *_looper;
+    BOOL _resigning, _background;
     // The picture-aware cover, on with the Full screen cover only; none of the below is used otherwise.
     BOOL _adaptive;
     SGRCoverReading *_coverReading, *_stillReading;   // the cover's, and its animated cover's first frame's
@@ -461,7 +463,6 @@ static SGRCoverRender *renderCover(UIImage *cover, SGRCoverDrawing d) {
     BOOL _colorWaitBegun, _colorWaitOver;
 }
 
-static void *kReadyContext = &kReadyContext;
 static char kScrollContext;
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -511,8 +512,13 @@ static char kScrollContext;
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     [center addObserver:self selector:@selector(sgr_updateMotion) name:SGRPlayerVisibilityDidChangeNotification object:nil];
     [center addObserver:self selector:@selector(sgr_fieldColorDidChange) name:SGRFieldColorDidChangeNotification object:nil];
+    __weak SGRAlbumHero *weakHero = self;
+    _clipPage = [[SGRHeaderPage alloc] initWithRefresh:^{ [weakHero sgr_updateMotion]; }];
+    [center addObserver:self selector:@selector(sgr_updateMotion) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
     for (NSNotificationName name in @[UIApplicationDidBecomeActiveNotification, UIApplicationWillResignActiveNotification,
-                                      NSProcessInfoPowerStateDidChangeNotification, NSProcessInfoThermalStateDidChangeNotification,
+                                      UIApplicationDidEnterBackgroundNotification])
+        [center addObserver:self selector:@selector(sgr_appState:) name:name object:nil];
+    for (NSNotificationName name in @[NSProcessInfoPowerStateDidChangeNotification, NSProcessInfoThermalStateDidChangeNotification,
                                       UIAccessibilityReduceMotionStatusDidChangeNotification,
                                       UIAccessibilityVideoAutoplayStatusDidChangeNotification]) {
         [center addObserver:self selector:@selector(sgr_updateMotionSoon) name:name object:nil];
@@ -655,7 +661,7 @@ static char kScrollContext;
     if (!CGSizeEqualToSize(_shadow.bounds.size, card.size))
         _shadow.shadowPath = [UIBezierPath bezierPathWithRoundedRect:(CGRect){CGPointZero, card.size} cornerRadius:kSquareRadius].CGPath;
     _shadow.frame = CGRectOffset(card, 0, self.stretch);
-    _motion.frame = bounds;
+    [_clip setFrame:bounds];
     [self sgr_updateMotion];
     if (_adaptive) {
         [self sgr_placeRender];
@@ -956,26 +962,18 @@ static char kScrollContext;
 // with nothing in it, and the clip cut in after it.
 - (void)showMotion:(NSURL *)file {
     [self sgr_dropMotion];
-    AVPlayerItem *item = [AVPlayerItem playerItemWithURL:file];
-    _player = [AVQueuePlayer new];
-    _player.muted = YES;
-    _player.preventsDisplaySleepDuringVideoPlayback = NO;
-    // A file on the phone: nothing to buffer against, so it starts as soon as it can.
-    _player.automaticallyWaitsToMinimizeStalling = NO;
-    _looper = [AVPlayerLooper playerLooperWithPlayer:_player templateItem:item];
-    _motion = [AVPlayerLayer playerLayerWithPlayer:_player];
-    _motion.videoGravity = AVLayerVideoGravityResizeAspectFill;
+    __weak SGRAlbumHero *weakSelf = self;
+    _clip = [[SGRHeaderClip alloc] initWithFile:file appearance:^(BOOL shown, BOOL entrance) {
+        [weakSelf sgr_motionShown:shown entrance:entrance];
+    }];
+    _motion = _clip.layer;
     _motion.zPosition = 0.5;
-    _motion.frame = self.restBounds;
-    _motion.opacity = 0;
+    [_clip setFrame:self.restBounds];
     [self.content.layer addSublayer:_motion];
     [self sgr_fitVeil];
-    [_motion addObserver:self forKeyPath:@"readyForDisplay" options:NSKeyValueObservingOptionInitial context:kReadyContext];
     _motionScrolls = [NSHashTable weakObjectsHashTable];
-    __weak SGRAlbumHero *weakSelf = self;
     SGRObserveVisibility(self, ^{ [weakSelf sgr_motionHierarchyChanged]; });
     [self sgr_motionHierarchyChanged];
-    if (_adaptive) [self sgr_readStill:file];
     SGLog(@"redesign album: animated cover %@", file.lastPathComponent);
 }
 
@@ -985,12 +983,8 @@ static char kScrollContext;
         SGRBindViewportScrolls(nil, _motionScrolls, self, &kScrollContext);
         _motionScrolls = nil;
     }
-    [_player pause];
-    [_looper disableLooping];
-    _looper = nil;
-    _player = nil;
-    [_motion removeObserver:self forKeyPath:@"readyForDisplay" context:kReadyContext];
-    [_motion removeFromSuperlayer];
+    [_clip invalidate];
+    _clip = nil;
     _motion = nil;
     _stillFile = nil;
     _stillReading = nil;
@@ -1005,27 +999,21 @@ static char kScrollContext;
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
     if (context == &kScrollContext) { [self sgr_updateMotion]; return; }
-    if (context != kReadyContext) {
-        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
-        return;
-    }
-    __weak SGRAlbumHero *weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf sgr_fadeInMotion:object]; });
+    [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
 }
 
 // Once, when the clip has a frame to show: over 0.2 s on a curve most of the way there at once (the Kit's response,
 // an entrance being quick), on screen; at once off it.
-- (void)sgr_fadeInMotion:(AVPlayerLayer *)layer {
-    if (layer != _motion || !layer.readyForDisplay || layer.opacity == 1) return;
+- (void)sgr_motionShown:(BOOL)shown entrance:(BOOL)entrance {
+    if (shown && _adaptive && !_stillFile) [self sgr_readStill:_clip.file];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    layer.opacity = 1;
     [self sgr_fitVeil];
     // A square cover's hero gains the full-bleed surface only once the clip is ready.
-    NSArray<CALayer *> *fading = SGRPageFullCover(SGRKeyAlbumFullCover) ? @[layer] : @[layer, self.scrim];
-    self.scrim.hidden = NO;
+    NSArray<CALayer *> *fading = SGRPageFullCover(SGRKeyAlbumFullCover) ? @[_motion] : @[_motion, self.scrim];
+    if (shown) self.scrim.hidden = NO;
     [self setNeedsLayout];
-    if (self.window) {
+    if (entrance && self.window && !SGRReduceMotion()) {
         CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
         fade.fromValue = @0;
         fade.toValue = @1;
@@ -1043,17 +1031,25 @@ static char kScrollContext;
     dispatch_async(dispatch_get_main_queue(), ^{ [self sgr_updateMotion]; });
 }
 
+- (void)sgr_appState:(NSNotification *)note {
+    _resigning = ![note.name isEqual:UIApplicationDidBecomeActiveNotification];
+    _background = [note.name isEqual:UIApplicationDidEnterBackgroundNotification];
+    [self sgr_updateMotion];
+}
+
 // The clip moves under the conditions the player's does (Player/PlayerMotion.x), and only with Auto-Play
 // Video Previews on; otherwise it holds its frame. Off screen it stops: an album page left on the
 // navigation stack would otherwise keep decoding.
 - (void)sgr_updateMotion {
-    if (!_player) return;
-    BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    BOOL may = SGMotionHeaderMayPlay(SGRViewInViewport(self, SGRSettledPlayerRect(self.window)), front, SGRReduceMotion(),
+    [_clipPage bindHeader:self];
+    if (!_clip) return;
+    UIApplicationState state = UIApplication.sharedApplication.applicationState;
+    BOOL front = !_resigning && state == UIApplicationStateActive;
+    BOOL visible = !_background && state != UIApplicationStateBackground &&
+                   [_clipPage visibleInViewport:SGRViewInViewport(self, SGRSettledPlayerRect(self.window))];
+    BOOL may = SGMotionHeaderMayPlay(visible, front, SGRReduceMotion(),
                                    SGRMotionHeldForPowerOrHeat(), UIAccessibilityIsVideoAutoplayEnabled());
-    if (may != (_player.rate != 0)) {
-        if (may) [_player play]; else [_player pause];
-    }
+    [_clip updateVisible:visible active:front mayPlay:may];
 }
 
 - (void)sgr_motionHierarchyChanged {

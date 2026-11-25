@@ -480,6 +480,11 @@ static NSString *trailingLabel(UIView *root) {
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"motion-visibility"]) {
+        self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        motionVisibilityCheck(self.window, NO);
+        return YES;
+    }
     if ([NSProcessInfo.processInfo.arguments containsObject:@"download-background"]) {
         self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
         self.window.rootViewController = [UIViewController new];
@@ -1024,7 +1029,6 @@ static NSString *trailingLabel(UIView *root) {
         at(7, ^{ [trailingButton(rootView) sendActionsForControlEvents:UIControlEventTouchUpInside]; });
     }
 
-    motionVisibilityCheck(root.view, NO);
     // `motion`: Apple Music's animated cover, HARNESS_CANVAS_FILE (any mp4), handed to the hero at 2 s as the
     // catalog would hand it. The clip stays transparent until its first frame is decoded and then fades in;
     // it plays in a window and stops out of one.
@@ -1045,13 +1049,13 @@ static NSString *trailingLabel(UIView *root) {
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
             if (hero && path) [hero performSelector:NSSelectorFromString(@"showMotion:") withObject:[NSURL fileURLWithPath:@(path)]];
 #pragma clang diagnostic pop
-            AVPlayerLayer *clip = [hero valueForKey:@"_motion"];
+            AVPlayerLayer *clip = [hero valueForKeyPath:@"clip.video"];
             NSLog(@"[harness] motion: added, ready %d, opacity %.0f, fading %@", clip.readyForDisplay, clip.opacity,
                   [clip animationForKey:@"fade"] ? @"yes" : @"no");
         });
         for (NSNumber *when in @[@2.5, @4]) {
             at(when.doubleValue, ^{
-                AVPlayerLayer *clip = [hero valueForKey:@"_motion"];
+                AVPlayerLayer *clip = [hero valueForKeyPath:@"clip.video"];
                 NSLog(@"[harness] motion at %@s: ready %d, opacity %.0f, rate %.0f", when, clip.readyForDisplay, clip.opacity, clip.player.rate);
             });
         }
@@ -1059,7 +1063,7 @@ static NSString *trailingLabel(UIView *root) {
             UIView *parent = hero.superview;
             NSUInteger index = [parent.subviews indexOfObject:hero];
             [hero removeFromSuperview];
-            AVPlayerLayer *clip = [hero valueForKey:@"_motion"];
+            AVPlayerLayer *clip = [hero valueForKeyPath:@"clip.video"];
             NSLog(@"[harness] motion out of the window: rate %.0f", clip.player.rate);
             [parent insertSubview:hero atIndex:index];
             NSLog(@"[harness] motion back in it: rate %.0f", clip.player.rate);

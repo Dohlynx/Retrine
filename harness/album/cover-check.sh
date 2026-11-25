@@ -29,13 +29,15 @@ hero() {
     field="$SRC/Redesigned/Kit/SGRField.m"
     # An earlier revision may have no cover read.
     cover=""
+    clip=""
+    if [ -f "$SRC/Redesigned/Kit/SGRHeaderClip.m" ]; then clip="$SRC/Redesigned/Kit/SGRHeaderClip.m"; fi
     if [ -f "$SRC/Redesigned/Kit/SGRCoverRead.m" ]; then
         cover="$SRC/Redesigned/Kit/SGRCoverRead.m"
         # Provider timing, player readiness and a recycled cache address are simulated at external boundaries.
         python3 "$HERE/cover-mutation.py" "$dir/gen/AlbumHeader.m" seams
     fi
     $CC -I"$SRC" -I"$SRC/Redesigned/Album" -I"$SRC/Redesigned/Kit" -I"$dir/gen" \
-        "$HERE/cover-hero-check.m" "$HERE/stubs.m" "$dir"/gen/*.m $cover \
+        "$HERE/cover-hero-check.m" "$HERE/stubs.m" "$dir"/gen/*.m $cover $clip \
         "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGFileHash.m \
         "$SRC"/Core/SGBackdrop.m "$SRC"/Core/SGFlagForce.m "$SRC"/Core/SGUIMode.m "$HERE/../page-style-with-presenter-stubs.m" \
         "$SRC"/Redesigned/Kit/SGRTokens.m "$SRC"/Redesigned/Kit/SGRPalette.m "$field" "$SRC"/Redesigned/Kit/SGRFlow.m \

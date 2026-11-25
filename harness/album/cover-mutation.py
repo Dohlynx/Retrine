@@ -26,7 +26,10 @@ if mode == "seams":
         replace("SGMotionPageIdentifierCover(", "SGRAlbumTestIdentifierCover(")
     replace("SGMotionPoster(file,", "SGRAlbumTestPoster(file,")
     replace("SGRCoverRead(poster,", "SGRAlbumTestStillRead(poster,")
-    replace("[AVPlayerLayer playerLayerWithPlayer:_player]", "SGRAlbumTestPlayerLayer(_player)")
+    if "_clip = [[SGRHeaderClip alloc]" in source:
+        replace("_clip = [[SGRHeaderClip alloc]", "_clip = [[SGRAlbumTestClipClass() alloc]")
+    else:
+        replace("[AVPlayerLayer playerLayerWithPlayer:_player]", "SGRAlbumTestPlayerLayer(_player)")
     replace("cache = [NSCache new];", "cache = SGRAlbumTestRenderCache();")
 else:
     raise SystemExit(f"unknown setup mode: {mode}")

@@ -2127,7 +2127,7 @@ Redesigned:
                   this page's own settled track list, never the playing song or cells in a list update. When the two services
                   name the release differently, the page uses its own album for barcode and recording-code evidence. The cover fades in once its first frame
                   is decoded and moving only in front of the app, below Serious heat, with Reduce Motion and Low Power Mode off and Auto-Play
-                  Video Previews on), the title, the artist and the kind and date centered under it, and the same row of glass
+                  Video Previews on; a suspended cover keeps its frame, bleed, veil and colour), the title, the artist and the kind and date centered under it, and the same row of glass
                   controls, shuffle, Play and add -- play and shuffle float over the album page outside its header, so they are concealed
                   there and the row carries the Kit's stand-ins, which draw their glyph and fire them; download is
                   pinned beside ⋯ in the top corner, the two one 88x44 glass capsule that download carries, laid right
@@ -2216,9 +2216,11 @@ Redesigned:
                   the header's shape and looped in an AVQueuePlayer that plays only while the header is on screen, the
                   app is in front, thermal state is Nominal or Fair, Reduce Motion and Low Power are off and Auto-Play Video Previews is on
                   (SGMotionHeaderMayPlay, shared with the album's cover), fading in once its first frame is ready. In
-                  both headers the clip also pauses while the settled player's field covers every visible part of the
-                  header or the header is clipped out of sight, and resumes when the player starts to leave or any part
-                  returns; a side panel beside the header does not pause it (harness/album/motion-visibility.sh). One
+                  both headers a fully clipped, detached, player-covered or disappeared page, or a backgrounded app,
+                  releases the entire looping queue. A side panel that leaves any of the header visible does not.
+                  SGRHeaderClip keeps a copy of the last frame and its item time, or leaves the poster if capture
+                  fails. On return that still covers the paused seek and first-frame wait, without another fade;
+                  an autoplay or accessibility hold leaves it static (harness/album/motion-visibility.sh). One
                   attempt is made per page: evidence arriving later, from release rows laid out after the header's last
                   pass, never retries it, and the delivered answer is dropped unless the page's identity — the ⋯
                   button's own identifier, never a generic one — is still the one it was asked for

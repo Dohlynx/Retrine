@@ -50,6 +50,9 @@ HARNESSES = [
      "run": "bash harness/album-counts/check.sh"},
     {"name": "Album cover", "dir": "album", "theos": True, "weight": 5,
      "run": "sh harness/album/cover-check.sh"},
+    {"name": "Header decoder suspension", "dir": "album", "theos": True, "weight": 6,
+     "builders": ["harness/album/build.sh", "harness/artist/build.sh"],
+     "run": "bash harness/album/motion-visibility.sh"},
     {"name": "Album faces and row more", "dir": "album", "theos": True, "weight": 16,
      "run": "sh harness/album/build.sh && sh harness/album/faces-more-check.sh"},
     {"name": "Appearance accent", "dir": "appearance-accent", "theos": True,
@@ -492,7 +495,7 @@ def derive_deps(harness):
 
     # Follow executed runners, not every script beside them (manual/mutation runners stay out).
     entry_scripts = set(re.findall(r"[\w./-]+\.(?:sh|py)\b", harness["run"]))
-    scripts = list(entry_scripts)
+    scripts = [*entry_scripts, *harness.get("builders", [])]  # builders invoked through lockf
     seen_scripts, references, read_only, compiled = set(), set(), set(), set()
     while scripts:
         rel = scripts.pop()

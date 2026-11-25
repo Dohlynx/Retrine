@@ -33,9 +33,11 @@ hero() {
     done
     # An earlier revision may have no picture read.
     cover=""
+    clip=""
+    if [ -f "$src/Redesigned/Kit/SGRHeaderClip.m" ]; then clip="$src/Redesigned/Kit/SGRHeaderClip.m"; fi
     if [ -f "$src/Redesigned/Kit/SGRCoverRead.m" ]; then cover="$src/Redesigned/Kit/SGRCoverRead.m"; fi
     $CC -DSGR_COVER_READ_TEST -I"$src" -I"$src/Redesigned/Artist" "$HERE/photo-hero-check.m" "$HERE/photo-stubs.m" "$dir"/gen/*.m $cover \
-        "$src"/Redesigned/Artist/ArtistArtwork.m "$src"/Core/SGLog.m "$src"/Core/SGPrefs.m \
+        "$src"/Redesigned/Artist/ArtistArtwork.m $clip "$src"/Core/SGLog.m "$src"/Core/SGPrefs.m \
         "$src"/Redesigned/Kit/SGRTokens.m "$src"/Redesigned/Kit/SGRPalette.m "$src"/Redesigned/Kit/SGRField.m "$src"/Redesigned/Kit/SGRFlow.m \
         "$src"/Redesigned/Kit/SGRFluid.m "$src"/Redesigned/Kit/SGRFluidGPU.m "$src"/Redesigned/Kit/SGRHeroVeil.m "$src"/Redesigned/Kit/SGRStretchHero.m \
         "$src"/Shared/AnimatedArtwork/SGMotionClip.m "$src"/Shared/AdBlock/Protobuf.m \

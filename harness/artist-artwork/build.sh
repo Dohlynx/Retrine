@@ -16,11 +16,13 @@ xcrun -sdk macosx clang "${FLAGS[@]}" -DSG_MOTION_TEST_STORE main.m ../album-not
     ../../tweak/Sources/Core/SGDataRoot.m -o "$OUT/retrine-artist-artwork-check"
 RETRINE_TEST_ROOT="$OUT/catalog" "$OUT/retrine-artist-artwork-check" fixtures/catalog.json
 xcrun -sdk macosx clang "${FLAGS[@]}" late-check.m ../../tweak/Sources/Redesigned/Artist/ArtistArtwork.m \
+    ../../tweak/Sources/Redesigned/Kit/SGRHeaderClip.m -framework CoreImage \
     ../../tweak/Sources/Core/SGLog.m \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
     -o "$OUT/retrine-artist-late-check"
 "$OUT/retrine-artist-late-check"
 xcrun -sdk macosx clang "${FLAGS[@]}" header-check.m ../../tweak/Sources/Redesigned/Artist/ArtistArtwork.m \
+    ../../tweak/Sources/Redesigned/Kit/SGRHeaderClip.m -framework CoreImage \
     ../../tweak/Sources/Core/SGLog.m \
     ../../tweak/Sources/Shared/AnimatedArtwork/SGMotionClip.m ../../tweak/Sources/Shared/AdBlock/Protobuf.m \
     -o "$OUT/retrine-artist-header-check"
