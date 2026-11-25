@@ -2,7 +2,8 @@
 // launch arguments by check.sh, each expectation is the left-to-right one or its mirror.
 //   the glowing switch's knob, on, at the trailing end, as UISwitch's (Settings/SGGlowSwitch.m)
 //   a slider row's value at the trailing end and its title at the leading one (Settings/SGPageStyle.m)
-//   a page row's value followed by its chevron, the chevron at the trailing end (Settings/SGModPage.m)
+//   a page row's value followed by its chevron, the chevron at the trailing end, and a row's color swatch before its
+//   value, the swatch at the leading side (Settings/SGModPage.m)
 //   Sing's card with its level column at the trailing side and play at the leading one (Shared/Sing/SGSingCard.m)
 //   the mic's upright slider filled from the bottom whichever the direction (Redesigned/Lyrics/SGRSingButton.m)
 //   a recap story bar filling from its leading end, and a tap going back only in the story's leading third
@@ -75,9 +76,8 @@ static void checkSliderText(UIView *host) {
     if (!placed || CGRectIntersectsRect(t, v)) HARNESS_FAIL(@"slider row: title %@, value %@", NSStringFromCGRect(t), NSStringFromCGRect(v));
 }
 
-static void checkValueRow(UIView *host) {
-    SGModRow *row = SGPageRow(@"Lyrics sources", ^UIViewController *{ return [UIViewController new]; });
-    row.value = ^NSString *{ return @"Word timing first"; };
+// A row's value label and the one image beside it (its chevron or its swatch), in the cell's space.
+static void valueAndImage(UIView *host, SGModRow *row, NSString *text, CGRect *value, CGRect *image) {
     SGModPage *page = [[SGModPage alloc] initWithTitle:@"Rows" intro:nil sections:@[SGSection(nil, @[row])] footer:nil];
     page.view.frame = host.bounds;
     [host addSubview:page.view];
@@ -85,14 +85,31 @@ static void checkValueRow(UIView *host) {
     UITableViewCell *cell = [page.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
     [cell layoutIfNeeded];
     NSMutableArray<UILabel *> *labels = [NSMutableArray array];
-    NSMutableArray<UIImageView *> *chevrons = [NSMutableArray array];
+    NSMutableArray<UIImageView *> *images = [NSMutableArray array];
     findViews(cell.accessoryView, UILabel.class, labels);
-    findViews(cell.accessoryView, UIImageView.class, chevrons);
-    HARNESS_CHECK(labels.count == 1 && chevrons.count == 1 && [labels[0].text isEqual:@"Word timing first"]);
-    CGRect value = [labels[0] convertRect:labels[0].bounds toView:cell], chevron = [chevrons[0] convertRect:chevrons[0].bounds toView:cell];
+    findViews(cell.accessoryView, UIImageView.class, images);
+    HARNESS_CHECK(labels.count == 1 && images.count == 1 && [labels[0].text isEqual:text]);
+    *value = [labels[0] convertRect:labels[0].bounds toView:cell];
+    *image = [images[0] convertRect:images[0].bounds toView:cell];
+    [page.view removeFromSuperview];
+}
+
+static void checkValueRow(UIView *host) {
+    SGModRow *row = SGPageRow(@"Lyrics sources", ^UIViewController *{ return [UIViewController new]; });
+    row.value = ^NSString *{ return @"Word timing first"; };
+    CGRect value, chevron;
+    valueAndImage(host, row, @"Word timing first", &value, &chevron);
     BOOL ordered = rtl ? CGRectGetMaxX(chevron) <= CGRectGetMinX(value) : CGRectGetMaxX(value) <= CGRectGetMinX(chevron);
     if (!ordered) HARNESS_FAIL(@"value row: value %@, chevron %@", NSStringFromCGRect(value), NSStringFromCGRect(chevron));
-    [page.view removeFromSuperview];
+}
+
+static void checkSwatchRow(UIView *host) {
+    SGModRow *row = SGStatActionRow(@"Accent color", nil, ^NSString *{ return @"#1ED760"; }, ^{});
+    row.swatch = ^UIColor *{ return UIColor.greenColor; };
+    CGRect value, swatch;
+    valueAndImage(host, row, @"#1ED760", &value, &swatch);
+    BOOL ordered = rtl ? CGRectGetMaxX(value) <= CGRectGetMinX(swatch) : CGRectGetMaxX(swatch) <= CGRectGetMinX(value);
+    if (!ordered) HARNESS_FAIL(@"swatch row: swatch %@, value %@", NSStringFromCGRect(swatch), NSStringFromCGRect(value));
 }
 
 static void checkSingCard(UIView *host) {
@@ -251,6 +268,7 @@ static void checkMarquee(UIView *host) {
         checkGlowSwitch(host);
         checkSliderText(host);
         checkValueRow(host);
+        checkSwatchRow(host);
         checkSingCard(host);
         checkRecapBar(host);
         checkRecapTaps(host);
