@@ -78,6 +78,44 @@ static BOOL hiddenPreviewRun(void) {
     return [NSProcessInfo.processInfo.arguments containsObject:@"preview-hidden"];
 }
 
+@interface CardListSource : NSObject <UICollectionViewDataSource> @end
+@implementation CardListSource
+- (NSInteger)collectionView:(UICollectionView *)list numberOfItemsInSection:(NSInteger)section { return 7; }
+- (UICollectionViewCell *)collectionView:(UICollectionView *)list cellForItemAtIndexPath:(NSIndexPath *)path {
+    return [list dequeueReusableCellWithReuseIdentifier:@"card" forIndexPath:path];
+}
+- (UICollectionReusableView *)collectionView:(UICollectionView *)list viewForSupplementaryElementOfKind:(NSString *)kind atIndexPath:(NSIndexPath *)path {
+    return [list dequeueReusableSupplementaryViewOfKind:kind withReuseIdentifier:@"section" forIndexPath:path];
+}
+@end
+
+static void checkCardRange(UIWindow *window) {
+    UICollectionViewFlowLayout *layout = [UICollectionViewFlowLayout new];
+    layout.headerReferenceSize = CGSizeMake(320, 800);
+    layout.sectionInset = UIEdgeInsetsMake(24, 0, 0, 0);
+    layout.itemSize = CGSizeMake(320, 0);
+    layout.minimumLineSpacing = 24;
+    UICollectionView *list = [[UICollectionView alloc] initWithFrame:CGRectMake(0, 0, 320, 600) collectionViewLayout:layout];
+    list.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    list.contentInset = UIEdgeInsetsMake(0, 0, 34, 0);
+    list.accessibilityIdentifier = @"scrolling_npv_collection_view_accessibility_identifier";
+    __attribute__((objc_precise_lifetime)) CardListSource *source = [CardListSource new];
+    list.dataSource = source;
+    [list registerClass:UICollectionViewCell.class forCellWithReuseIdentifier:@"card"];
+    for (NSString *kind in @[UICollectionElementKindSectionHeader, UICollectionElementKindSectionFooter])
+        [list registerClass:UICollectionReusableView.class forSupplementaryViewOfKind:kind withReuseIdentifier:@"section"];
+    [window addSubview:list];
+    [list layoutIfNeeded];
+    CGFloat bottom = list.contentSize.height + list.adjustedContentInset.bottom;
+    check(@"scroll ends at visible player", bottom == 800, @(bottom).stringValue);
+    layout.footerReferenceSize = CGSizeMake(320, 32);
+    [layout invalidateLayout];
+    [list layoutIfNeeded];
+    bottom = list.contentSize.height + list.adjustedContentInset.bottom;
+    check(@"new footer after collapsed cards reachable", bottom == 1034, @(bottom).stringValue);
+    [list removeFromSuperview];
+}
+
 static void checkCardHeader(void) {
     UIView *list = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:[UICollectionViewFlowLayout new]];
     list.accessibilityIdentifier = @"scrolling_npv_collection_view_accessibility_identifier";
@@ -335,7 +373,10 @@ static void runSponsorBlockChecks(UIWindow *window) {
             exit(0);
         }
         if (!hiddenPreviewRun()) runScrubChecks(self.window);
-        if ([NSProcessInfo.processInfo.arguments containsObject:@"all-cards"]) checkCardHeader();
+        if ([arguments containsObject:@"all-cards"]) {
+            checkCardHeader();
+            checkCardRange(self.window);
+        }
         runCoverChecks(self.window);
         NSLog(@"[harness] native player checks: %lu of %lu right -- %@", (unsigned long)sg_right, (unsigned long)sg_checks,
               sg_right == sg_checks ? @"PASS" : @"FAIL");

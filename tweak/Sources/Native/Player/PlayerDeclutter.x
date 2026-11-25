@@ -83,12 +83,14 @@ static NSString *hiddenKeyFor(UICollectionViewCell *cell) {
 }
 %end
 
+static NSString *const kPlayerListID = @"scrolling_npv_collection_view_accessibility_identifier";
+
 static BOOL inPlayerScroll(UIView *view) {
     for (UIView *v = view.superview; v; v = v.superview) {
         if (SGClassNamed(v.class, @"NowPlaying_Scroll") || SGClassNamed(v.class, @"NPVScroll")) return YES;
         if (![v isKindOfClass:UICollectionView.class]) continue;
         UICollectionView *list = (UICollectionView *)v;
-        if ([list.accessibilityIdentifier isEqualToString:@"scrolling_npv_collection_view_accessibility_identifier"] ||
+        if ([list.accessibilityIdentifier isEqualToString:kPlayerListID] ||
             SGClassNamed([list.dataSource class], @"NowPlaying_Scroll") ||
             SGClassNamed([list.delegate class], @"NowPlaying_Scroll")) return YES;
     }
@@ -99,7 +101,46 @@ static BOOL hidePlayerHeader(UIView *view) {
     return inPlayerScroll(view) && !hasPlayerControls(view);
 }
 
+static void trimCardSpacing(UICollectionView *list) {
+    if (![list.accessibilityIdentifier isEqualToString:kPlayerListID] || list.dragging || list.decelerating) return;
+    // Query the whole layout, not the cells on screen: a later card or footer must stay reachable.
+    CGSize size = list.contentSize;
+    CGFloat end = 0;
+    for (UICollectionViewLayoutAttributes *a in [list.collectionViewLayout layoutAttributesForElementsInRect:(CGRect){CGPointZero, size}]) {
+        if (a.hidden || a.alpha == 0 || a.size.height <= 0) continue;
+        UIView *view;
+        if (a.representedElementCategory == UICollectionElementCategoryCell) view = [list cellForItemAtIndexPath:a.indexPath];
+        else if (a.representedElementCategory == UICollectionElementCategorySupplementaryView)
+            view = [list supplementaryViewForElementKind:a.representedElementKind atIndexPath:a.indexPath];
+        else continue;
+        if (!view || (!view.hidden && view.alpha != 0)) end = MAX(end, CGRectGetMaxY(a.frame));
+    }
+    // Keep Spotify's inset separate from our deduction; it may have supplied a new one since layout.
+    static char key;
+    NSValue *previous = objc_getAssociatedObject(list, &key);
+    CGPoint insets = previous.CGPointValue; // original, applied
+    UIEdgeInsets inset = list.contentInset;
+    CGFloat original = previous && inset.bottom == insets.y ? insets.x : inset.bottom;
+    CGFloat blank = end > 0 ? MAX(0, size.height - end) : 0;
+    // The scroll limit includes the adjusted inset too. Leaving its 34 pt on the phone
+    // still lets the full-height controls page scroll past its bottom.
+    CGFloat automatic = list.adjustedContentInset.bottom - inset.bottom;
+    CGFloat bottom = blank > 0 ? -blank - automatic : original;
+    if (inset.bottom == bottom) return;
+    objc_setAssociatedObject(list, &key, blank ? [NSValue valueWithCGPoint:CGPointMake(original, bottom)] : nil,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    inset.bottom = bottom;
+    list.contentInset = inset;
+}
+
 %group SGHiddenPlayerHeaders
+%hook UICollectionView
+- (void)layoutSubviews {
+    %orig;
+    trimCardSpacing(self);
+}
+%end
+
 %hook _TtC12Element_List21SupplementaryItemView
 - (UICollectionViewLayoutAttributes *)preferredLayoutAttributesFittingAttributes:(UICollectionViewLayoutAttributes *)attributes {
     UICollectionViewLayoutAttributes *result = %orig;

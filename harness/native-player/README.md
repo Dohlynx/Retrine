@@ -33,6 +33,9 @@ Each logs its result and exits 0 on success or 1 on failure, without crashing.
 The preview preference is set before the product's constructors, which snapshot it for the launch.
 Changing it between checks in one process cannot test both settings: switches require a restart.
 
+`all-cards` also checks header collapse and reuse, and the scroll range of a player with seven
+zero-height cells spaced 24 pt apart, before and after a visible footer is added.
+
 What it does not cover: Spotify's real Auto Layout in the cover cell, its open and close transition, and
 a real touch on the slider.
 

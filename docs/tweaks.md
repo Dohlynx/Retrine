@@ -1393,7 +1393,8 @@ Native:
     NowPlayingBar/ the device button hidden, the bar's flags
     Player/       the full screen player (Player.x), its cards and buttons hidden and a hidden lyric preview's room given
                   to the cover (PlayerDeclutter.x; with all nine cards hidden the list's section headers collapse
-                  too, never one holding the slider or controls), the glass lyrics card (LyricsCard.x), the gestures' hookup and the hold
+                  too, never one holding the slider or controls, and the trailing blank scroll space is removed),
+                  the glass lyrics card (LyricsCard.x), the gestures' hookup and the hold
                   on either side of the cover that plays at the Gestures page's hold speed until the finger lifts
                   (PlayerGestures.x), the list's pull
                   held off while the progress bar is scrubbed (PlayerScrub.x), the Queue & devices flags. The scrub and
