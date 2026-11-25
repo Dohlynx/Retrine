@@ -1943,7 +1943,10 @@
 "settings.pixie.delete.download_retained" = "Spotify가 여전히 다운로드, 대기 중인 정책, 만료된 항목 또는 오류 상태를 보고합니다.";
 "settings.pixie.delete.offline_unconfirmed" = "정확한 네이티브 상태 재조회로 오프라인 삭제가 확인되지 않았습니다.";
 "settings.pixie.delete.library_unconfirmed" = "정확한 네이티브 상태 재조회로 저장된 라이브러리 항목의 삭제가 확인되지 않았습니다.";
-"settings.pixie.delete.incomplete" = "Spotify가 선택한 모든 트랙의 삭제를 확인하지 않았습니다. 유지되었거나 불확실한 결과는 개별적으로 표시됩니다.";
+"settings.pixie.delete.reason_context" = "다른 트랙을 보호하기 위해 플레이리스트 또는 앨범을 유지함: %lu곡";
+"settings.pixie.delete.reason_unreadable" = "Spotify의 현재 상태를 확인할 수 없음: %lu곡";
+"settings.pixie.delete.reason_library" = "라이브러리에서 삭제됐는지 확인되지 않음: %lu곡";
+"settings.pixie.delete.reason_download" = "Spotify에 다운로드 상태로 남아 있음: %lu곡";
 "settings.pixie.delete.cancelled" = "삭제가 취소되었습니다. 전송한 네이티브 명령은 되돌리지 않았으며 확인되지 않은 결과는 불확실한 상태로 남습니다.";
 "settings.pixie.delete.read_timeout" = "네이티브 조회 시간이 초과되었습니다.";
 "settings.pixie.delete.invalid_selection" = "트랙 선택이 잘못되었거나 너무 많습니다.";
@@ -2327,10 +2330,9 @@
 "settings.pixie.ui.track" = "트랙";
 "settings.pixie.library.still_downloading" = "아직 다운로드 중";
 "settings.pixie.library.wait_to_delete" = "이 앨범은 아직 다운로드 중입니다. 다운로드가 끝난 후 트랙을 삭제하세요.";
-"settings.pixie.library.removal_unconfirmed" = "삭제가 확인되지 않았습니다.";
 "settings.pixie.library.deleted" = "삭제됨";
 "settings.pixie.library.clear_after_delete" = "방금 삭제한 항목을 완전히 제거하려면 Spotify 캐시를 지우세요.";
-"settings.pixie.library.removal_counts" = "오프라인 저장소 삭제 확인: %lu / %lu\n라이브러리 삭제 확인: %lu / %lu";
+"settings.pixie.library.removal_counts" = "라이브러리에서 삭제: %lu / %lu\n오프라인 저장소에서 삭제: %lu / %lu";
 "settings.pixie.library.removal_incomplete" = "삭제가 완료되지 않음";
 "settings.pixie.library.loading_count" = "다운로드한 트랙 불러오는 중…\n%lu / %lu";
 "settings.pixie.library.loading" = "다운로드한 트랙 불러오는 중…";
