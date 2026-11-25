@@ -181,7 +181,8 @@ static void changed(void) {
 }
 static NSUInteger sg_countCap = 1000;
 static unsigned long long sg_byteCap = 30 * 1024 * 1024;
-static NSTimeInterval sg_lastPrune, sg_pruneInterval = 60;
+static NSTimeInterval sg_lastPrune;
+static const NSTimeInterval sg_pruneInterval = 60;
 
 static NSURL *directory(void) {
     if (!sg_storeDirectory) {
@@ -214,31 +215,22 @@ static NSMutableArray<NSDictionary *> *inventory(unsigned long long *total) {
     return files;
 }
 
-static void prune(NSArray<NSDictionary *> *files, unsigned long long bytes) {
-    if (files.count <= sg_countCap && bytes <= sg_byteCap) return;
-    sg_lastPrune = NSProcessInfo.processInfo.systemUptime;
-    NSUInteger count = files.count, removed = 0;
+// Plan against the projected size, excluding the destination from the victims.
+// Nothing is evicted unless the staged playback write actually publishes.
+static NSArray *evictionOrder(NSArray<NSDictionary *> *files, unsigned long long bytes, BOOL *prunePlayback) {
     NSArray *oldest = [files sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
         return [a[@"date"] compare:b[@"date"]];
     }];
-    NSMutableArray *foreground = NSMutableArray.array;
-    // Preserve the ordinary cache's eviction order, but spend automatic entries first.
+    NSMutableArray *automatic = NSMutableArray.array, *foreground = NSMutableArray.array;
     for (NSDictionary *file in oldest) {
-        if (![[NSDictionary dictionaryWithContentsOfURL:file[@"url"] error:nil][@"automatic"] boolValue]) {
-            [foreground addObject:file]; continue;
-        }
-        if ([NSFileManager.defaultManager removeItemAtURL:file[@"url"] error:nil]) {
-            bytes -= [file[@"size"] unsignedLongLongValue]; count--; removed++;
-        }
-        if (count <= sg_countCap && bytes <= sg_byteCap) return;
+        if ([[NSDictionary dictionaryWithContentsOfURL:file[@"url"] error:nil][@"automatic"] boolValue]) {
+            [automatic addObject:file]; bytes -= [file[@"size"] unsignedLongLongValue];
+        } else [foreground addObject:file];
     }
-    for (NSDictionary *file in foreground) {
-        if (count <= sg_countCap * 9 / 10 && bytes <= sg_byteCap * 9 / 10) break;
-        if ([NSFileManager.defaultManager removeItemAtURL:file[@"url"] error:nil]) {
-            bytes -= [file[@"size"] unsignedLongLongValue]; count--; removed++;
-        }
-    }
-    SGLog(@"lyrics store: pruned %lu files", (unsigned long)removed);
+    *prunePlayback = foreground.count + 1 > sg_countCap || bytes > sg_byteCap;
+    if (!*prunePlayback) return automatic;
+    if (sg_lastPrune && NSProcessInfo.processInfo.systemUptime - sg_lastPrune < sg_pruneInterval) return nil;
+    return [automatic arrayByAddingObjectsFromArray:foreground];
 }
 
 // Only needed when optional metadata pushes a record over the whole-store byte cap.
@@ -313,10 +305,11 @@ static void save(NSString *track, NSArray<SGKaraokeLine *> *lines, NSString *cre
         }
         bytes += data.length;
         BOOL overBudget = files.count + 1 > sg_countCap || bytes > sg_byteCap;
-        BOOL canPrune = !sg_lastPrune || NSProcessInfo.processInfo.systemUptime - sg_lastPrune >= sg_pruneInterval;
-        // Keep the hard caps even between prune passes. Defer an over-budget save
-        // rather than evicting more often than once a minute.
-        if (overBudget && (done || !canPrune)) { outcome = SGBulkCapacity; return; }
+        BOOL prunePlayback = NO;
+        NSArray *victims = nil;
+        if (overBudget && (done || !(victims = evictionOrder(files, bytes, &prunePlayback)))) {
+            outcome = SGBulkCapacity; return;
+        }
         // Only this queue reads or writes the store. Stage the bytes first; the last
         // lease check orders publication against cancellation, without locking over I/O.
         NSURL *staged = [directory() URLByAppendingPathComponent:@".pending"];
@@ -334,11 +327,18 @@ static void save(NSString *track, NSArray<SGKaraokeLine *> *lines, NSString *cre
             return;
         }
         outcome = SGBulkWritten;
-        if (overBudget) {
-            NSDate *date = nil;
-            [url getResourceValue:&date forKey:NSURLContentModificationDateKey error:nil];
-            [files addObject:@{@"url": url, @"size": @(data.length), @"date": date ?: NSDate.distantPast}];
-            prune(files, bytes);
+        if (victims) {
+            NSUInteger count = files.count + 1, removed = 0;
+            NSUInteger countLimit = prunePlayback ? sg_countCap * 9 / 10 : sg_countCap;
+            unsigned long long byteLimit = prunePlayback ? sg_byteCap * 9 / 10 : sg_byteCap;
+            if (prunePlayback) sg_lastPrune = NSProcessInfo.processInfo.systemUptime;
+            for (NSDictionary *file in victims) {
+                if (count <= countLimit && bytes <= byteLimit) break;
+                if ([NSFileManager.defaultManager removeItemAtURL:file[@"url"] error:nil]) {
+                    bytes -= [file[@"size"] unsignedLongLongValue]; count--; removed++;
+                }
+            }
+            SGLog(@"lyrics store: pruned %lu files", (unsigned long)removed);
         }
         };
         write();
@@ -476,6 +476,6 @@ void SGLyricsStoreDeleteAll(void (^done)(unsigned long long)) {
 void SGLyricsStoreConfigureForTests(NSURL *url, NSUInteger countCap, unsigned long long byteCap) {
     dispatch_async(storeQueue(), ^{
         sg_storeDirectory = [url copy]; sg_countCap = countCap; sg_byteCap = byteCap;
-        sg_lastPrune = 0; sg_pruneInterval = 0;
+        sg_lastPrune = 0;
     });
 }

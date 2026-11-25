@@ -188,17 +188,30 @@ static void checkBulkOwnership(void) {
     SGLyricsStoreSave(@"a",@[line(@"Player",20)],@"Foreground");
     size(); ageAll(dir,100);
     SGLyricsStoreRemoveAutomatic(@[@"b"]);
+    SGLyricsStoreConfigureForTests(dir,3,1024*1024);
     CHECK(bulk(@"b",sheet,lease)==SGBulkWritten);
+    CHECK(bulk(@"d",sheet,lease)==SGBulkWritten);
     SGLyricsStoreSave(@"c",@[line(@"New foreground",30)],@"Foreground");
-    CHECK(load(@"a",nil).count && !load(@"b",nil) && load(@"c",nil).count);
+    SGLyricsStoreSave(@"e",@[line(@"Next foreground",40)],@"Foreground");
+    CHECK(load(@"e",nil).count && load(@"c",nil).count && files(dir).count==3);
+    CHECK(!load(@"b",nil) && !load(@"d",nil));
     SGLyricsStoreRemoveAutomatic(@[@"a",@"b"]);
     NSString *credit=nil; CHECK(load(@"a",&credit).count && [credit isEqual:@"Foreground"] && !load(@"b",nil));
+    // A playback-only prune now leaves one free slot and starts the real cooldown.
+    SGLyricsStoreSave(@"f",sheet.karaokeLines,@"Foreground");
+    CHECK(load(@"f",nil).count && files(dir).count==2);
+    CHECK(bulk(@"g",sheet,lease)==SGBulkWritten);
+    SGLyricsStoreSave(@"h",sheet.karaokeLines,@"Foreground");
+    CHECK(load(@"h",nil).count && !load(@"g",nil) && files(dir).count==3);
+    SGLyricsStoreSave(@"i",sheet.karaokeLines,@"Foreground");
+    CHECK(!load(@"i",nil) && files(dir).count==3);
     CHECK([NSFileManager.defaultManager removeItemAtURL:dir error:nil]);
 }
 
 static IMP readPlist;
 static id holdOwnershipRead(id self, SEL sel, NSURL *url, NSError **error) {
-    if (retireWhileWriting && [url.URLByDeletingLastPathComponent.path isEqual:heldDirectory.path]) {
+    if (retireWhileWriting && [url.URLByResolvingSymlinksInPath.URLByDeletingLastPathComponent.path
+                               isEqual:heldDirectory.URLByResolvingSymlinksInPath.path]) {
         dispatch_async(dispatch_get_main_queue(), retireWhileWriting);
         retireWhileWriting=nil;
         CHECK(dispatch_semaphore_wait(retiredDuringWrite,dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC))==0);

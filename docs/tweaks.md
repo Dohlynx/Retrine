@@ -287,9 +287,10 @@ Shared:
                   replies, pass through the keeper so offline saves and paused lock-screen notifications include
                   them. Under Any they are all kept. Generated translations and AI pronunciation stay with their own
                   stores. File work runs on one
-                  utility queue. The store caps at 1000 tracks / 30 MiB, pruning oldest-modified entries to 90%
-                  of both caps at most once a minute, sheets saved for Pixie downloads before any other (hits touch
-                  the date; over-budget writes during that minute are skipped). Pin changes and Reload lyrics delete
+                  utility queue. The store caps at 1000 tracks / 30 MiB. Sheets saved for Pixie downloads are
+                  evicted first, oldest-modified first, whenever a playback write needs room; pruning playback-saved
+                  entries to 90% of both caps happens at most once a minute (hits touch the date; a playback write
+                  that would need it within that minute is skipped). Pin changes and Reload lyrics delete
                   the old file. Turning the switch off leaves files intact; “Delete saved lyrics” removes them and
                   shows the remaining size. The codec and eviction checks run in harness/lyrics-store.
                   The opt-in “Save lyrics for Pixie downloads” (PixieLyricsQueue.m, after EeveeSpotifyReincarnated

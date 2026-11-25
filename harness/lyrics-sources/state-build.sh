@@ -21,5 +21,5 @@ xcrun -sdk macosx clang -target arm64-apple-ios17.0-macabi -isysroot "$SDK" \
     -framework UIKit -framework QuartzCore -framework Foundation -framework NaturalLanguage -framework AVFoundation -framework Security -framework Network "$SRC/Core/SGDataRoot.m" -o "$OUT/state-check"
 "$OUT/state-check"
 RETRINE_PIXIE_ONLY=1 "$OUT/state-check"
-for mode in reset coldRemoval deleteOff responsive largeLedger byteBudget; do RETRINE_PIXIE_COLD=$mode "$OUT/state-check"; done
+for mode in reset coldRemoval deleteOff enableDuringDelete responsive largeLedger byteBudget; do RETRINE_PIXIE_COLD=$mode "$OUT/state-check"; done
 RETRINE_PRESSURE_ONLY=1 "$OUT/state-check"

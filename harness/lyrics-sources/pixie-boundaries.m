@@ -31,8 +31,11 @@ static dispatch_block_t names(NSString *uri,void (^done)(NSDictionary *)) {
 }
 void fixtureCompanion(NSURL *dir) { installed=YES; root=dir; }
 void (^fixtureLibrary(void))(NSArray *,NSString *) { return library; }
+void (^fixtureTakeLibrary(void))(NSArray *,NSString *) {
+    void (^done)(NSArray *,NSString *)=library;library=nil;return done;
+}
 void fixtureAnswerLibrary(NSArray *ids,NSString *error) {
-    void (^done)(NSArray *,NSString *)=library;library=nil;done(ids,error);
+    fixtureTakeLibrary()(ids,error);
 }
 static void *lookup(void *handle,const char *name) {
     if(!installed)return NULL;

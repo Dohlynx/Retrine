@@ -26,6 +26,6 @@ void SGLyricsStoreInventory(NSArray<NSString *> *tracks, void (^done)(NSSet<NSSt
 void SGLyricsStoreAddAutomatic(NSString *track, SGLyricsResult *result, SGLyricsLease *lease, void (^done)(SGBulkWrite));
 void SGLyricsStoreRemoveAutomatic(NSArray<NSString *> *tracks);
 
-// For tests only: enqueue an isolated directory and caps, with pruning unthrottled.
+// For tests only: enqueue an isolated directory and caps, resetting the prune cooldown.
 // Call before any test operations. Nothing touches the real store in that case.
 void SGLyricsStoreConfigureForTests(NSURL *directory, NSUInteger countCap, unsigned long long byteCap);

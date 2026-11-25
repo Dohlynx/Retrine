@@ -40,6 +40,7 @@ static NSMutableSet<NSString *> *sleeping;
 static NSTimeInterval earliestRetry = DBL_MAX;
 static NSMutableDictionary<NSString *,NSNumber *> *scanEvents;
 static BOOL loaded, loading, active, storageFailed, scanFailed, dirty;
+static BOOL takingDeletionSnapshot, rescanAfterDelete;
 static NSArray *options;
 static NSString *working;
 static SGLyricsLease *lease;
@@ -159,6 +160,7 @@ static void stopScan(void) {
     ++scanEpoch;
     if (cancelScan) cancelScan();
     cancelScan = nil; scanEvents = nil;
+    takingDeletionSnapshot = rescanAfterDelete = NO;
 }
 static void pump(void);
 static void schedule(NSTimeInterval delay) {
@@ -207,27 +209,31 @@ static void refreshStore(void) {
     });
 }
 static void reconcile(BOOL deletionSnapshot) {
+    if (!deletionSnapshot && takingDeletionSnapshot) { rescanAfterDelete = YES; return; }
     stopScan();
+    takingDeletionSnapshot = deletionSnapshot;
     NSUInteger epoch = scanEpoch;
     scanEvents = NSMutableDictionary.dictionary;
     cancelScan = scan(^(NSArray *uris, NSString *error) {
         if (epoch != scanEpoch) return;
         cancelScan = nil;
-        if (!uris || error) { scanFailed = YES; scanEvents = nil; notify(); return; }
+        if (!uris || error) { stopScan(); scanFailed = YES; notify(); return; }
         dispatch_async(io(), ^{
         NSMutableSet *live = NSMutableSet.set;
         for (NSString *uri in uris) { NSString *t = trackID(uri); if (t) [live addObject:t]; }
         SGLyricsStoreInventory(live.allObjects, ^(NSSet *onDisk,unsigned long long room) {
             if (epoch != scanEpoch) return;
-            if (!onDisk) { scanFailed = YES; scanEvents = nil; notify(); return; }
-            budget(room);
             // Events between the native read and the asynchronous file inventory win.
             for (NSString *t in scanEvents) {
                 if ([scanEvents[t] boolValue]) [live addObject:t]; else [live removeObject:t];
             }
             if (deletionSnapshot) {
                 for (NSString *t in live) if (![scanEvents[t] boolValue]) [suppressed addObject:t];
+                takingDeletionSnapshot = NO;
+                persist();
             }
+            if (!onDisk) { stopScan(); scanFailed = YES; notify(); return; }
+            budget(room);
             // State 3 is eligibility, not history: an omitted track may be waiting or expired.
             if (working && ![live containsObject:working]) retireJob();
             [members unionSet:live]; [verified setSet:live];
@@ -236,6 +242,7 @@ static void reconcile(BOOL deletionSnapshot) {
             [present setSet:onDisk]; [present unionSet:recent]; [present intersectSet:live];
             [pending addObjectsFromArray:live.allObjects];
             scanEvents = nil; scanFailed = NO; persist(); schedule(0);
+            if (rescanAfterDelete && active) reconcile(NO);
         });
         });
     });
@@ -317,7 +324,7 @@ static NSTimeInterval dueFor(NSString *t, NSArray *order) {
     return MAX(first,[marks[t][@"write"] doubleValue]);
 }
 static void pump(void) {
-    if (!active || working || storageFailed || !enabled()) return;
+    if (!active || takingDeletionSnapshot || working || storageFailed || !enabled()) return;
     if (!canWork()) { if (!SGFlag(SGKeyPixieLyricsPaused,NO) && verified.count > present.count) schedule(5); return; }
     NSTimeInterval now = NSDate.date.timeIntervalSince1970;
     NSArray *keys = SGLyricsOrder();
@@ -370,8 +377,8 @@ static void update(void) {
     }
     BOOL want = enabled() && !storageFailed;
     if (active != want) {
-        active = want; observe(active); retireJob(); stopScan(); [verified removeAllObjects]; [pending removeAllObjects]; [present removeAllObjects];
-        if (active) reconcile(NO);
+        active = want; observe(active); retireJob(); [verified removeAllObjects]; [pending removeAllObjects]; [present removeAllObjects];
+        if (active) reconcile(NO); else if (!takingDeletionSnapshot) stopScan();
     } else if (SGFlag(SGKeyPixieLyricsPaused,NO)) retireJob();
     schedule(0); notify();
 }
@@ -381,7 +388,8 @@ void SGPixieLyricsSettingsChanged(void) {
 }
 void SGPixieLyricsDownloadMissing(void) {
     if (!active) return;
-    retireJob(); [marks removeAllObjects]; [capacity removeAllObjects]; [suppressed removeAllObjects];
+    retireJob(); [marks removeAllObjects]; [capacity removeAllObjects];
+    if (!takingDeletionSnapshot) [suppressed removeAllObjects];
     // Keep server-provided deadlines even on an explicit retry.
     persist(); reconcile(NO);
 }

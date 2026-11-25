@@ -1,6 +1,7 @@
 #import "Shared/Lyrics/PixieLyricsQueue.h"
 extern void fixtureCompanion(NSURL *);
 extern void (^fixtureLibrary(void))(NSArray *,NSString *);
+extern void (^fixtureTakeLibrary(void))(NSArray *,NSString *);
 extern void fixtureAnswerLibrary(NSArray *,NSString *);
 extern void fixtureStorage(NSURL *);
 extern NSUInteger fixtureMetadataReads(void);
@@ -27,6 +28,23 @@ static void checkColdQueue(NSString *mode) {
         return;
     }
     fixtureCompanion(base);
+    if ([mode isEqual:@"enableDuringDelete"]) {
+        __block BOOL cleared=NO;
+        SGPixieLyricsDeleteSaved(^(unsigned long long bytes){CHECK(!bytes); cleared=YES;});
+        pumpUntil(^BOOL{return fixtureLibrary()!=nil;});
+        void (^atDelete)(NSArray *,NSString *)=fixtureTakeLibrary();
+        SGLyricsSetOrder(@[@"musixmatch"]);SGSetEnabled(SGKeyLyricsOffline,YES);SGSetEnabled(SGKeyPixieLyrics,YES);SGPrefsChanged();
+        SGLyricsProviderFor(@"musixmatch").ask=^(SGLyricsQuery *q,void (^answer)(SGLyricsResult *)){
+            CHECK([q.trackID isEqual:b]); // a was downloaded before Delete but was not in the ledger
+            answer(madeUpLyrics(@"Later download",SGKaraokeTimingWords));
+        };
+        SGPixieLyricsSettingsChanged(); SGPixieLyricsDownloadMissing();
+        atDelete(@[ua],nil);
+        pumpUntil(^BOOL{return fixtureLibrary()!=nil;}); fixtureAnswerLibrary(@[ua,ub],nil);
+        pumpUntil(^BOOL{return cleared && [SGPixieLyricsCounts()[@"saved"] integerValue]==1 &&
+            [SGPixieLyricsCounts()[@"deferred"] integerValue]==1;});
+        knownFile(a,NO); knownFile(b,YES); return;
+    }
     if ([mode isEqual:@"byteBudget"]) {
         SGLyricsResult *sheet=madeUpLyrics(@"Earlier playback",SGKaraokeTimingWords);
         SGLyricsStoreSave(a,sheet.karaokeLines,sheet.provider);
