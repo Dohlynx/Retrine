@@ -1433,6 +1433,13 @@
 "settings.lyrics.offline.none" = "없음";
 "settings.lyrics.offline.subtitle" = "연결 없이도 저장된 가사를 볼 수 있습니다.";
 "settings.lyrics.offline.title" = "오프라인 감상을 위해 가사 저장";
+"settings.lyrics.pixie.capacity" = "가사 저장 공간이 가득 찼습니다.";
+"settings.lyrics.pixie.counts" = "저장됨: %@ · 미저장: %@ · 보류: %@";
+"settings.lyrics.pixie.hint" = "다운로드한 곡의 가사를 켜 둔 가사 소스에 요청합니다. 끄면 대기 중인 요청이 취소되며 저장된 가사는 그대로 남습니다.";
+"settings.lyrics.pixie.missing" = "저장하지 않은 가사 다운로드";
+"settings.lyrics.pixie.pause" = "가사 다운로드 일시 정지";
+"settings.lyrics.pixie.title" = "Pixie로 다운로드한 곡의 가사 저장";
+"settings.lyrics.pixie.unavailable" = "다운로드한 곡 목록이나 가사 대기열을 읽을 수 없습니다.";
 "settings.lyrics.pip.alignment" = "텍스트 정렬";
 "settings.lyrics.pip.aspect" = "화면 비율";
 "settings.lyrics.pip.background" = "배경";

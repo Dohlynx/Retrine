@@ -1351,6 +1351,13 @@
 "settings.lyrics.offline.none" = "None";
 "settings.lyrics.offline.subtitle" = "Saved lyrics play without a connection.";
 "settings.lyrics.offline.title" = "Keep lyrics for offline listening";
+"settings.lyrics.pixie.capacity" = "Lyrics storage is full.";
+"settings.lyrics.pixie.counts" = "Saved: %@ · Missing: %@ · Deferred: %@";
+"settings.lyrics.pixie.hint" = "Ask your enabled lyrics sources about downloaded songs. Turning this off cancels the queue, not the saved lyrics.";
+"settings.lyrics.pixie.missing" = "Download missing lyrics";
+"settings.lyrics.pixie.pause" = "Pause lyrics downloads";
+"settings.lyrics.pixie.title" = "Save lyrics for Pixie downloads";
+"settings.lyrics.pixie.unavailable" = "Could not read the download library or queue.";
 "settings.lyrics.pip.alignment" = "Text alignment";
 "settings.lyrics.pip.aspect" = "Aspect ratio";
 "settings.lyrics.pip.background" = "Background";
