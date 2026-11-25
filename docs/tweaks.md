@@ -709,8 +709,13 @@ Shared:
                   SGShownTrackArtwork, not title-matched system artwork that may be a placeholder or the
                   previous song's cover. Missing or failed covers use the dark fallback; late results are
                   guarded by track, source URL and generation. Previews are drawn on a queue apart from the clips, and while the
-                  lock screen is asking, the next line's preview and clip are drawn ahead and a ready preview is handed
-                  over at once. Each lyric ID owns one ordinary Now Playing artwork object, reused by ready-preview,
+                  lock screen is asking for the line showing (an ask for a line gone by does not count), the next line's
+                  preview and clip are drawn ahead and a ready preview is handed over at once; from the thermal state Fair
+                  up, a clip of many frames (over moving artwork, or Animated) is left for the lock screen's own ask, and
+                  Low Power Mode draws nothing ahead. A clip being written stops as soon as its line is neither showing
+                  nor the one drawn ahead, rather than encoding to the end for nobody. From Serious up, and in Low Power
+                  Mode, the lines go Still over the cover (no motion, no breath) under their own ID, and the chosen look
+                  comes back once the phone cools or Low Power Mode is off. Each lyric ID owns one ordinary Now Playing artwork object, reused by ready-preview,
                   artist-row and Spotify/extras resends. Its synchronous handler uses a ready frame from this render
                   generation while a miss draws off main, never the plain cover. A new ID replaces the object;
                   turning lyrics off restores the
