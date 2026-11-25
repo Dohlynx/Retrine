@@ -2,9 +2,9 @@
 // what it reads:
 //   - the Lyrics style clears the words when its source changes to lyrics that are not synced (a kept-lines
 //     notification for the playing track), instead of leaving the old source's line on screen;
-//   - the display link asks for the screen's full rate whether or not the player's lyrics are open over the
-//     hills or Reduce Motion is on, and the hills draw 60, 30 and 15 times a second in those three cases from a
-//     120 Hz link's ticks;
+//   - the display link asks for the rate the view draws at, up to the screen's: 60 (Bars 120 on a 120 Hz screen,
+//     60 on a 60 Hz one), 30 with the player's lyrics open over the hills, 15 with Reduce Motion; and the hills draw
+//     60, 30 and 15 times a second in those three cases from a 120 Hz link's ticks;
 //   - the five first style ids, their order and names stay, Poster and Cut follow them, and an unknown or absent
 //     stored style reads as Hills;
 //   - Poster and Cut's parameters read their defaults when missing or malformed, clamp numbers, parse only
@@ -371,23 +371,30 @@ int main(void) {
         [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLinesKeptNotification object:@"track-a"];
         HARNESS_CHECK([shownWords(view) isEqualToString:@"hold me close"]);
 
-        // The link asks for the screen's full rate in every case.
+        // The link asks for the rate the view draws at, its maximum the screen's.
         gWindow = window;
-        NSInteger screenRate = window.screen.maximumFramesPerSecond;
-        HARNESS_CHECK(screenRate == 120);
+        HARNESS_CHECK(window.screen.maximumFramesPerSecond == 120);
         id<Probe> probe = (id<Probe>)view;
         [probe setMoving:YES];
         CADisplayLink *link = [view valueForKey:@"_link"];
         HARNESS_CHECK(link != nil);
-        HARNESS_CHECK(link.preferredFrameRateRange.maximum == screenRate && link.preferredFrameRateRange.preferred == screenRate);
+        HARNESS_CHECK(CAFrameRateRangeIsEqualToRange(link.preferredFrameRateRange, CAFrameRateRangeMake(60, 120, 60)));
         [probe setBlurred:YES animated:NO];
         [probe setMoving:YES];
-        HARNESS_CHECK(link.preferredFrameRateRange.maximum == screenRate && link.preferredFrameRateRange.preferred == screenRate);
+        HARNESS_CHECK(CAFrameRateRangeIsEqualToRange(link.preferredFrameRateRange, CAFrameRateRangeMake(30, 120, 30)));
         [probe setBlurred:NO animated:NO];
         gReduceMotion = YES;
         [probe setMoving:YES];
-        HARNESS_CHECK(link.preferredFrameRateRange.maximum == screenRate && link.preferredFrameRateRange.preferred == screenRate);
+        HARNESS_CHECK(CAFrameRateRangeIsEqualToRange(link.preferredFrameRateRange, CAFrameRateRangeMake(15, 120, 15)));
         gReduceMotion = NO;
+        SGRSetVisualiserStyle(@"builtin:bars");
+        [probe setMoving:YES];
+        HARNESS_CHECK(CAFrameRateRangeIsEqualToRange(link.preferredFrameRateRange, CAFrameRateRangeMake(120, 120, 120)));
+        window.screen.maximumFramesPerSecond = 60;
+        [probe setMoving:YES];
+        HARNESS_CHECK(CAFrameRateRangeIsEqualToRange(link.preferredFrameRateRange, CAFrameRateRangeMake(60, 60, 60)));
+        window.screen.maximumFramesPerSecond = 120;
+        SGRSetVisualiserStyle(@"builtin:lyrics");
 
         // The hills draw 60 times a second normally, 30 behind the player's lyrics and 15 with Reduce Motion.
         HARNESS_CHECK(drawsOf(view, 120) == 60);
