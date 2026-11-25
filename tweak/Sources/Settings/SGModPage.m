@@ -411,6 +411,23 @@ static NSString *stackedValue(SGModRow *row) {
     return row.subtitle.length ? [NSString stringWithFormat:@"%@\n%@", row.subtitle, value] : value;
 }
 
+// The value and the chevron after it in reading order: the chevron at the right end, or at the left right to left.
+@interface SGValueChevronView : UIView
+@property (nonatomic, strong) UILabel *label;
+@property (nonatomic, strong) UIImageView *chevron;
+@end
+
+@implementation SGValueChevronView
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat width = self.bounds.size.width, height = self.bounds.size.height;
+    CGFloat labelWidth = _label.bounds.size.width, chevronWidth = _chevron.bounds.size.width;
+    BOOL rtl = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    _label.center = CGPointMake(rtl ? width - labelWidth / 2 : labelWidth / 2, height / 2);
+    _chevron.center = CGPointMake(rtl ? chevronWidth / 2 : width - chevronWidth / 2, height / 2);
+}
+@end
+
 static UIView *valueAndChevron(NSString *text) {
     UILabel *label = [UILabel new];
     label.font = SGTitleFont();
@@ -421,9 +438,9 @@ static UIView *valueAndChevron(NSString *text) {
     if (label.bounds.size.width > kValueMaxWidth) label.bounds = CGRectMake(0, 0, kValueMaxWidth, label.bounds.size.height);
     UIImageView *chevron = SGChevronView();
     CGFloat height = MAX(label.bounds.size.height, chevron.bounds.size.height);
-    UIView *box = [[UIView alloc] initWithFrame:CGRectMake(0, 0, label.bounds.size.width + 6 + chevron.bounds.size.width, height)];
-    label.center = CGPointMake(label.bounds.size.width / 2, height / 2);
-    chevron.center = CGPointMake(box.bounds.size.width - chevron.bounds.size.width / 2, height / 2);
+    SGValueChevronView *box = [[SGValueChevronView alloc] initWithFrame:CGRectMake(0, 0, label.bounds.size.width + 6 + chevron.bounds.size.width, height)];
+    box.label = label;
+    box.chevron = chevron;
     [box addSubview:label];
     [box addSubview:chevron];
     return box;

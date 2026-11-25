@@ -194,6 +194,8 @@ HARNESSES = [
      "run": "sh harness/prefs/check.sh"},
     {"name": "Radio modes", "dir": "radio-modes",
      "run": "sh harness/radio-modes/build.sh"},
+    {"name": "Right-to-left layout", "dir": "rtl", "theos": True,
+     "run": "sh harness/rtl/check.sh"},
     {"name": "Song audio retention", "dir": "song-audio",
      "run": "sh harness/song-audio/build.sh"},
     {"name": "Signing sheet", "dir": "signing",
