@@ -2,20 +2,50 @@
 #import "Core/SGPrefs.h"
 #import "App/About/SGDiagnosticRedaction.h"
 #import "../harness-fail.h"
+#import <Security/Security.h>
 
-static void checkRotation(BOOL migrated) {
+// Substitute only the Security calls, so this host check never accesses a login Keychain.
+static NSMutableDictionary *items;
+static NSString *identity(CFDictionaryRef query) {
+    NSDictionary *q = (__bridge NSDictionary *)query;
+    HARNESS_CHECK([q[(__bridge id)kSecClass] isEqual:(__bridge id)kSecClassGenericPassword]);
+    return [NSString stringWithFormat:@"%@/%@", q[(__bridge id)kSecAttrService], q[(__bridge id)kSecAttrAccount]];
+}
+OSStatus DriverTestCopy(CFDictionaryRef query, CFTypeRef *result) {
+    NSData *data = items[identity(query)];
+    if (!data) return errSecItemNotFound;
+    *result = CFBridgingRetain(data);
+    return errSecSuccess;
+}
+OSStatus DriverTestUpdate(CFDictionaryRef query, CFDictionaryRef attributes) {
+    if (!items[identity(query)]) return errSecItemNotFound;
+    items[identity(query)] = ((__bridge NSDictionary *)attributes)[(__bridge id)kSecValueData];
+    return errSecSuccess;
+}
+OSStatus DriverTestAdd(CFDictionaryRef query, CFTypeRef *result) {
+    items[identity(query)] = ((__bridge NSDictionary *)query)[(__bridge id)kSecValueData];
+    return errSecSuccess;
+}
+
+static void checkStorage(NSString *mode) {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
     id beforeToken = [store objectForKey:SGKeyDriverToken];
     id beforeMarker = [store objectForKey:SGKeyDriverTokenRotated];
     id beforeLegacy = [store objectForKey:@"spotifyglass.driver.token.rotated"];
     NSString *fixture = @"0123456789abcdef0123456789abcdef";
-    [store setObject:fixture forKey:SGKeyDriverToken];
+    NSString *item = @"Vitrine.Driver/token";
+    NSString *existing = NSUUID.UUID.UUIDString.lowercaseString;
+    existing = [existing stringByReplacingOccurrencesOfString:@"-" withString:@""];
+    items = [NSMutableDictionary dictionary];
+    if ([mode isEqual:@"existing"]) items[item] = [existing dataUsingEncoding:NSUTF8StringEncoding];
+    if ([mode isEqual:@"fresh"]) [store removeObjectForKey:SGKeyDriverToken];
+    else [store setObject:fixture forKey:SGKeyDriverToken];
     // An old wildcard backup can pre-seed this marker along with a known credential.
     [store setBool:YES forKey:@"spotifyglass.driver.token.rotated"];
-    if (migrated) [store setBool:YES forKey:SGKeyDriverTokenRotated];
+    if ([mode isEqual:@"migrated"]) [store setBool:YES forKey:SGKeyDriverTokenRotated];
     else [store removeObjectForKey:SGKeyDriverTokenRotated];
     NSString *token = SGDriverToken();
-    BOOL marked = [store boolForKey:SGKeyDriverTokenRotated];
+    BOOL removed = [store objectForKey:SGKeyDriverToken] == nil;
     BOOL legacyRemoved = [store objectForKey:@"spotifyglass.driver.token.rotated"] == nil;
     // Restore the host harness's preferences before reporting any failure.
     if (beforeToken) [store setObject:beforeToken forKey:SGKeyDriverToken];
@@ -25,15 +55,22 @@ static void checkRotation(BOOL migrated) {
     if (beforeLegacy) [store setObject:beforeLegacy forKey:@"spotifyglass.driver.token.rotated"];
     else [store removeObjectForKey:@"spotifyglass.driver.token.rotated"];
     HARNESS_CHECK(legacyRemoved);
-    HARNESS_CHECK(marked);
+    HARNESS_CHECK(removed);
     HARNESS_CHECK(token.length == 32);
-    if (migrated) HARNESS_CHECK([token isEqualToString:@"0123456789abcdef0123456789abcdef"]);
-    else HARNESS_CHECK(![token isEqualToString:@"0123456789abcdef0123456789abcdef"]);
+    HARNESS_CHECK([items[item] isEqual:[token dataUsingEncoding:NSUTF8StringEncoding]]);
+    HARNESS_CHECK([SGDriverToken() isEqual:token]);
+    if ([mode isEqual:@"migrated"]) HARNESS_CHECK([token isEqual:fixture]);
+    else if ([mode isEqual:@"existing"]) HARNESS_CHECK([token isEqual:existing]);
+    else {
+        HARNESS_CHECK(![token isEqual:fixture]);
+        NSCharacterSet *hex = [NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"];
+        HARNESS_CHECK([token rangeOfCharacterFromSet:hex.invertedSet].location == NSNotFound);
+    }
 }
 
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
-        checkRotation(argc > 1 && strcmp(argv[1], "migrated") == 0);
+        checkStorage(@(argv[1]));
         NSString *token = @"0123456789abcdef0123456789abcdef";
         HARNESS_CHECK(SGDriverRequestAuthorized(@"GET /state HTTP/1.1\r\nx-phone-token:\t0123456789abcdef0123456789abcdef \r\n\r\n", token));
         HARNESS_CHECK(!SGDriverRequestAuthorized(@"GET /state HTTP/1.1\r\nX-Phone-Token: 0123456789ABCDEF0123456789ABCDEF\r\n\r\n", token));
