@@ -805,7 +805,8 @@ Shared:
                   Power Mode, a serious or critical thermal state, no usable network, Low Data Mode, an expensive
                   cellular or hotspot network — lyrics are small, artwork is not — or the Player page's Load ahead,
                   spotifyglass.loadAhead, switched off: it stops this and the next track's lyrics walk, never the current
-                  track's), in which case nothing is fetched ahead and a fetch under way is cancelled. A change of the
+                  track's), in which case nothing is fetched ahead and a fetch under way is cancelled. Paused, no new
+                  fetch ahead starts (one under way for the same track finishes), and playing again aims it once more. A change of the
                   up-next track (PlayerState.x's playerUpNextDidChange:), of the current walk or of a setting aims it again. The lock screen takes a clip under a key the
                   system lists, cut to that key's
                   shape when it is not, with its still filled to the size asked (SGMotionClip.m), and a change of the
@@ -1184,7 +1185,9 @@ Shared:
                   compiling it for up to ten minutes while Karaoke runs on the CPU (while it loads, the CPU's falling
                   behind spends none of the 8 s after which Karaoke gives a song up, nor counts toward its three in a
                   row), unless Prepare after updates (on by default) compiled it already: with the model in and the mic off, 15 s after
-                  Spotify comes to the front and below the thermal state Serious, the Neural Engine copy alone loads once for this
+                  Spotify comes to the front or the music pauses, with the music paused, below the thermal state Fair and out of Low
+                  Power Mode (compiled while music played, it heated the iPhone for a minute with nobody asking; cooling down or Low
+                  Power Mode going off looks again), the Neural Engine copy alone loads once for this
                   iOS and install and is let go (22 s on a fair iPhone 15 Pro, 48-65 s on a serious one; a want meanwhile takes that
                   load over), so the mic's copy loads in 0.3 s; Karaoke's status reads "On, Neural Engine" or "On, CPU", and "Off ·
                   preparing for the Neural Engine" while it compiles ahead, and it is dropped for the launch, the CPU copy carrying on, once it fails to load, warm up or

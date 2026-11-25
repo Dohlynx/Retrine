@@ -337,16 +337,22 @@ static void loaderChanged(void) {
 
 // After an install or an iOS update the Neural Engine copy compiles again (48-65 s on an iPhone 15 Pro), a minute in
 // which the mic has only the CPU's copy, which a warm iPhone cannot keep up with. With the model in and the mic off it
-// compiles ahead instead, once Spotify has been in front a while, the iPhone is below Serious and nothing else loads.
+// compiles ahead instead, once Spotify has been in front a while with the music paused, the iPhone is below Fair,
+// Low Power Mode is off and nothing else loads: compiled while music plays, it heated the iPhone for a minute with
+// nobody asking for it. Pausing, cooling down or Low Power Mode going off looks again.
 static const NSTimeInterval kPrepareAfter = 15;
 
 static void prepareAhead(void) {
     NSString *compiled = neuralCompiled();
     if (!SGEnabled(SGKeySingPrepareAhead) || SGSingOn() || !sg_active || !neuralWanted() || SGSingModelCurrentState() != SGSingModelReady
         || [[NSUserDefaults.standardUserDefaults stringForKey:kNeuralReadyOn] isEqualToString:compiled]) return;
-    if (NSProcessInfo.processInfo.thermalState >= NSProcessInfoThermalStateSerious) {
+    SPTPlayerState *player = SGPlayerState();
+    BOOL playing = player.isPlaying && !player.isPaused;
+    if (playing || NSProcessInfo.processInfo.lowPowerModeEnabled || NSProcessInfo.processInfo.thermalState >= NSProcessInfoThermalStateFair) {
         static BOOL told;
-        if (!told) SGLog(@"sing: the Neural Engine copy waits to be prepared until the iPhone is cooler (thermal state %s)", SGSingThermalName());
+        if (!told) SGLog(@"sing: the Neural Engine copy waits to be prepared until the music is paused, the iPhone is cool and Low Power Mode is off "
+                         "(%s, thermal state %s%s)", playing ? "playing" : "paused", SGSingThermalName(),
+                         NSProcessInfo.processInfo.lowPowerModeEnabled ? ", Low Power Mode" : "");
         told = YES;
         return;
     }
@@ -359,8 +365,13 @@ static void prepareAhead(void) {
     if (started) SGLog(@"sing: prepares the Neural Engine copy ahead of the mic, for this install");
 }
 
+// Main thread. One look at a time, however many pauses and changes ask for it.
 static void prepareAheadSoon(void) {
+    static BOOL waiting;
+    if (waiting) return;
+    waiting = YES;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kPrepareAfter * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        waiting = NO;
         prepareAhead();
     });
 }
@@ -1123,6 +1134,8 @@ static void watch(void) {
         apply();
         announce();
     }
+    // Paused music is when the Neural Engine copy may be prepared ahead (prepareAhead).
+    if (state.isPaused) prepareAheadSoon();
     updateSpatial();
     checkLanding(state);
     // Paused while not separating: the lead is dropped with nothing heard lost. Not through an interruption, which
@@ -1283,6 +1296,10 @@ static void readHeat(void) {
         // Posted on whichever thread saw the change: handed to main without waiting.
         [center addObserverForName:NSProcessInfoThermalStateDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
             dispatch_async(dispatch_get_main_queue(), ^{ readHeat(); });
+        }];
+        // Low Power Mode going off may let the Neural Engine copy be prepared ahead.
+        [center addObserverForName:NSProcessInfoPowerStateDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+            dispatch_async(dispatch_get_main_queue(), ^{ prepareAheadSoon(); });
         }];
         // Headphones in or out, or iOS's own spatial audio switched.
         for (NSNotificationName name in @[AVAudioSessionRouteChangeNotification, AVAudioSessionSpatialPlaybackCapabilitiesChangedNotification]) {

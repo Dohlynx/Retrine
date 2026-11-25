@@ -9,16 +9,21 @@
 #import "Core/SGCore.h"
 #import "Flags.h"
 
-// What the mod's answers cost as Spotify starts, logged once (harness/launch measures it on the Mac).
+// What the mod's answers cost as Spotify starts, logged once (harness/launch measures it on the Mac); counted only
+// until then, as nothing reads the counts after.
 static _Atomic uint64_t sg_reads, sg_mainReads, sg_ticks;
+static atomic_bool sg_counted;
 static const NSTimeInterval kCountFor = 15;
 
 static id forced(NSString *key) {
-    uint64_t start = mach_absolute_time();
+    BOOL count = !atomic_load_explicit(&sg_counted, memory_order_relaxed);
+    uint64_t start = count ? mach_absolute_time() : 0;
     id value = SGForcedFlagValue(key);
-    atomic_fetch_add_explicit(&sg_ticks, mach_absolute_time() - start, memory_order_relaxed);
-    atomic_fetch_add_explicit(&sg_reads, 1, memory_order_relaxed);
-    if (pthread_main_np()) atomic_fetch_add_explicit(&sg_mainReads, 1, memory_order_relaxed);
+    if (count) {
+        atomic_fetch_add_explicit(&sg_ticks, mach_absolute_time() - start, memory_order_relaxed);
+        atomic_fetch_add_explicit(&sg_reads, 1, memory_order_relaxed);
+        if (pthread_main_np()) atomic_fetch_add_explicit(&sg_mainReads, 1, memory_order_relaxed);
+    }
     return [value isKindOfClass:NSNumber.class] || [value isKindOfClass:NSString.class] ? value : nil;
 }
 
@@ -92,6 +97,7 @@ static id enumFor(NSString *key, id orig) {
     ]);
     // Off the main queue, so a main thread held up at launch does not hold the report back with it.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kCountFor * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        atomic_store(&sg_counted, true);
         mach_timebase_info_data_t base;
         mach_timebase_info(&base);
         double ms = (double)atomic_load(&sg_ticks) * base.numer / base.denom / 1e6;

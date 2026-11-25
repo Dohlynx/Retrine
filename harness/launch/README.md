@@ -22,4 +22,5 @@ On an M-series Mac, five runs each:
 | switches and overrides read once (after) | 2.8 to 4.0 ms | 1.6 ms | 0.67 µs |
 
 How many flags Spotify reads, and on which thread, is not measured here. Flags.x logs both on the
-phone 15 s after launch: `flags: N reads in the first 15 s, M on the main thread, X ms in the mod's answers`.
+phone 15 s after launch: `flags: N reads in the first 15 s, M on the main thread, X ms in the mod's answers`,
+and stops counting after that report.
