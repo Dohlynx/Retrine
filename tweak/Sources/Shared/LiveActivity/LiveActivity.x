@@ -48,6 +48,8 @@ typedef NS_ENUM(NSInteger, SGLiveActivityTab) {
 };
 
 extern NSNotificationName const SGKaraokeLookupReadyNotification;
+extern BOOL SGKaraokeLookupEnded(NSString *trackID);
+extern id SGKaraokeObserveLinesKept(void (^changed)(NSNotification *));
 // Seconds between attempts to start one, so a refused request (activities turned off) is not retried every tick.
 static const NSTimeInterval kStartRetry = 10;
 // A card that has not changed for this long is sent again, so its stale date (the bridge's staleAfter,
@@ -81,10 +83,6 @@ static const double kAccentLuminance = 0.48;
 static dispatch_source_t sg_timer;
 static NSString *sg_shown;
 static NSString *sg_missingLyrics;
-// The tracks whose look for lyrics ended (SGKaraokeLinesKeptNotification), with lines or without: a set, since
-// the track up next is looked up too, ahead of the one playing.
-// ponytail: grows by one short ID a track for the session; clear it on a track change if that ever matters.
-static NSMutableSet<NSString *> *sg_lookEnded;
 static NSDate *sg_lastStart;
 static NSDate *sg_lastSent;
 static NSDate *sg_ageDeadline;
@@ -170,6 +168,20 @@ static NSInteger repeatModeOf(SPTPlayerOptions *options) {
     return options.repeatingTrack ? 2 : options.repeatingContext ? 1 : 0;
 }
 
+// Distinguish an answered miss (or plain text) from a lookup that hasn't answered yet.
+static NSArray<SGKaraokeLine *> *timedLinesForCard(NSString *trackID, NSArray<SGKaraokeLine *> *lines, BOOL *none) {
+    if (!lines) {
+        SGKaraokeRequestLyrics(trackID);
+        if (trackID && ![trackID isEqualToString:sg_missingLyrics]) {
+            sg_missingLyrics = trackID;
+            SGLog(@"live activity: no lyrics yet for %@", trackID);
+        }
+    }
+    if (lines && SGKaraokeLinesTiming(lines) == SGKaraokeTimingNone) lines = nil;
+    *none = !lines && SGKaraokeLookupEnded(trackID);
+    return lines;
+}
+
 // The line being sung and the one after it; before the first line, between lines and without lyrics
 // at all, a note holds the place. `none` says the track has no timed lines to follow, no lyrics or plain text,
 // and only once a look for them has ended and no other is under way: a look that never ends, as with
@@ -196,16 +208,7 @@ static NSString *lyricsLine(NSString *trackID, NSInteger position, BOOL paused, 
         sg_translationTrack = nil;
         sg_translationRevision++;
     }
-    if (!lines) {
-        SGKaraokeRequestLyrics(trackID);
-        if (trackID && ![trackID isEqualToString:sg_missingLyrics]) {
-            sg_missingLyrics = trackID;
-            SGLog(@"live activity: no lyrics yet for %@", trackID);
-        }
-    }
-    // Plain text has no line being sung: the note, as for a track with no lyrics.
-    if (lines && SGKaraokeLinesTiming(lines) == SGKaraokeTimingNone) lines = nil;
-    *none = !lines && [sg_lookEnded containsObject:trackID] && !SGKaraokeLooking(trackID);
+    lines = timedLinesForCard(trackID, lines, none);
     if (position >= 0) {
         position += (paused ? 0 : kRenderLeadMs) - SGKaraokeDelayMs();
         if (!paused) *until = SGKaraokeMsToChange(lines, position, -1);
@@ -635,16 +638,13 @@ void SGSetLiveActivityEnabled(BOOL on) {
                 SGSetLiveActivityEnabled(SGFlag(SGKeyLiveActivity, NO));
             });
         }];
-        // From launch, card on or off, so a look that ends before the card is switched on still counts. Posted on
-        // the main queue, so no queue: it is noted before the post returns.
-        sg_lookEnded = [NSMutableSet set];
+        void (^lyricsChanged)(NSNotification *) = ^(NSNotification *note) {
+            if (sg_timer && (!note.object || [note.object isEqual:SGKaraokePlayingTrack()])) tick();
+        };
+        SGKaraokeObserveLinesKept(lyricsChanged);
         for (NSNotificationName name in @[SGLyricsReadingsDidChangeNotification, SGLyricsLanguageDidChangeNotification,
-                                          SGKaraokeLinesKeptNotification, SGKaraokeLookupReadyNotification, SGLyricsOffsetsDidChangeNotification]) {
-            [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
-                if ([note.name isEqual:SGKaraokeLinesKeptNotification] && [note.object isKindOfClass:NSString.class])
-                    [sg_lookEnded addObject:note.object];
-                if (sg_timer && (!note.object || [note.object isEqual:SGKaraokePlayingTrack()])) tick();
-            }];
+                                          SGKaraokeLookupReadyNotification, SGLyricsOffsetsDidChangeNotification]) {
+            [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:lyricsChanged];
         }
         // Answered inside the post, which the intent makes on the main thread, so the reply is there when it returns.
         [NSNotificationCenter.defaultCenter addObserverForName:@"SGShortcut" object:nil queue:nil usingBlock:^(NSNotification *note) {

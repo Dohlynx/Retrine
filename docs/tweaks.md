@@ -1302,7 +1302,8 @@ Shared:
                   off, polls once a second, or sooner for a playing lyric boundary. Unchanged states are coalesced;
                   queue and panel rebuilds stop after three qualifying upcoming tracks. The lyrics
                   reader requests missing lines independently of artwork or an open player, and a lines-kept notification
-                  sends the current line at once, including in the background. The card
+                  sends the current line at once, including in the background. The lyrics keeper tells the card
+                  whether a lookup ended; an evicted miss can be looked up again on revisit. The card
                   is tinted with the cover's color and shows the cover itself, a JPEG of a few dozen pixels inside
                   the state, which ActivityKit caps at 4 KB (the bridge sends it without the cover when it would
                   not fit); the color is darkened to a luminance of 0.04 at most, so the white text keeps 4.5:1 on any

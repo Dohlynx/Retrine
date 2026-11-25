@@ -93,7 +93,10 @@ NSNotificationName const SGLyricsPiPDidChangeNotification = @"harness.pip";
 BOOL SGLiveActivityAllowedByInstall(void) { return YES; }
 // No string tables here: English, as SGL gives without one.
 NSString *SGL(NSString *key, NSString *english) { return english; }
-BOOL SGKaraokeLooking(NSString *track) { return NO; }
+BOOL SGKaraokeLookupEnded(NSString *track) { return SGKaraokeLinesForTrack(track) != nil; }
+id SGKaraokeObserveLinesKept(void (^changed)(NSNotification *)) {
+    return [NSNotificationCenter.defaultCenter addObserverForName:SGKaraokeLinesKeptNotification object:nil queue:nil usingBlock:changed];
+}
 static NSUInteger queueLimit;
 NSArray *SGPlayerUpcomingTracks(SPTPlayerState *state, NSUInteger limit) { queueLimit = limit; return upcoming ?: @[]; }
 id SGPlayerAdvanceRepeat(id player, id options) { return nil; }

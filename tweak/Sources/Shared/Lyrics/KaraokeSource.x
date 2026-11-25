@@ -39,7 +39,21 @@ static NSMutableDictionary<NSString *, NSArray<SGKaraokeLine *> *> *sg_lyrics;
 static NSMutableDictionary<NSString *, id> *sg_sheetAuthorities;
 // Lives only as long as this track's request or retained sheet.
 static NSMutableDictionary<NSString *, NSString *> *sg_sampledLocalPaths;
-static NSMutableSet<NSString *> *sg_requested;
+// One bounded record per track. Admission and completion are independent: a disk
+// read closes admission before it answers; a 401 answers but reopens admission.
+typedef NS_OPTIONS(NSUInteger, SGRequestMark) {
+    SGRequested = 1, SGAnnounced = 2,
+};
+static NSMutableDictionary<NSString *, NSNumber *> *sg_requestMarks;
+static BOOL requested(NSString *track) {
+    return (sg_requestMarks[track].unsignedIntegerValue & SGRequested) != 0;
+}
+static void setRequested(NSString *track, BOOL requested) {
+    NSUInteger marks = sg_requestMarks[track].unsignedIntegerValue;
+    marks = requested ? marks | SGRequested : marks & ~SGRequested;
+    if (marks) sg_requestMarks[track] = @(marks);
+    else [sg_requestMarks removeObjectForKey:track];
+}
 // Of those, the ones with a request still out or waiting out its pause. A full cache spares their lines
 // and leaves them asked for, so no second request runs beside the first.
 static NSMutableSet<NSString *> *sg_asking;
@@ -209,7 +223,7 @@ static BOOL isSpclientHost(NSString *host) {
 NSNotificationName const SGKaraokeLookupReadyNotification = @"spotifyglass.karaoke.lookupReady";
 
 static void lookupReady(NSString *track) {
-    if (track && !sg_lyrics[track] && ![sg_requested containsObject:track])
+    if (track && !sg_lyrics[track] && !requested(track))
         [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLookupReadyNotification object:track];
 }
 
@@ -306,7 +320,7 @@ NSNotificationName const SGKaraokeLinesKeptNotification = @"spotifyglass.karaoke
 
 // Request marks without a retained sheet need their own budget. Active asks/backoffs are never evicted.
 static void pruneRequested(NSString *newest) {
-    NSMutableSet<NSString *> *completed = [sg_requested mutableCopy];
+    NSMutableSet<NSString *> *completed = [NSMutableSet setWithArray:sg_requestMarks.allKeys];
     [completed addObjectsFromArray:sg_losses.allKeys ?: @[]];
     [completed addObjectsFromArray:sg_sourceRetries.allKeys ?: @[]];
     [completed minusSet:sg_asking];
@@ -317,7 +331,7 @@ static void pruneRequested(NSString *newest) {
     for (NSString *track in completed) {
         if (count <= kCompletedRequests) break;
         if ([track isEqualToString:playing] || [track isEqualToString:newest]) continue;
-        [sg_requested removeObject:track];
+        [sg_requestMarks removeObjectForKey:track];
         if (!sg_lyrics[track]) [sg_sampledLocalPaths removeObjectForKey:track];
         [sg_losses removeObjectForKey:track];
         [sg_sourceRetries removeObjectForKey:track];
@@ -325,14 +339,42 @@ static void pruneRequested(NSString *newest) {
     }
 }
 
-// Main queue only.
+static void markAnnounced(NSString *track) {
+    if (!sg_requestMarks) sg_requestMarks = [NSMutableDictionary dictionary];
+    sg_requestMarks[track] = @(sg_requestMarks[track].unsignedIntegerValue | SGAnnounced);
+}
+
+// Main queue only. Publish the evidence before waking any synchronous reader.
 static void announce(NSString *track) {
+    markAnnounced(track);
     pruneRequested(track);
     [NSNotificationCenter.defaultCenter postNotificationName:SGKaraokeLinesKeptNotification object:track];
 }
 
+// LyricsSources also posts linesKept directly when a failure changes, including
+// when Spotify refuses a different track with the same expired authorization.
+// Record that outcome before invoking the card in the same notification delivery.
+id SGKaraokeObserveLinesKept(void (^changed)(NSNotification *)) {
+    return [NSNotificationCenter.defaultCenter addObserverForName:SGKaraokeLinesKeptNotification object:nil queue:nil
+        usingBlock:^(NSNotification *note) {
+            NSString *track = note.object;
+            if ([track isKindOfClass:NSString.class] && !sg_lyrics[track]
+                && !(sg_requestMarks[track].unsignedIntegerValue & SGAnnounced)) {
+                markAnnounced(track);
+                pruneRequested(track);
+            }
+            changed(note);
+        }];
+}
+
 BOOL SGKaraokeLooking(NSString *trackID) {
     return trackID && [sg_looking containsObject:trackID];
+}
+
+// Main queue. A retained sheet (even instrumental/plain) is itself an answer.
+BOOL SGKaraokeLookupEnded(NSString *trackID) {
+    return trackID && !SGKaraokeLooking(trackID)
+        && (sg_lyrics[trackID] || (sg_requestMarks[trackID].unsignedIntegerValue & SGAnnounced));
 }
 
 // Same eviction on capacity and memory pressure. Never disturb playback or a pending request.
@@ -349,7 +391,7 @@ static void trimSheets(void) {
         [sg_lyrics removeObjectForKey:kept];
         [sg_sheetAuthorities removeObjectForKey:kept];
         [sg_sampledLocalPaths removeObjectForKey:kept];
-        [sg_requested removeObject:kept];
+        [sg_requestMarks removeObjectForKey:kept];
     }
 }
 
@@ -447,7 +489,7 @@ static void forgetKeeper(NSString *trackID) {
     SGKaraokeCancelStoreWrite(trackID);
     [sg_lyrics removeObjectForKey:trackID];
     [sg_sheetAuthorities removeObjectForKey:trackID];
-    [sg_requested removeObject:trackID];
+    setRequested(trackID, NO);
     [sg_asking removeObject:trackID];
     [sg_looking removeObject:trackID];
     [sg_losses removeObjectForKey:trackID];
@@ -517,7 +559,7 @@ static void askAgainLater(NSString *trackID, BOOL automatic) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(pause * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (sg_requests[trackID] != request) return;
         [sg_asking removeObject:trackID];
-        [sg_requested removeObject:trackID];
+        setRequested(trackID, NO);
         if (!sg_lyrics[trackID]) [sg_sampledLocalPaths removeObjectForKey:trackID];
         [sg_requests removeObjectForKey:trackID];
         // Returning before the pause ended must not leave the playing track waiting for a reader's tick.
@@ -550,7 +592,7 @@ static BOOL resumeSourceRetries(NSString *trackID) {
     if (!trackID || sg_sourceRetries[trackID].unsignedIntegerValue <= kSourceRetries) return NO;
     [sg_sourceRetries removeObjectForKey:trackID];
     [sg_losses removeObjectForKey:trackID];
-    [sg_requested removeObject:trackID];
+    setRequested(trackID, NO);
     return YES;
 }
 
@@ -626,7 +668,7 @@ static BOOL requestFromSpotify(NSString *trackID) {
     if (!sg_requests) sg_requests = [NSMutableDictionary dictionary];
     NSObject *token = [NSObject new];
     sg_requests[trackID] = token;
-    [sg_requested addObject:trackID];
+    setRequested(trackID, YES);
     [sg_asking addObject:trackID];
     [sg_looking addObject:trackID];
     NSString *address = [NSString stringWithFormat:@"https://spclient.wg.spotify.com/color-lyrics/v2/track/%@?format=json&vocalRemoval=false&market=from_token", trackID];
@@ -658,7 +700,7 @@ static BOOL requestFromSpotify(NSString *trackID) {
             if (status == 401) {
                 sg_refusedAuthorization = headers[@"authorization"];
                 [sg_requests removeObjectForKey:trackID];
-                [sg_requested removeObject:trackID];
+                setRequested(trackID, NO);
                 [sg_asking removeObject:trackID];
             } else if (lost) {
                 askAgainLater(trackID, NO);
@@ -692,7 +734,7 @@ void SGKaraokeAskAgain(NSString *trackID) {
     [sg_sampledLocalPaths removeObjectForKey:trackID];
     [sg_lyrics removeObjectForKey:trackID];
     [sg_sheetAuthorities removeObjectForKey:trackID];
-    [sg_requested removeObject:trackID];
+    setRequested(trackID, NO);
     [sg_asking removeObject:trackID];
     [sg_losses removeObjectForKey:trackID];
     [sg_sourceRetries removeObjectForKey:trackID];
@@ -702,7 +744,7 @@ void SGKaraokeAskAgain(NSString *trackID) {
 
 void SGKaraokeAskSpotifyForTiming(NSString *trackID) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!trackID || [sg_requested containsObject:trackID] || SGLyricsPinnedID(trackID)) return;
+        if (!trackID || requested(trackID) || SGLyricsPinnedID(trackID)) return;
         requestFromSpotify(trackID);
     });
 }
@@ -737,7 +779,7 @@ static BOOL askLrcLib(NSString *trackID, void (^done)(SGLyricsResult *lyrics)) {
 }
 
 static void requestLyrics(NSString *trackID, BOOL tryStore, BOOL tryImported) {
-    if (!trackID || sg_lyrics[trackID] || [sg_requested containsObject:trackID]
+    if (!trackID || sg_lyrics[trackID] || requested(trackID)
         || sg_sourceRetries[trackID].unsignedIntegerValue > kSourceRetries) return;
     // spclient has nothing for a local file, which only the sources can name. A file of the user's own,
     // linked to it or matching its names, comes before every source.
@@ -749,7 +791,7 @@ static void requestLyrics(NSString *trackID, BOOL tryStore, BOOL tryImported) {
         if (!sg_requests) sg_requests = [NSMutableDictionary dictionary];
         NSObject *token = [NSObject new];
         sg_requests[trackID] = token;
-        [sg_requested addObject:trackID];
+        setRequested(trackID, YES);
         [sg_asking addObject:trackID];
         [sg_looking addObject:trackID];
         SPTPlayerTrack *track = local ? SGKaraokeTrackFor(trackID) : nil;
@@ -774,18 +816,18 @@ static void requestLyrics(NSString *trackID, BOOL tryStore, BOOL tryImported) {
                 return;
             }
             [sg_sheetAuthorities removeObjectForKey:trackID];
-            [sg_requested removeObject:trackID];
+            setRequested(trackID, NO);
             requestLyrics(trackID, tryStore, NO);
         });
         return;
     }
     if (tryStore && !local && SGFlag(SGKeyLyricsOffline, YES)) {
-        if (!sg_requested) sg_requested = [NSMutableSet set];
+        if (!sg_requestMarks) sg_requestMarks = [NSMutableDictionary dictionary];
         if (!sg_asking) sg_asking = [NSMutableSet set];
         if (!sg_storeRequests) sg_storeRequests = [NSMutableDictionary dictionary];
         NSObject *token = [NSObject new];
         sg_storeRequests[trackID] = token;
-        [sg_requested addObject:trackID];
+        setRequested(trackID, YES);
         [sg_asking addObject:trackID];
         SGLyricsStoreLoad(trackID, ^(NSArray<SGKaraokeLine *> *lines, NSString *credit, SGLyricsResult *metadata) {
             if (sg_storeRequests[trackID] != token) return;
@@ -799,12 +841,12 @@ static void requestLyrics(NSString *trackID, BOOL tryStore, BOOL tryImported) {
                 SGLyricsSetCredit(trackID, credit);
                 // Plain text was saved: Spotify is asked whether it has the song timed, as when the sources found it.
                 if (SGKaraokeLinesTiming(lines) == SGKaraokeTimingNone) {
-                    [sg_requested removeObject:trackID];
+                    setRequested(trackID, NO);
                     SGKaraokeAskSpotifyForTiming(trackID);
                 }
                 return;
             }
-            [sg_requested removeObject:trackID];
+            setRequested(trackID, NO);
             requestLyrics(trackID, NO, NO); // A miss continues exactly once, without another disk look.
         });
         return;
@@ -813,7 +855,7 @@ static void requestLyrics(NSString *trackID, BOOL tryStore, BOOL tryImported) {
         requestFromSpotify(trackID);
         return;
     }
-    [sg_requested addObject:trackID];
+    setRequested(trackID, YES);
     [sg_asking addObject:trackID];
     [sg_looking addObject:trackID];
     if (!sg_requests) sg_requests = [NSMutableDictionary dictionary];
@@ -861,11 +903,11 @@ static void requestLyrics(NSString *trackID, BOOL tryStore, BOOL tryImported) {
             return;
         }
         [sg_asking removeObject:trackID];
-        [sg_requested removeObject:trackID];
+        setRequested(trackID, NO);
         // Spotify is asked next, so the look goes on; with nothing to ask it with, it is over.
         if (!requestFromSpotify(trackID)) {
             if (!lyrics && !SGLyricsKeptAnswer(trackID)) {
-                [sg_requested addObject:trackID];
+                setRequested(trackID, YES);
                 [sg_asking addObject:trackID];
                 retrySourcesLater(trackID);
             } else [sg_requests removeObjectForKey:trackID];
@@ -962,7 +1004,9 @@ static void importsChanged(NSArray<NSString *> *uris) {
         if ([uri hasPrefix:@"spotify:track:"]) [affected addObject:[uri substringFromIndex:@"spotify:track:".length]];
         else if (SGLocalFileIs(uri)) [affected addObject:SGLocalFileLyricsKey(uri)];
     }
-    for (NSString *key in [sg_requested setByAddingObjectsFromArray:sg_lyrics.allKeys])
+    for (NSString *key in sg_requestMarks)
+        if (requested(key) && SGLocalFileIs(key)) [affected addObject:key];
+    for (NSString *key in sg_lyrics)
         if (SGLocalFileIs(key)) [affected addObject:key];
     if (SGLocalFileIs(playing)) [affected addObject:playing];
     for (NSString *key in affected) {
@@ -1190,7 +1234,7 @@ static SGKaraokeTrackWatcher *sg_trackWatcher;
     }
     sg_seenTracks = [NSMutableDictionary dictionary];
     sg_lyrics = [NSMutableDictionary dictionary];
-    sg_requested = [NSMutableSet set];
+    sg_requestMarks = [NSMutableDictionary dictionary];
     sg_asking = [NSMutableSet set];
     sg_losses = [NSMutableDictionary dictionary];
     sg_looking = [NSMutableSet set];

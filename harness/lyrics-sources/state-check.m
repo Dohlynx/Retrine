@@ -127,6 +127,8 @@ static void observedKaraokeDispatch(dispatch_queue_t queue, dispatch_block_t blo
 #undef dispatch_async
 #undef SGLyricsPrefetch
 #undef SGOptionalWorkMayRun
+static NSString *sg_missingLyrics;
+#import "activity-lines.inc"
 // The production watcher, with only its drawing/rest effects replaced. The full player simulator
 // harness needs unrelated AI/view services; this check drives the state machine without those.
 static BOOL sg_open, sg_alone, sg_wide;
@@ -351,7 +353,7 @@ static void checkHookPins(void) {
         CHECK(page.length && ![page isEqual:body]);
         NSArray *kept = SGKaraokeLinesForTrack(track);
         CHECK(kept && [SGLyricsCreditFor(track) isEqual:@"LRCLIB"]);
-        CHECK(![sg_requested containsObject:track]); // No Spotify timing request for a pin.
+        CHECK(!requested(track)); // No Spotify timing request for a pin.
         if (chosen.instrumental) CHECK(!kept.count && !SGKaraokeLinesFromBody(page).count);
         else {
             CHECK([SGKaraokeLineText(kept.firstObject) isEqual:@"My plain choice"]);
@@ -592,14 +594,17 @@ static void checkCompletedBounds(void) {
         [tracks addObject:track]; SGKaraokeRequestLyrics(track);
         pumpUntil(^BOOL { return !SGKaraokeLooking(track); });
     }
-    CHECK(sg_requested.count <= 201);
-    CHECK([sg_requested containsObject:current] && [sg_requested containsObject:active] && SGKaraokeLooking(active));
+    CHECK(sg_requestMarks.count <= 201);
+    CHECK(requested(current) && requested(active) && SGKaraokeLooking(active));
     evicted = nil;
-    for (NSString *track in tracks) if (![sg_requested containsObject:track]) { evicted = track; break; }
+    for (NSString *track in tracks) if (!requested(track)) { evicted = track; break; }
     CHECK(evicted);
     NSUInteger before = sg_spotifyAsks;
-    SGKaraokeRequestLyrics(evicted);
+    BOOL noLyrics = YES;
+    CHECK(!SGKaraokeLookupEnded(evicted));
+    CHECK(!timedLinesForCard(evicted, SGKaraokeLinesForTrack(evicted), &noLyrics) && !noLyrics);
     pumpUntil(^BOOL { return !SGKaraokeLooking(evicted); });
+    CHECK(!timedLinesForCard(evicted, SGKaraokeLinesForTrack(evicted), &noLyrics) && noLyrics);
     CHECK(sg_spotifyAsks == before + 1);
     sg_holdSpotifyTrack = nil;
     sg_heldSpotifyReply(); sg_heldSpotifyReply = nil;
@@ -1445,6 +1450,15 @@ static void checkSpotifyAuthPause(void) {
     SGKaraokeAskSpotifyForTiming(track);
     drainReplies();
     CHECK(sg_spotifyAsks == asks + 1 && SGLyricsLoadFailed(track));
+    NSString *skippedTo = fixtureTrackID();
+    __block BOOL refusedAtDelivery = NO;
+    id completion = SGKaraokeObserveLinesKept(^(NSNotification *note) {
+        if ([note.object isEqual:skippedTo]) refusedAtDelivery = SGKaraokeLookupEnded(skippedTo);
+    });
+    SGKaraokeRequestLyrics(skippedTo);
+    pumpUntil(^BOOL { return SGLyricsLoadFailed(skippedTo); }); // Offline lookup precedes the refused-header path.
+    [NSNotificationCenter.defaultCenter removeObserver:completion];
+    CHECK(refusedAtDelivery && !requested(skippedTo) && sg_spotifyAsks == asks + 1);
     NSUInteger before = readyCount;
     [request setValue:@"updated-client" forHTTPHeaderField:@"Client-Token"];
     captureHeaders(nil, request);
@@ -1461,7 +1475,7 @@ static void checkSpotifyAuthPause(void) {
     CHECK(!SGLyricsLoadFailed(track));
     SGLyricsNoteLoadFailure(track, YES);
     sg_spclientHeaders = @{@"authorization": @"fixture-another"};
-    [sg_requested removeObject:track];
+    setRequested(track, NO);
     SGKaraokeAskSpotifyForTiming(track);
     pumpUntil(^BOOL { return sg_spotifyAsks == asks + 3; });
     drainReplies();
@@ -2428,7 +2442,7 @@ static void checkReload(void) {
     __block NSUInteger notes = 0;
     id observer = [NSNotificationCenter.defaultCenter addObserverForName:SGLyricsDidReloadNotification object:track queue:nil usingBlock:^(NSNotification *note) {
         CHECK(NSThread.isMainThread && !sg_kept[track] && !SGKaraokeLinesForTrack(track) && !SGLyricsCreditFor(track));
-        CHECK(![sg_requested containsObject:track] && ![sg_asking containsObject:track] && !sg_losses[track] && !sg_requests[track]);
+        CHECK(!requested(track) && ![sg_asking containsObject:track] && !sg_losses[track] && !sg_requests[track]);
         CHECK(SGLyricsMayHave(track)); notes++;
     }];
     [sg_missing addObject:track]; sg_losses[track] = @3;
@@ -2554,7 +2568,7 @@ static void checkPickRaces(NSUInteger only) {
             // Replay after the walk/line caches have been evicted, with its original snapshot intact.
             [sg_kept removeObjectForKey:track];
             [sg_lyrics removeObjectForKey:track];
-            [sg_requested removeObject:track];
+            setRequested(track, NO);
             [pending removeAllObjects]; hold = YES;
             __block NSUInteger deliveries = 0;
             for (NSUInteger i = 0; i < 2; i++) SGLyricsFetch(track, ^(SGLyricsResult *result) {
@@ -2673,7 +2687,7 @@ static void checkBackgroundSkip(void) {
     sg_providerReply(nil);
     pumpUntil(^BOOL { return !SGKaraokeLooking(key); });
     CHECK(SGLyricsKeptAnswer(key) == NSNull.null && !sg_losses[key]);
-    CHECK([sg_requested containsObject:key] && ![sg_asking containsObject:key]);
+    CHECK(requested(key) && ![sg_asking containsObject:key]);
 
     // No captured Spotify headers yet: the same failed walk waits, rather than being re-walked
     // every tick. A pause expiring in the background only clears the mark; activation asks again.
@@ -2691,11 +2705,11 @@ static void checkBackgroundSkip(void) {
     [sg_providerContext noteFailure:YES];
     sg_providerReply(nil);
     pumpUntil(^BOOL { return sg_losses[key].unsignedIntegerValue == 1; });
-    CHECK(sg_heldClocks.count == 1 && [sg_requested containsObject:key] && sg_open);
+    CHECK(sg_heldClocks.count == 1 && requested(key) && sg_open);
     retry = sg_heldClocks.firstObject; [sg_heldClocks removeAllObjects]; sg_providerReply = nil;
     retry();
     drainReplies();
-    CHECK(!sg_providerReply && ![sg_requested containsObject:key] && !SGRPlayerLyricsNone());
+    CHECK(!sg_providerReply && !requested(key) && !SGRPlayerLyricsNone());
     sg_testApplication.applicationState = UIApplicationStateActive;
     [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
     pumpUntil(^BOOL { return sg_providerReply != nil; });
@@ -2731,7 +2745,7 @@ static void checkBackgroundSkip(void) {
                 lastRetry();
             } else {
                 CHECK(!sg_heldClocks.count && ![sg_asking containsObject:key] && !sg_requests[key]);
-                CHECK([sg_requested containsObject:key]);
+                CHECK(requested(key));
             }
         }
         CHECK(sg_spotifyAsks == asks + (sg_spclientHeaders ? 5 : 0));
@@ -2770,7 +2784,7 @@ static void checkBackgroundSkip(void) {
     NSUInteger asks = sg_spotifyAsks;
     retry = sg_heldClocks.firstObject; [sg_heldClocks removeAllObjects]; retry();
     drainReplies();
-    CHECK(!sg_providerReply && sg_spotifyAsks == asks && ![sg_requested containsObject:key]);
+    CHECK(!sg_providerReply && sg_spotifyAsks == asks && !requested(key));
     SGKaraokeRequestLyrics(key);
     pumpUntil(^BOOL { return sg_losses[key].unsignedIntegerValue == 2; });
     CHECK(!sg_sourceRetries[key]); // The cached genuine source miss still follows the old lost path.
@@ -3044,7 +3058,7 @@ static void checkCommunityPersistence(BOOL cached) {
     pumpUntil(^BOOL { return writesDrained; });
     // Fresh offline session: no memory answer, no community transport, only the real disk store.
     sg_testTranslations = NO; sg_cachedTranslationReply = nil; sg_translationReply = nil; sg_translatedLines = nil;
-    [sg_lyrics removeAllObjects]; [sg_requested removeAllObjects]; [sg_asking removeAllObjects];
+    [sg_lyrics removeAllObjects]; [sg_requestMarks removeAllObjects]; [sg_asking removeAllObjects];
     [sg_requests removeAllObjects]; [sg_storeRequests removeAllObjects]; [sg_storeWrites removeAllObjects];
     SGLyricsForgetAnswer(track);
     SGKaraokeRequestLyrics(track);
@@ -3501,7 +3515,7 @@ int main(void) {
         [defaults setInteger:250 forKey:SGKeyLyricsDelay];
         sg_seenTracks = [NSMutableDictionary dictionary];
         sg_lyrics = [NSMutableDictionary dictionary];
-        sg_requested = [NSMutableSet set]; sg_asking = [NSMutableSet set]; sg_looking = [NSMutableSet set];
+        sg_requestMarks = [NSMutableDictionary dictionary]; sg_asking = [NSMutableSet set]; sg_looking = [NSMutableSet set];
         sg_losses = [NSMutableDictionary dictionary]; sg_ownSources = YES;
         sg_lastSeenID = @"song";
         if (getenv("RETRINE_RESILIENCE_ONLY")) {
