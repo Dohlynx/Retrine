@@ -20,6 +20,12 @@
 // Hooked by PlayerDeclutter.x but not looked at here.
 @interface _TtC12Element_List18CollectionViewCell : UICollectionViewCell @end
 @implementation _TtC12Element_List18CollectionViewCell @end
+@interface _TtC12Element_List21SupplementaryItemView : UICollectionReusableView @end
+@implementation _TtC12Element_List21SupplementaryItemView
+- (UICollectionViewLayoutAttributes *)preferredLayoutAttributesFittingAttributes:(UICollectionViewLayoutAttributes *)attributes {
+    return attributes;
+}
+@end
 @interface _TtC20NowPlaying_ModesImpl28PlaybackControlsElementsUnit : UIViewController @end
 @implementation _TtC20NowPlaying_ModesImpl28PlaybackControlsElementsUnit @end
 @interface _TtC20NowPlaying_ModesImpl18FooterElementsUnit : UIViewController @end
@@ -70,6 +76,27 @@ static void check(NSString *step, BOOL ok, NSString *detail) {
 
 static BOOL hiddenPreviewRun(void) {
     return [NSProcessInfo.processInfo.arguments containsObject:@"preview-hidden"];
+}
+
+static void checkCardHeader(void) {
+    UIView *list = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:[UICollectionViewFlowLayout new]];
+    list.accessibilityIdentifier = @"scrolling_npv_collection_view_accessibility_identifier";
+    UICollectionReusableView *header = [_TtC12Element_List21SupplementaryItemView new];
+    UICollectionViewLayoutAttributes *proposed = [UICollectionViewLayoutAttributes
+        layoutAttributesForSupplementaryViewOfKind:UICollectionElementKindSectionHeader
+        withIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]];
+    proposed.size = CGSizeMake(320, 84);
+    header.alpha = 0.75;
+    [list addSubview:header];
+    [header layoutSubviews];
+    check(@"all cards: teaser header", header.alpha == 0, nil);
+    CGSize fitted = [header preferredLayoutAttributesFittingAttributes:proposed].size;
+    check(@"teaser takes no scroll space", CGSizeEqualToSize(fitted, CGSizeMake(320, 0)), NSStringFromCGSize(fitted));
+    [header addSubview:[UISlider new]];
+    [header layoutSubviews];
+    check(@"reused header now contains the slider", header.alpha == 0.75, nil);
+    fitted = [header preferredLayoutAttributesFittingAttributes:proposed].size;
+    check(@"reused slider header takes its normal space", CGSizeEqualToSize(fitted, CGSizeMake(320, 84)), NSStringFromCGSize(fitted));
 }
 
 static void runScrubChecks(UIWindow *window) {
@@ -308,6 +335,7 @@ static void runSponsorBlockChecks(UIWindow *window) {
             exit(0);
         }
         if (!hiddenPreviewRun()) runScrubChecks(self.window);
+        if ([NSProcessInfo.processInfo.arguments containsObject:@"all-cards"]) checkCardHeader();
         runCoverChecks(self.window);
         NSLog(@"[harness] native player checks: %lu of %lu right -- %@", (unsigned long)sg_right, (unsigned long)sg_checks,
               sg_right == sg_checks ? @"PASS" : @"FAIL");
@@ -322,6 +350,10 @@ __attribute__((constructor(101))) static void sg_harnessDefaults(void) {
     [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"spotifyglass.redesign"];
     // PlayerDeclutter snapshots this switch in its constructor, just as a real launch does.
     [NSUserDefaults.standardUserDefaults setBool:hiddenPreviewRun() forKey:SGHideLyricsInline];
+    for (NSString *key in @[SGHideLyricsCard, SGHideAboutArtist, SGHideRelatedVideos, SGHideSongDNA,
+                            SGHideLiveEvents, SGHideExploreArtist, SGHideCredits, SGHideMerch, SGHideRecommendations]) {
+        [NSUserDefaults.standardUserDefaults setBool:[NSProcessInfo.processInfo.arguments containsObject:@"all-cards"] forKey:key];
+    }
 }
 
 int main(int argc, char *argv[]) {

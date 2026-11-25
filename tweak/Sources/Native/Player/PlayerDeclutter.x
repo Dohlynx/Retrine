@@ -20,6 +20,7 @@ static BOOL sg_hideLyricsInline;
 static const SGNativeMarkerRule cards[] = {
     {@"Lyrics_CardElementImpl", SGHideLyricsCard},
     {@"CreatorBiography", SGHideAboutArtist},
+    {@"ArtistAbout", SGHideAboutArtist},
     {@"VideoRecommendations", SGHideRelatedVideos},
     {@"SongDNA_", SGHideSongDNA},
     {@"LiveEvents_", SGHideLiveEvents},
@@ -30,6 +31,14 @@ static const SGNativeMarkerRule cards[] = {
 };
 
 enum { kCards = sizeof(cards) / sizeof(cards[0]) };
+
+static BOOL hasPlayerControls(UIView *view) {
+    static char key;
+    return SGFindRemembered(view, &key, ^BOOL(UIView *v) {
+        return [v isKindOfClass:UISlider.class] || SGClassNamed(v.class, @"SliderNowPlaying")
+            || SGClassNamed(v.class, @"PlaybackControlsGridView");
+    }) != nil;
+}
 
 // Whether the cell is one of the player's cards: its own first subview or its content view's names the page.
 // Spotify's cell has held the name in both places (Redesigned/Player/PlayerCards.x, and the trees above).
@@ -65,13 +74,58 @@ static NSString *hiddenKeyFor(UICollectionViewCell *cell) {
 - (UICollectionViewLayoutAttributes *)preferredLayoutAttributesFittingAttributes:(UICollectionViewLayoutAttributes *)attributes {
     UICollectionViewLayoutAttributes *result = %orig;
     NSString *key = hiddenKeyFor((UICollectionViewCell *)self);
-    if (!key) return result;
+    if (!key || hasPlayerControls((UIView *)self)) return result;
     result.size = CGSizeMake(result.size.width, 0);
     ((UIView *)self).clipsToBounds = YES;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ SGLog(@"collapsed the first card, %@", key); });
     return result;
 }
+%end
+
+static BOOL inPlayerScroll(UIView *view) {
+    for (UIView *v = view.superview; v; v = v.superview) {
+        if (SGClassNamed(v.class, @"NowPlaying_Scroll") || SGClassNamed(v.class, @"NPVScroll")) return YES;
+        if (![v isKindOfClass:UICollectionView.class]) continue;
+        UICollectionView *list = (UICollectionView *)v;
+        if ([list.accessibilityIdentifier isEqualToString:@"scrolling_npv_collection_view_accessibility_identifier"] ||
+            SGClassNamed([list.dataSource class], @"NowPlaying_Scroll") ||
+            SGClassNamed([list.delegate class], @"NowPlaying_Scroll")) return YES;
+    }
+    return NO;
+}
+
+static BOOL hidePlayerHeader(UIView *view) {
+    return inPlayerScroll(view) && !hasPlayerControls(view);
+}
+
+%group SGHiddenPlayerHeaders
+%hook _TtC12Element_List21SupplementaryItemView
+- (UICollectionViewLayoutAttributes *)preferredLayoutAttributesFittingAttributes:(UICollectionViewLayoutAttributes *)attributes {
+    UICollectionViewLayoutAttributes *result = %orig;
+    if (!hidePlayerHeader((UIView *)self)) return result;
+    // Don't change the list's proposed attributes: it can fit this header again after reuse.
+    UICollectionViewLayoutAttributes *collapsed = [result copy];
+    collapsed.size = CGSizeMake(result.size.width, 0);
+    return collapsed;
+}
+- (void)layoutSubviews {
+    %orig;
+    UIView *view = (UIView *)self;
+    static char key;
+    NSNumber *priorAlpha = objc_getAssociatedObject(view, &key);
+    if (hidePlayerHeader(view)) {
+        if (view.alpha != 0) {
+            objc_setAssociatedObject(view, &key, @(view.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            view.alpha = 0;
+        }
+    } else if (priorAlpha) {
+        // A reused header (or one now holding controls) is Spotify's again.
+        if (view.alpha == 0) view.alpha = priorAlpha.doubleValue;
+        objc_setAssociatedObject(view, &key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+%end
 %end
 
 #pragma mark - player buttons, lyrics under the artwork
@@ -221,6 +275,13 @@ static BOOL inCoverCell(UIView *tilt) {
     if (!SGNativeUI()) return;
     sg_hideLyricsInline = SGHidden(SGHideLyricsInline);
     %init;
+    // Unmarked section headers cannot be attributed to one card switch. Only hide
+    // them when every card is switched off on the native Player page.
+    BOOL allHidden = YES;
+    for (size_t i = 0; i < kCards; i++) allHidden &= SGHidden(cards[i].key);
+    if (allHidden) {
+        %init(SGHiddenPlayerHeaders);
+    }
     SGRequireClasses(@[
         @"_TtC12Element_List18CollectionViewCell",
         @"_TtC20NowPlaying_ModesImpl28PlaybackControlsElementsUnit",
