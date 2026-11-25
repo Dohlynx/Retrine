@@ -51,6 +51,13 @@ static UIView *badge(Class cls, NSString *identifier) {
 - (NSString *)accessibilityIdentifier { self.reads++; return super.accessibilityIdentifier; }
 @end
 
+// Same nested Spotify type after its declaring source file has moved.
+@interface _TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_0000000000000000000000000000000013ExplicitBadge : UIView @end
+@implementation _TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_0000000000000000000000000000000013ExplicitBadge @end
+// A same-named type from another file that is not a view must not make the lookup ambiguous.
+@interface _TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_1111111111111111111111111111111113ExplicitBadge : NSObject @end
+@implementation _TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_1111111111111111111111111111111113ExplicitBadge @end
+
 @interface StandaloneLayer : CALayer
 @end
 @implementation StandaloneLayer
@@ -64,8 +71,7 @@ static void check(UIWindow *window) {
     @autoreleasepool {
         [NSUserDefaults.standardUserDefaults setVolatileDomain:@{} forName:NSArgumentDomain];
         refresh();
-        Class retrieval = objc_allocateClassPair(UIView.class, "_TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_9D5FF3EB21C9757CC8B47C2445B48C7B13ExplicitBadge", 0);
-        objc_registerClassPair(retrieval);
+        Class retrieval = _TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_0000000000000000000000000000000013ExplicitBadge.class;
         UIView *component = badge(UIView.class, @"Components.UI.ExplicitIcon");
         UIView *row = badge(retrieval, @"CreativeWorkPlatform_RetrievalRowKit.ExplicitBadge");
         [window addSubview:component];

@@ -6,11 +6,10 @@
 static NSHashTable<UIView *> *badges;
 static char originalMaskKey, hiddenMaskKey;
 static BOOL applying, enabled;
+static Class retrieval;
 
 static BOOL explicitBadge(UIView *view) {
     if ([view.accessibilityIdentifier isEqualToString:@"Components.UI.ExplicitIcon"]) return YES;
-    static Class retrieval;
-    if (!retrieval) retrieval = NSClassFromString(@"_TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_9D5FF3EB21C9757CC8B47C2445B48C7B13ExplicitBadge");
     return retrieval && [view isKindOfClass:retrieval];
 }
 
@@ -87,6 +86,7 @@ void SGRRefreshExplicitBadges(void) {
 
 %ctor {
     if (!SGRedesignedUI()) return;
+    retrieval = SGFileprivateViewClass("_TtCCC36CreativeWorkPlatform_RetrievalRowKit21RetrievalRowElementUI10BadgesViewP33_9D5FF3EB21C9757CC8B47C2445B48C7B13ExplicitBadge", UIView.class);
     enabled = SGFlag(SGRKeyHideExplicit, NO);
     %init;
     [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {

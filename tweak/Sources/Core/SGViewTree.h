@@ -17,6 +17,8 @@ UIStackView *SGRowIn(UIView *host);
 // Whether `cls`'s name contains `marker`, worked out once per class and marker. Main thread only. `marker`
 // must be a string literal: answers are kept by its address.
 BOOL SGClassNamed(Class cls, NSString *marker);
+// Resolve once at the hook site. Only a unique replacement for the file discriminator qualifies.
+Class SGFileprivateViewClass(const char *exactName, Class base);
 // Whether any view under `root` has `marker` in its class name.
 BOOL SGHasClass(UIView *root, NSString *marker);
 // The first view under `root` (itself included) that `match` accepts, remembered weakly on `root` under

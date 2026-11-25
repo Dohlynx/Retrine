@@ -604,9 +604,7 @@ static CGRect coverPlaceIn(UIView *tilt) {
     return CGRectMake(cover.center.x - size.width / 2, cover.center.y - size.height / 2, size.width, size.height);
 }
 
-static Class imageProxyClass(void) {
-    return NSClassFromString(@"_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy");
-}
+static Class imageProxyClass;
 
 static void fillParts(UIView *holder) {
     for (UIView *part in holder.subviews)
@@ -686,7 +684,7 @@ static void fillParts(UIView *holder) {
             if (!CGRectEqualToRect(proxy.frame, cover.bounds)) { proxy.bounds = proxy.bounds; proxy.center = proxy.center; }
             continue;
         }
-        if (![proxy isKindOfClass:imageProxyClass()]) continue;
+        if (![proxy isKindOfClass:imageProxyClass]) continue;
         if (!CGRectEqualToRect(proxy.frame, cover.bounds)) proxy.frame = cover.bounds;
         fillParts(proxy);
         for (UIView *image in proxy.subviews)
@@ -741,7 +739,8 @@ static UIView *coverOfImage(UIView *image) {
     return box && coverIn(box.superview) == box ? box : nil;
 }
 
-%hook _TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy
+%group SGRImageProxyHooks
+%hook SGRImageProxy
 - (void)setFrame:(CGRect)frame {
     UIView *box = coverOfImage((UIView *)self);
     %orig(box ? box.bounds : frame);
@@ -763,12 +762,13 @@ static UIView *coverOfImage(UIView *image) {
     fillParts(proxy);
 }
 %end
+%end
 
 %hook _TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView
 - (void)layoutSubviews {
     %orig;
     UIView *view = (UIView *)self;
-    if ([view.superview isKindOfClass:imageProxyClass()] && coverOfImage(view.superview)) fillParts(view);
+    if ([view.superview isKindOfClass:imageProxyClass] && coverOfImage(view.superview)) fillParts(view);
 }
 %end
 
@@ -786,7 +786,7 @@ static UIView *playerImageHolder(UIView *part) {
     UIView *proxy = holder.superview;
     UIView *tilt = proxy.superview.superview;
     return tilt && (tilt == sg_reservedTilt || objc_getAssociatedObject(tilt, &kStripFillKey)) &&
-           [proxy isKindOfClass:imageProxyClass()] && coverOfImage(proxy) ? holder : nil;
+           [proxy isKindOfClass:imageProxyClass] && coverOfImage(proxy) ? holder : nil;
 }
 
 %hook UIImageView
@@ -829,6 +829,8 @@ static SGRPlayerArtworkWatcher *sg_artworkWatcher;
 
 %ctor {
     if (!SGRedesignedUI()) return;
+    imageProxyClass = SGFileprivateViewClass("_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy", UIView.class);
+    if (imageProxyClass) %init(SGRImageProxyHooks, SGRImageProxy = imageProxyClass);
     %init;
     sg_tilts = [NSHashTable weakObjectsHashTable];
     sg_covers = [NSMapTable weakToWeakObjectsMapTable];

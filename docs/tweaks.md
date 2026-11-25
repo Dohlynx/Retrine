@@ -870,7 +870,7 @@ Shared:
                   never a write to the file; artist, album and folder pages with a cover header, an artist's first 5
                   songs and See All, and a reusable album shelf. The index is rebuilt off main when imports, deletes
                   or edits change, cached by name and file identity; covers are references decoded at display size
-                  into a 16 MiB cache emptied on a memory warning. On Spotify 9.1.90 (LocalMusicPlayback.m) a page
+                  into a 16 MiB cache emptied on a memory warning. On Spotify 9.1.90 and 9.2.0 (LocalMusicPlayback.m) a page
                   plays or shuffles its songs as the spotify:local-files context, and a song can go next or to the
                   end of the queue, one at a time; a file is playable only once Spotify has been seen playing it,
                   which records the URI Spotify gave it with the file's identity (a replaced file needs playing

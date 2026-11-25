@@ -1242,7 +1242,8 @@ static void styleNowPlayingBar(UIViewController *container) {
 // bar's old place and took every touch there (#70), so a touch on nothing of the moved bar's goes through.
 // Next's whole touch target is reached here too (nextButtonHit), and the iPad capsule where it has grown past the
 // page's bounds (capsuleIn), which UIKit asks the page about only once its pointInside: says the touch is its.
-%hook _TtC22NowPlaying_BarPageImplP33_CCC0D2EEA6D4725EECD8965E8C38C86D20TouchPassthroughView
+%group SGRBarTouchHooks
+%hook SGRBarTouchView
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
     return %orig || CGRectContainsPoint(capsuleIn((UIView *)self), point);
 }
@@ -1262,6 +1263,7 @@ static void styleNowPlayingBar(UIViewController *container) {
     UIView *inside = [moved hitTest:[(UIView *)self convertPoint:point toView:moved] withEvent:event];
     return inside && inside != moved ? inside : nil;
 }
+%end
 %end
 
 // A page lays out again when Spotify moves its text, which it does after the first pass at launch.
@@ -1307,6 +1309,10 @@ static SGRBarOptionsWatcher *sg_optionsWatcher;
 %ctor {
     if (!SGRedesignedUI()) return;
     %init;
+    Class touch = SGFileprivateViewClass("_TtC22NowPlaying_BarPageImplP33_CCC0D2EEA6D4725EECD8965E8C38C86D20TouchPassthroughView", UIView.class);
+    if (touch) {
+        %init(SGRBarTouchHooks, SGRBarTouchView = touch);
+    } else SGLog(@"TouchPassthroughView not found, its hooks are inactive");
     sg_optionsWatcher = [SGRBarOptionsWatcher new];
     SGAddPlayerStateObserver(sg_optionsWatcher);
     sg_showTitles = showTitlesEnabled();
@@ -1329,7 +1335,6 @@ static SGRBarOptionsWatcher *sg_optionsWatcher;
     SGRequireClasses(@[
         @"_TtC18NowPlaying_BarImpl36NowPlayingBarContainerViewController",
         @"_TtC18NowPlaying_BarImpl27NowPlayingBarViewController",
-        @"_TtC22NowPlaying_BarPageImplP33_CCC0D2EEA6D4725EECD8965E8C38C86D20TouchPassthroughView",
         @"_TtCE14Encore_TextKitO16EncoreFoundation6Encore12MarqueeLabel",
         @"_TtC18NowPlaying_BarImpl17InformationCellV2",
     ]);
