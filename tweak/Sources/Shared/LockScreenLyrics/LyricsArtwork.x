@@ -101,6 +101,7 @@ static NSUInteger sg_prefetchGeneration = 1; // under sg_lock
 static BOOL sg_settingsPending;
 static NSString *sg_shownID;   // the artwork handed over last, nil for none; read on sg_queue too
 static NSString *sg_aheadID;   // the next line's artwork being drawn ahead, nil for none; under sg_lock
+static BOOL sg_aheadCostly;    // its clip has many frames (drawAhead); under sg_lock
 static MPMediaItemArtwork *sg_stillArtwork; // main thread: one ordinary artwork for sg_shownID, including ready-frame resends
 static UIImage *sg_stillPreview; // last ready lyric frame in this generation, under sg_lock
 static NSObject *sg_lock;
@@ -241,7 +242,14 @@ static UIImage *previewFor(NSString *artworkID, SGLockLine *line, CGSize size) {
 // read, it is drawn over the selected background. The encoders ask `live` each frame, so a line sung or
 // skipped past while its clip is written stops there instead of encoding to the end for nobody.
 static BOOL writeClip(NSString *artworkID, SGLockLine *line, CGSize size) {
-    BOOL (^live)(void) = ^BOOL { return currentLine(line) && stillWanted(artworkID); };
+    // Once no, no for the rest of this write: seeking back to the line before the writer returns must not make
+    // a stopped clip look like moving artwork that would not draw. The encoder's queue asks only while this
+    // queue waits for it (writeReady), so the two never ask at once.
+    __block BOOL stopped = NO;
+    BOOL (^live)(void) = ^BOOL {
+        if (!stopped && !(currentLine(line) && stillWanted(artworkID))) stopped = YES;
+        return !stopped;
+    };
     if (!live()) return NO;
     NSURL *file = clipFile(artworkID);
     if (!file) return NO;
@@ -283,6 +291,7 @@ static void drawAhead(NSString *artworkID, SGLockLine *line) {
     @synchronized (sg_lock) {
         line.prefetchGeneration = sg_prefetchGeneration;
         sg_aheadID = artworkID;
+        sg_aheadCostly = costly;
         if (time - sg_previewAskedAt <= 15) dispatch_async(sg_previewQueue, ^{ previewFor(artworkID, line, size); });
         if (time - sg_askedAt <= 15 && !(costly && warm)) enqueueClip(^{ writeClip(artworkID, line, size); }, YES);
     }
@@ -855,10 +864,26 @@ static void startLyricsArtwork(BOOL replay) {
             if (SGLockArtworkShowsLyrics(SGLockScreenArtwork())) tick();
         }];
         }
-        // A hot phone, or Low Power Mode, puts the lines still over the cover, and the chosen look comes back after.
+        // A hot phone, or Low Power Mode, puts the lines still over the cover, and the chosen look comes back after,
+        // paused too: the paused line's offer changes. A clip of many frames drawn ahead, queued or under way, is let
+        // go from Fair up or in Low Power Mode, as drawAhead no longer starts one there; the line showing keeps its own.
         for (NSNotificationName name in @[NSProcessInfoThermalStateDidChangeNotification, NSProcessInfoPowerStateDidChangeNotification]) {
         [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil
-                                                    usingBlock:^(NSNotification *note) { tickSoon(); }];
+                                                    usingBlock:^(NSNotification *note) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (!SGLockArtworkShowsLyrics(SGLockScreenArtwork())) return;
+                NSProcessInfo *info = NSProcessInfo.processInfo;
+                if (info.thermalState >= NSProcessInfoThermalStateFair || info.lowPowerModeEnabled) {
+                    @synchronized (sg_lock) {
+                        if (sg_aheadCostly) {
+                            sg_prefetch = nil;
+                            sg_aheadID = nil;
+                        }
+                    }
+                }
+                tick();
+            });
+        }];
         }
         if (replay) [observer playerStateDidChange:SGPlayerState()];
     }

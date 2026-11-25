@@ -715,7 +715,8 @@ Shared:
                   Low Power Mode draws nothing ahead. A clip being written stops as soon as its line is neither showing
                   nor the one drawn ahead, rather than encoding to the end for nobody. From Serious up, and in Low Power
                   Mode, the lines go Still over the cover (no motion, no breath) under their own ID, and the chosen look
-                  comes back once the phone cools or Low Power Mode is off. Each lyric ID owns one ordinary Now Playing artwork object, reused by ready-preview,
+                  comes back once the phone cools or Low Power Mode is off, paused too; reaching Fair or Low Power Mode
+                  also lets go of a many-frame clip queued or being drawn ahead. Each lyric ID owns one ordinary Now Playing artwork object, reused by ready-preview,
                   artist-row and Spotify/extras resends. Its synchronous handler uses a ready frame from this render
                   generation while a miss draws off main, never the plain cover. A new ID replaces the object;
                   turning lyrics off restores the

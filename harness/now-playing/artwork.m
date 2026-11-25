@@ -1126,6 +1126,36 @@ void artworkChecks(void) {
           @"paused artwork removes deleted translation without a lyrics view");
     [NSUserDefaults.standardUserDefaults setVolatileDomain:@{} forName:NSArgumentDomain];
 
+    // Low Power Mode coming on while paused puts the paused line Still under a new ID, and its going off brings
+    // the chosen style back, with no player report in between.
+    [NSUserDefaults.standardUserDefaults setVolatileDomain:@{SGKeyLockScreenLyricsStyle: @(SGLyricsClipAnimated)} forName:NSArgumentDomain];
+    track(@"power-paused", SGLockArtworkLyrics, nil, @[lineOf(@"Breath", 0, 10000)]);
+    runFor(.05);
+    NSString *animatedLook = [NSString stringWithFormat:@"style%ldl", (long)SGLyricsClipAnimated];
+    NSString *stillLook = [NSString stringWithFormat:@"style%ldl", (long)SGLyricsClipStill];
+    check(state.isPaused && [name(artwork()) containsString:animatedLook], @"a paused line shows the chosen breathing style");
+    // On the process info's own class, under both names, as harness/player swaps it.
+    __block BOOL lowPowerOn = YES;
+    Class processClass = object_getClass(NSProcessInfo.processInfo);
+    NSMutableArray<NSValue *> *swapped = [NSMutableArray array];
+    for (NSString *selector in @[@"isLowPowerModeEnabled", @"lowPowerModeEnabled"]) {
+        Method method = class_getInstanceMethod(processClass, NSSelectorFromString(selector));
+        if (!method) continue;
+        [swapped addObject:[NSValue valueWithPointer:method]];
+        [swapped addObject:[NSValue valueWithPointer:method_getImplementation(method)]];
+        method_setImplementation(method, imp_implementationWithBlock(^BOOL(id process) { return lowPowerOn; }));
+    }
+    [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
+    runFor(.05);
+    check([name(artwork()) containsString:stillLook], @"Low Power Mode while paused puts the line Still");
+    lowPowerOn = NO;
+    for (NSUInteger i = 0; i + 1 < swapped.count; i += 2)
+        method_setImplementation((Method)swapped[i].pointerValue, (IMP)swapped[i + 1].pointerValue);
+    [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
+    runFor(.05);
+    check([name(artwork()) containsString:animatedLook], @"Low Power Mode going off while paused brings the chosen style back");
+    [NSUserDefaults.standardUserDefaults setVolatileDomain:@{} forName:NSArgumentDomain];
+
     NSArray *seekLines = @[lineOf(@"Held", 0, 900), lineOf(@"Passed", 1000, 1900),
         lineOf(@"Obsolete", 2000, 2900), lineOf(@"Demand", 3000, 3900), lineOf(@"Wanted", 4000, 4900)];
     track(@"prefetch-seek", SGLockArtworkLyrics, nil, seekLines);

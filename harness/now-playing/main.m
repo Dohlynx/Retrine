@@ -129,7 +129,10 @@ NSInteger SGKaraokeDelayMs(void) { return harnessTrackOffset + [NSUserDefaults.s
 // Only the translation check selects the translated artist row.
 static BOOL sg_showTranslation;
 NSInteger SGInt(NSString *key, NSInteger fallback) {
-    if ([key isEqual:SGKeyLiveActivityView]) return [NSUserDefaults.standardUserDefaults integerForKey:key];
+    if ([key isEqual:SGKeyLiveActivityView] || [key isEqual:SGKeyLockScreenLyricsStyle]) {
+        id value = [NSUserDefaults.standardUserDefaults objectForKey:key];
+        return value ? [value integerValue] : fallback;
+    }
     return [key isEqual:SGKeyLockScreenLyricsLine] && sg_showTranslation ? SGLockScreenLyricsLineTranslation : fallback;
 }
 NSString *harnessLanguage = @"en";
