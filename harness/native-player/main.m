@@ -9,6 +9,7 @@
 //             untouched with Lyrics preview shown, the cover a centered square of its room with it hidden,
 //             and a small cover and a tilt view outside the cover cell untouched
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 #import "Native/Player/NowPlaying.h"
 #import "Core/SGBackdrop.h"
 #import "Shared/Gestures/Gestures.h"
@@ -135,6 +136,25 @@ static void checkCardHeader(void) {
     check(@"reused header now contains the slider", header.alpha == 0.75, nil);
     fitted = [header preferredLayoutAttributesFittingAttributes:proposed].size;
     check(@"reused slider header takes its normal space", CGSizeEqualToSize(fitted, CGSizeMake(320, 84)), NSStringFromCGSize(fitted));
+}
+
+static Class mockClass(const char *name) {
+    Class cls = objc_getClass(name);
+    if (!cls) { cls = objc_allocateClassPair(UIView.class, name, 0); objc_registerClassPair(cls); }
+    return cls;
+}
+
+// Spotify 9.2.2 renamed the credits card's module from Creator_ to CreatorElements_.
+static void checkCreditsCard(void) {
+    UICollectionViewCell *cell = [[_TtC12Element_List18CollectionViewCell alloc] initWithFrame:CGRectMake(0, 0, 358, 220)];
+    UIView *page = [mockClass("_TtGC13Element_UIKit11ElementViewO20NowPlaying_ScrollAPI20NowPlayingScrollDataP_P__") new];
+    [page addSubview:[mockClass("_TtGC13Element_UIKit11ElementViewV33CreatorElements_CreditsElementAPI19CreditsElementPropsP_P__") new]];
+    [cell.contentView addSubview:page];
+    UICollectionViewLayoutAttributes *proposed = [UICollectionViewLayoutAttributes
+        layoutAttributesForCellWithIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]];
+    proposed.size = CGSizeMake(358, 220);
+    CGSize fitted = [cell preferredLayoutAttributesFittingAttributes:proposed].size;
+    check(@"9.2.2 credits card collapses", fitted.height == 0, NSStringFromCGSize(fitted));
 }
 
 static void runScrubChecks(UIWindow *window) {
@@ -375,6 +395,7 @@ static void runSponsorBlockChecks(UIWindow *window) {
         if (!hiddenPreviewRun()) runScrubChecks(self.window);
         if ([arguments containsObject:@"all-cards"]) {
             checkCardHeader();
+            checkCreditsCard();
             checkCardRange(self.window);
         }
         runCoverChecks(self.window);

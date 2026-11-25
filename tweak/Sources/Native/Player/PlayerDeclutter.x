@@ -26,6 +26,7 @@ static const SGNativeMarkerRule cards[] = {
     {@"LiveEvents_", SGHideLiveEvents},
     {@"WatchFeed_", SGHideExploreArtist},
     {@"Creator_Credits", SGHideCredits},
+    {@"CreatorElements_Credits", SGHideCredits}, // Spotify 9.2.2's module name
     {@"Merch_", SGHideMerch},
     {@"RelatedContentRecommendations", SGHideRecommendations},
 };
