@@ -191,6 +191,8 @@ HARNESSES = [
      "run": "sh harness/player/upcoming-tracks-check.sh"},
     {"name": "Player settings", "dir": "player", "theos": True, "weight": 7,
      "run": "sh harness/player/settings-check.sh"},
+    {"name": "Player visualizer shuffle and heat", "dir": "player", "theos": True, "weight": 9,
+     "run": "python3 harness/player/ui-check.py shuffle heat"},
     {"name": "Player AutoMix UI", "dir": "player", "theos": True, "weight": 11,
      "run": "sh harness/player/automix-check.sh"},
     {"name": "Preferences and counters", "dir": "prefs",

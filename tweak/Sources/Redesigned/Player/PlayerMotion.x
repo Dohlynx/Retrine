@@ -1037,8 +1037,12 @@ static BOOL motionAllowed(void) {
 
 // What a clip, or the cover's still, is shown under: Animated chosen, Spotify's video not showing, motion allowed.
 // Read on every track, since the ⋯ menu switches the background.
+static BOOL animatedBackground(void) {
+    return SGRPlayerBackground() == SGRPlayerBackgroundAnimated && !videoShowing();
+}
+
 static BOOL clipWanted(void) {
-    return SGRPlayerBackground() == SGRPlayerBackgroundAnimated && !videoShowing() && motionAllowed();
+    return animatedBackground() && motionAllowed();
 }
 
 // The clip can be seen: in a window, with the app in front.
@@ -1189,7 +1193,9 @@ void SGRPlayerReconcileFallbackSwitches(void) {
 }
 
 BOOL SGRPlayerVisualiserFallbackWanted(void) {
-    return SGRPlayerAnimatedVisualiserOn() && !SGRPlayerStillOn() && sg_track && [sg_noClip isEqualToString:sg_track] && clipWanted();
+    // This stand-in has its own heat switch. It needs a confirmed miss, not a decoder.
+    return SGRPlayerAnimatedVisualiserOn() && !SGRPlayerStillOn() && [sg_noClip isEqualToString:sg_track]
+        && consumerVisible() && animatedBackground() && !SGRReduceMotion() && !NSProcessInfo.processInfo.lowPowerModeEnabled;
 }
 
 void SGRPlayerMotionLyricsChanged(void) {
@@ -1215,11 +1221,11 @@ static void videoSurface(id unit, BOOL attached) {
 static BOOL beginTrack(NSString *track) {
     sg_track = track;
     sg_begun++;
-    // Until this walk says there is no clip; a still showing for the same track stays as a clip would.
-    sg_noClip = nil;
+    BOOL wanted = consumerVisible() && clipWanted();
+    // Restarting while hidden or hot does not start a lookup or invalidate this track's answer.
+    if (wanted || ![sg_noClip isEqualToString:track]) sg_noClip = nil;
     // The Visualizer standing in for the last track's missing clip goes with the lookup this walk starts.
     SGRPlayerVisualiserUpdate();
-    BOOL wanted = consumerVisible() && clipWanted();
     if (wanted && [track isEqualToString:sg_shown]) return YES;
     // The clip on screen is another track's: it waits kHandOver for the next one to cross over it, but its
     // recovery stops here, at once, so a failure during the handover is not played again behind the next track.
@@ -1316,16 +1322,17 @@ void SGPlayerMenuSetAnimatedArtwork(BOOL on) {
                                       UIAccessibilityReduceMotionStatusDidChangeNotification]) {
         [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:nil usingBlock:^(NSNotification *note) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (motionAllowed() == allowed) return;
-                allowed = !allowed;
-                SGLog(@"redesign player: animated artwork %@", allowed ? @"allowed again, the clip looked up" : @"held off by Reduce Motion, Low Power Mode or serious heat, Fluid shows");
-                [sg_follower restart];
+                BOOL nowAllowed = motionAllowed();
+                if (nowAllowed != allowed) {
+                    allowed = nowAllowed;
+                    SGLog(@"redesign player: animated artwork %@", allowed ? @"allowed again, the clip looked up" : @"held off by Reduce Motion, Low Power Mode or serious heat, Fluid shows");
+                    [sg_follower restart];
+                }
+                // The stand-in can ignore heat, but not Low Power Mode or Reduce Motion.
+                SGRPlayerVisualiserUpdate();
             });
         }];
     }
-    // The Visualizer standing in for a missing clip goes when the iPhone gets hot, and comes back when it cools.
-    [NSNotificationCenter.defaultCenter addObserverForName:NSProcessInfoThermalStateDidChangeNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) { dispatch_async(dispatch_get_main_queue(), ^{ SGRPlayerVisualiserUpdate(); }); }];
     sg_follower = [[SGMotionFollower alloc] initWithBegin:^BOOL(NSString *uri, SPTPlayerState *state) {
         return beginTrack(uri);
     } found:^(NSString *uri, NSURL *file) {

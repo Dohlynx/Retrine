@@ -123,6 +123,7 @@ their check executable in the workflow.
 | `palette/field-check.sh` | Catalyst player field palette requests across mode changes and stale replies; the flow layer's stepped drift, held and resumed; Smooth's drawables made again only a handful of times while the field grows over a scroll, not on every frame (`fluid-steps-check.m`). |
 | `pitch/build.sh` | Synthetic sine pitch/speed assertions, no song argument. |
 | `player/queue-check.sh` | Playing Next history, selection and cover delivery, including cancellation and a retry after an offline failure. |
+| `python3 player/ui-check.py shuffle heat` | One simulator build checks per-track style selection, the missing-clip stand-in and its heat override. Creates and deletes a `PlayerUI-` simulator unless `--udid` names a booted one. |
 | `player/title-notification-check.sh` | Player labels enabled live from an all-off launch and landscape title notifications, using offline fixtures. |
 | `player/title-style-check.sh` | Catalyst: the player's title and artist type through the real `PlayerTitle.x`, Korean text, Spotify's setters, lyrics 17/17 and Spotify's family kept. |
 | `player/progress-check.sh` | Catalyst: tracker cadence and visibility, first-reveal values, Spotify's own pause, and coverage published after a late opening morph without another layout. |

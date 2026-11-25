@@ -3853,7 +3853,8 @@ static NSString *finishChecks(NSUInteger checks, NSUInteger failures, NSString *
     __block NSUInteger changes = 0, picksBefore = 0;
     [NSNotificationCenter.defaultCenter addObserverForName:SGRVisualiserStyleDidChangeNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) { changes++; }];
-    NSArray<NSString *> *all = @[@"builtin:hills", @"builtin:bars", @"builtin:nebula", @"builtin:halo", @"builtin:lyrics"];
+    NSSet<NSString *> *all = [NSSet setWithArray:@[@"builtin:hills", @"builtin:bars", @"builtin:nebula", @"builtin:halo",
+                                                    @"builtin:lyrics", @"builtin:poster", @"builtin:cut"]];
     void (^background)(SGRPlayerBackgroundKind) = ^(SGRPlayerBackgroundKind kind) {
         SGRSetPlayerBackground(kind);
         SGRPlayerBackgroundDidChange();
@@ -3881,15 +3882,16 @@ static NSString *finishChecks(NSUInteger checks, NSUInteger failures, NSString *
         @[@0.5, ^{
             BOOL moved = YES;
             NSMutableSet *seen = [NSMutableSet set];
-            for (int i = 0; i < 80; i++) {
+            // Exercise the whole pool without requiring an even distribution or a particular order.
+            for (int i = 0; i < 256; i++) {
                 NSString *before = SGRVisualiserStyle();
                 NSUInteger count = changes;
                 SGRHarnessSetTrack([NSString stringWithFormat:@"spotify:track:shuffleMany%d", i], imageURI(@"aaaa"), NO);
                 moved = moved && changes == count + 1 && ![SGRVisualiserStyle() isEqualToString:before];
                 [seen addObject:SGRVisualiserStyle()];
             }
-            [self expect:moved && seen.count == all.count step:@"80 track changes: each one pick, never the current style, every style turns up"
-                  detail:[NSString stringWithFormat:@"%@, %lu styles seen", moved ? @"each moved" : @"a pick missed or repeated", (unsigned long)seen.count]];
+            [self expect:moved && [seen isEqualToSet:all] step:@"each track gets one pick, never the current style, all seven styles turn up"
+                  detail:[NSString stringWithFormat:@"%@, styles seen: %@", moved ? @"each moved" : @"a pick missed or repeated", seen]];
             // Hidden: another background.
             background(SGRPlayerBackgroundFluid);
         }],
@@ -3948,12 +3950,12 @@ static NSString *finishChecks(NSUInteger checks, NSUInteger failures, NSString *
             SGRHarnessSetTrack(@"spotify:track:shuffleHot", imageURI(@"aaaa"), NO);
         }],
         @[@2.5, ^{
-            [self expect:!visualiserView() && changes == picksBefore step:@"hot: the track's lookup ended, no Visualizer, no pick"
+            [self expect:!visualiserView() && changes == picksBefore step:@"hot: lookup held, no Visualizer, no pick"
                   detail:[NSString stringWithFormat:@"%lu picks", (unsigned long)(changes - picksBefore)]];
             setThermal(NSProcessInfoThermalStateNominal);
             SGRPlayerVisualiserUpdate();
         }],
-        @[@0.5, ^{
+        @[^BOOL { return SGRPlayerVisualiserShowing() && visualiserView(); }, ^{
             [self expect:visualiserView() && changes == picksBefore step:@"cooled: the Visualizer is back for the track that changed while hot, no pick"
                   detail:[NSString stringWithFormat:@"%lu picks", (unsigned long)(changes - picksBefore)]];
             // Hot during the lookup of a track that changed while the hills could be seen.
@@ -3974,7 +3976,7 @@ static NSString *finishChecks(NSUInteger checks, NSUInteger failures, NSString *
             setThermal(NSProcessInfoThermalStateNominal);
             SGRPlayerVisualiserUpdate();
         }],
-        @[@0.5, ^{
+        @[^BOOL { return SGRPlayerVisualiserShowing() && visualiserView(); }, ^{
             [self expect:visualiserView() && changes == picksBefore step:@"cooled: the Visualizer is back for the track that was waited on while hot, no pick"
                   detail:[NSString stringWithFormat:@"%lu picks", (unsigned long)(changes - picksBefore)]];
             SGRHarnessSetTrack(@"spotify:track:shuffleCool", imageURI(@"aaaa"), NO);
@@ -3991,6 +3993,7 @@ static NSString *finishChecks(NSUInteger checks, NSUInteger failures, NSString *
 // Ignore heat warnings.
 - (void)runHeatChecks {
     NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
+    __block BOOL standInLeaving = NO;
     reportPower();
     void (^background)(SGRPlayerBackgroundKind) = ^(SGRPlayerBackgroundKind kind) {
         SGRSetPlayerBackground(kind);
@@ -4061,6 +4064,29 @@ static NSString *finishChecks(NSUInteger checks, NSUInteger failures, NSString *
         }],
         @[@0.3, ^{
             [self expect:visualiserView() && SGRPlayerVisualiserShowing() && SGRHarnessReading() step:@"hot, ignoring: the Visualizer stays" detail:@""];
+            sg_lowPower = YES;
+            [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
+            // Sample the fade after the notification's main-queue callbacks, before a later layout can repair it.
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UIView *content = [visualiserView() valueForKey:@"_content"];
+                standInLeaving = content.alpha == 0;
+            });
+        }],
+        @[@0.6, ^{
+            [self expect:standInLeaving && !visualiserView() && !SGRHarnessReading() step:@"hot, ignoring: Low Power removes the stand-in without layout" detail:@""];
+            sg_lowPower = NO;
+            [NSNotificationCenter.defaultCenter postNotificationName:NSProcessInfoPowerStateDidChangeNotification object:nil];
+        }],
+        @[^BOOL { return visualiserView() && SGRHarnessReading(); }, ^{
+            [self->_background viewWillDisappear:NO];
+            [self->_background viewDidDisappear:NO];
+        }],
+        @[^BOOL { return !visualiserView(); }, ^{
+            [self->_background viewWillAppear:NO];
+            [self->_background viewDidAppear:NO];
+        }],
+        @[@0.3, ^{
+            [self expect:visualiserView() && SGRHarnessReading() step:@"hot, ignoring: reopening the same track restores the stand-in without cooling" detail:@""];
             NSLog(@"[harness] %@", finishChecks(self->_checks, self->_failures, @"heat"));
             exit(self->_failures ? 1 : 0);
         }],
