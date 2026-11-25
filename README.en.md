@@ -118,7 +118,7 @@ on the tab bar, from the first row of the side drawer, or from the last row of S
 
 | | |
 |---|---|
-| Spotify | Decrypted IPA of **9.1.90**, **9.2.0** (release base), or **9.2.2** (without Pixie). On other versions Retrine shows a warning, not a launch block. |
+| Spotify | Decrypted IPA of **9.1.90**, **9.2.0** (release base), or **9.2.2**. On other versions Retrine shows a warning, not a launch block. |
 | Redesign | **iOS 26+** |
 | Spotify's own look | iOS 16.1+ |
 | Live Activity | iOS 17+ |
@@ -151,7 +151,7 @@ Build the IPA instead.
 | Where to put the result | `artifacts` | `artifacts`, `filebin` or `both`. With filebin, the run summary gets a filebin.net link that is deleted after a few days of inactivity. |
 | Remove every app extension (PlugIns/) | Off | Removes every app extension from the IPA. See [Signing](#signing-and-bundle-id). |
 | Include app-local WireGuard / proxy | On | See [WireGuard](#wireguard--proxy) for routing requirements. |
-| Include Pixie native downloads | On | Requires the exact supported 9.2.0 or 9.1.90 build. Uncheck for 9.2.2 (`PIXIE=0` locally). |
+| Include Pixie native downloads | On | Requires the exact supported 9.2.0, 9.2.2 or 9.1.90 build. |
 | Bundle ID | `app.retrine.player` | Must match your signing App ID; extension IDs follow it. Type `com.spotify.client` to keep Spotify's ID. See [Signing](#signing-and-bundle-id). |
 
 The downloaded file is checked first, so an HTML login page or a truncated download fails right away.
@@ -238,8 +238,8 @@ Full coverage and limitations: [docs/wireguard.md](docs/wireguard.md)
 ## Pixie native downloads (experimental)
 
 IPA builds include Pixie's native download manager by default. Only the exact supported Spotify
-9.2.0 and 9.1.90 builds are accepted. To build without it, use `PIXIE=0` (`--no-pixie` with the pipeline).
-On 9.2.0, downloads, persistence across a restart and deletion were verified on a real device.
+9.2.0, 9.2.2 and 9.1.90 builds are accepted. To build without it, use `PIXIE=0` (`--no-pixie` with the pipeline).
+On 9.2.0, downloads, persistence across a restart and deletion were verified on a real device; 9.2.2 has not been run on one yet.
 Long-term offline licence renewal remains unverified.
 See [docs/pixie.md](docs/pixie.md) for supported builds and limitations.
 

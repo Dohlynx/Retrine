@@ -118,7 +118,7 @@ Spotify 화면을 직접 그리지 않는 기능(광고, 개인정보 보호, �
 
 | | |
 |---|---|
-| Spotify | **9.1.90**, **9.2.0**(배포 기준 버전), **9.2.2**(Pixie 제외)의 복호화된 IPA. 다른 버전에서는 경고를 표시하지만 실행을 막지는 않습니다. |
+| Spotify | **9.1.90**, **9.2.0**(배포 기준 버전), **9.2.2**의 복호화된 IPA. 다른 버전에서는 경고를 표시하지만 실행을 막지는 않습니다. |
 | 재설계 화면 | **iOS 26 이상** |
 | Spotify 기본 화면 | iOS 16.1 이상 |
 | Live Activity | iOS 17 이상 |
@@ -150,7 +150,7 @@ Live Activity, 백그라운드 음악 햅틱, Connect 로컬 기기 검색이 �
 | Where to put the result | `artifacts` | `artifacts`, `filebin`, `both` 중 선택. filebin을 고르면 실행 요약에 filebin.net 링크가 표시되며, 며칠 동안 쓰지 않으면 삭제됩니다. |
 | Remove every app extension (PlugIns/) | 꺼짐 | IPA에서 앱 확장을 모두 제거합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 | Include app-local WireGuard / proxy | 켜짐 | 라우팅 요구 사항은 [WireGuard](#wireguard--프록시) 항목을 참고하세요. |
-| Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0 또는 9.1.90 빌드와 정확히 일치해야 합니다. 9.2.2에서는 선택을 해제하세요(로컬 빌드: `PIXIE=0`). |
+| Include Pixie native downloads | 켜짐 | 지원 대상인 9.2.0, 9.2.2 또는 9.1.90 빌드와 정확히 일치해야 합니다. |
 | Bundle ID | `app.retrine.player` | 서명할 App ID와 같아야 하며, 앱 확장 ID도 이를 따라갑니다. Spotify의 ID를 유지하려면 `com.spotify.client`를 직접 입력합니다. [서명](#서명과-번들-id) 항목을 참고하세요. |
 
 내려받은 파일은 먼저 검사하므로, HTML 로그인 페이지나 중간에 끊긴 파일이면 바로 실패합니다.
@@ -232,9 +232,9 @@ Mac에서 빌드하면 번들 ID를 따로 지정하지 않는 한 Spotify의 `c
 
 ## Pixie 네이티브 다운로드 (실험적)
 
-IPA에는 Pixie의 네이티브 다운로드 관리자가 기본으로 포함됩니다. 지원 대상인 Spotify 9.2.0 또는
-9.1.90 빌드와 정확히 일치해야 합니다. 제외하려면 `PIXIE=0`을 지정하세요(파이프라인에서는 `--no-pixie`).
-9.2.0에서는 다운로드, 앱 재시작 후 다운로드 유지, 삭제를 실기기에서 확인했습니다.
+IPA에는 Pixie의 네이티브 다운로드 관리자가 기본으로 포함됩니다. 지원 대상인 Spotify 9.2.0, 9.2.2
+또는 9.1.90 빌드와 정확히 일치해야 합니다. 제외하려면 `PIXIE=0`을 지정하세요(파이프라인에서는 `--no-pixie`).
+9.2.0에서는 다운로드, 앱 재시작 후 다운로드 유지, 삭제를 실기기에서 확인했습니다. 9.2.2는 아직 실기기에서 확인하지 않았습니다.
 장기 오프라인 라이선스 갱신은 아직 확인하지 않았습니다.
 지원 빌드와 제한 사항은 [docs/pixie.md](docs/pixie.md)(영문)를 참고하세요.
 

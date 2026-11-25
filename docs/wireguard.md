@@ -132,7 +132,7 @@ design addresses caller-fd ownership and asynchronous semantics.
 
 ## Exact admission
 
-Retrine supports Spotify 9.1.90, 9.2.0 (release base) and 9.2.2 (without Pixie). Its install warning does not block launch.
+Retrine supports Spotify 9.1.90, 9.2.0 (release base) and 9.2.2. Its install warning does not block launch.
 WireGuard uses a separate exact-build check. Only
 `tweak/Sources/Shared/WireGuard/SGWGTargets.inc` admits WireGuard targets:
 
