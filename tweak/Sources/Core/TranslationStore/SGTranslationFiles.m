@@ -84,6 +84,7 @@ static BOOL flushURL(NSURL *url, NSError **error) {
 @interface SGTranslationJSONCursor : NSObject
 @property NSString *text;
 @property NSUInteger index;
+@property NSUInteger values;
 - (BOOL)value:(NSUInteger)depth;
 @end
 @implementation SGTranslationJSONCursor
@@ -91,35 +92,62 @@ static BOOL flushURL(NSURL *url, NSError **error) {
     while (_index < _text.length && [[NSCharacterSet whitespaceAndNewlineCharacterSet] characterIsMember:[_text characterAtIndex:_index]]) _index++;
 }
 - (unichar)peek { [self space]; return _index < _text.length ? [_text characterAtIndex:_index] : 0; }
-- (NSString *)string {
+- (BOOL)hexQuad:(unichar *)unit {
+    if (_text.length - _index < 4) return NO;
+    unsigned value = 0;
+    for (unsigned i = 0; i < 4; i++) {
+        unichar c = [_text characterAtIndex:_index++];
+        if (c >= '0' && c <= '9') value = value * 16 + c - '0';
+        else if ((c | 32) >= 'a' && (c | 32) <= 'f') value = value * 16 + (c | 32) - 'a' + 10;
+        else return NO;
+    }
+    *unit = (unichar)value;
+    return YES;
+}
+- (NSString *)stringKey:(BOOL)key {
     [self space];
     if ([self peek] != '"') return nil;
     NSUInteger start = _index++;
-    BOOL escaped = NO;
+    BOOL needsDecode = NO;
     while (_index < _text.length) {
         unichar c = [_text characterAtIndex:_index++];
-        if (!escaped && c == '"') {
+        if (c == '"') {
+            // Foundation validates the whole document once. Only keys need their decoded spelling here.
+            if (!key) return @"";
+            if (!needsDecode) return [_text substringWithRange:NSMakeRange(start + 1, _index - start - 2)];
             NSString *token = [_text substringWithRange:NSMakeRange(start, _index - start)];
             NSData *data = [[NSString stringWithFormat:@"[%@]", token] dataUsingEncoding:NSUTF8StringEncoding];
             NSArray *value = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
             return value.firstObject;
         }
-        if (!escaped && c == '\\') escaped = YES; else escaped = NO;
+        if (c < 0x20) return nil;
+        if (c != '\\') continue;
+        needsDecode = YES;
+        if (_index == _text.length) return nil;
+        c = [_text characterAtIndex:_index++];
+        if (c == 'u') {
+            unichar unit;
+            if (![self hexQuad:&unit] || CFStringIsSurrogateLowCharacter(unit)) return nil;
+            if (CFStringIsSurrogateHighCharacter(unit) &&
+                (_text.length - _index < 6 || [_text characterAtIndex:_index++] != '\\' ||
+                 [_text characterAtIndex:_index++] != 'u' || ![self hexQuad:&unit] || !CFStringIsSurrogateLowCharacter(unit))) return nil;
+        } else if (c != '"' && c != '\\' && c != '/' && c != 'b' && c != 'f' && c != 'n' && c != 'r' && c != 't') return nil;
     }
     return nil;
 }
 - (BOOL)value:(NSUInteger)depth {
-    if (depth > 16) return NO;
+    // Allow a full transfer manifest or pending stage (up to 10,000 descriptors).
+    if (depth > 16 || ++_values > 32 * SGTranslationTransferEntries) return NO;
     unichar c = [self peek];
-    if (c == '"') return [self string] != nil;
+    if (c == '"') return [self stringKey:NO] != nil;
     if (c == '{' || c == '[') {
         _index++;
         unichar end = c == '{' ? '}' : ']';
         NSMutableSet *keys = [NSMutableSet set];
         if ([self peek] == end) { _index++; return YES; }
-        for (;;) {
+        for (;;) { @autoreleasepool {
             if (c == '{') {
-                NSString *key = [self string];
+                NSString *key = [self stringKey:YES];
                 if (!key || [keys containsObject:key] || [self peek] != ':') return NO;
                 [keys addObject:key]; _index++;
             }
@@ -127,7 +155,7 @@ static BOOL flushURL(NSURL *url, NSError **error) {
             unichar next = [self peek]; _index++;
             if (next == end) return YES;
             if (next != ',') return NO;
-        }
+        }}
     }
     NSUInteger start = _index;
     while (_index < _text.length) {
@@ -141,9 +169,13 @@ static BOOL flushURL(NSURL *url, NSError **error) {
 
 id SGTranslationReadJSON(NSData *data, NSError **error) {
     if (!data || data.length > SGTranslationRecordBytes) { fail(error, @"Invalid or oversized JSON."); return nil; }
-    SGTranslationJSONCursor *cursor = [SGTranslationJSONCursor new];
-    cursor.text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    if (!cursor.text || ![cursor value:0] || [cursor peek]) { fail(error, @"Invalid JSON or duplicate keys."); return nil; }
+    BOOL valid;
+    @autoreleasepool {
+        SGTranslationJSONCursor *cursor = [SGTranslationJSONCursor new];
+        cursor.text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        valid = cursor.text && [cursor value:0] && ![cursor peek];
+    }
+    if (!valid) { fail(error, @"Invalid JSON or duplicate keys."); return nil; }
     return [NSJSONSerialization JSONObjectWithData:data options:0 error:error];
 }
 BOOL SGTranslationRecordKeyValid(NSString *key) {
@@ -320,20 +352,31 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
     return total;
 }
 - (BOOL)writeJSON:(id)value to:(NSURL *)url grandfather:(BOOL)grandfather allowed:(BOOL (^)(void))allowed error:(NSError **)error {
-    NSData *data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:error];
-    if (!data || !SGTranslationReadJSON(data, error)) return NO;
     NSError *failure = nil;
-    NSData *old = [self data:url missing:YES error:&failure];
+    NSData *data;
+    BOOL valid;
+    @autoreleasepool {
+        data = [NSJSONSerialization dataWithJSONObject:value options:NSJSONWritingSortedKeys error:&failure];
+        valid = data && SGTranslationReadJSON(data, &failure) != nil;
+    }
+    if (!valid) { if (error) *error = failure; return NO; }
+    NSUInteger oldLength;
+    BOOL unchanged;
+    @autoreleasepool {
+        NSData *old = [self data:url missing:YES error:&failure];
+        unchanged = [old isEqual:data];
+        oldLength = old.length;
+    }
     if (failure) { if (error) *error = failure; return NO; }
-    if ([old isEqual:data]) {
+    if (unchanged) {
         if (allowed && !allowed()) return fail(error, @"Translation write was cancelled.");
         return [self protect:url error:error] && flushURL(url, error) && [self directory:url.URLByDeletingLastPathComponent error:error];
     }
-    if (!grandfather && data.length > old.length) {
+    if (!grandfather && data.length > oldLength) {
         NSError *sizeError = nil;
         unsigned long long total = [self bytes:&sizeError];
         if (sizeError) { if (error) *error = sizeError; return NO; }
-        if (total + data.length - old.length > _ceiling)
+        if (total + data.length - oldLength > _ceiling)
             return fail(error, @"Storage ceiling reached; export or delete records before adding data.");
     }
     if (![self directory:url.URLByDeletingLastPathComponent error:error]) return NO;
@@ -343,9 +386,14 @@ NSDictionary *SGTranslationRecordDescriptor(NSDictionary *record, unsigned long 
         return fail(error, @"Insufficient free space to save translations safely.");
     NSURL *temporary = [url.URLByDeletingLastPathComponent URLByAppendingPathComponent:[@".pending-" stringByAppendingString:NSUUID.UUID.UUIDString]];
     BOOL ok = [data writeToURL:temporary options:NSDataWritingWithoutOverwriting | NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication error:error];
+    data = nil;
     if (ok) {
-        NSData *check = [self data:temporary missing:NO error:error];
-        ok = check && [SGTranslationReadJSON(check, error) isEqual:value] && [self protect:temporary error:error];
+        @autoreleasepool {
+            NSData *check = [self data:temporary missing:NO error:&failure];
+            ok = check && [SGTranslationReadJSON(check, &failure) isEqual:value];
+        }
+        if (!ok && error) *error = failure;
+        if (ok) ok = [self protect:temporary error:error];
     }
     if (ok) ok = flushURL(temporary, error);
     if (ok && allowed && !allowed()) ok = fail(error, @"Translation write was cancelled.");

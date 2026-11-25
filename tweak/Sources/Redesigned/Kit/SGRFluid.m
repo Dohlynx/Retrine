@@ -142,6 +142,7 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     CGRect _laidOutFor;
     SGRFluidGPULayer *_gpu;   // Smooth, under the copies; nil while Light is chosen
     BOOL _gpuShown;           // its first frame is on screen and the copies are hidden
+    BOOL _requestedHidden, _awaitingCoveredBlur;
 }
 
 - (instancetype)init {
@@ -251,8 +252,9 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
 }
 
 - (void)setHidden:(BOOL)hidden {
-    [super setHidden:hidden];
-    _gpu.held = hidden;
+    _requestedHidden = hidden;
+    [super setHidden:hidden || _awaitingCoveredBlur];
+    _gpu.held = self.hidden;
 }
 
 - (BOOL)moving {
@@ -296,6 +298,7 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
 - (void)setArtwork:(UIImage *)image animated:(BOOL)animated {
     if (!image || image == _source) return;
     _source = image;
+    if (self.hidden && _gpu) _awaitingCoveredBlur = YES;
     NSUInteger generation = ++_generation;
     BOOL contrast = SGRIncreaseContrast();
     CGFloat radius = kBlurPerStep * SGRFluidValue(SGRFluidBlur), saturation = SGRFluidValue(SGRFluidSaturation) / 100.0;
@@ -313,6 +316,11 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
 
 - (void)show:(UIImage *)blur animated:(BOOL)animated {
     _blur = blur;
+    if (_gpu.held) {
+        animated = NO;
+        _gpuShown = NO;
+        [self showCopies];
+    }
     [_gpu setPicture:blur.CGImage animated:animated];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -326,6 +334,10 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
         _copies[i].contents = (__bridge id)blur.CGImage;
     }
     [CATransaction commit];
+    if (_awaitingCoveredBlur) {
+        _awaitingCoveredBlur = NO;
+        [self setHidden:_requestedHidden];
+    }
 }
 
 #pragma mark - moving

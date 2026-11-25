@@ -86,7 +86,7 @@ compile -target arm64-apple-ios17.0-simulator -fobjc-arc -g -O0 -DSG_DRIVER="${S
     "$(dirname "$0")/stubs-automix.m" "$(dirname "$0")/automix-scenario.m" "$(dirname "$0")/share-check.m" "$(dirname "$0")/background-check.m" \
     "$(dirname "$0")/../sponsorblock/markers-check.m" "$SRC"/Shared/SponsorBlock/SponsorBlockMarkers.m \
     "$SRC"/Shared/SponsorBlock/SponsorBlockModel.m "$SRC"/Shared/SponsorBlock/SponsorBlockPrefs.m \
-    "$SRC"/Redesigned/Player/ShareCards.m "$SRC"/Redesigned/Lyrics/LyricCardPicker.m \
+    "$SRC"/Redesigned/Player/ShareCards.m "$SRC"/Core/SGImageContext.m "$SRC"/Redesigned/Lyrics/LyricCardPicker.m \
     "$SRC"/Redesigned/Player/PlayerQueue.m "$SRC"/Shared/AutoMix/AutoMixSettings.m "$SRC"/Shared/AutoMix/AutoMixPreview.m \
     "$OUT"/gen/*.m "$SRC"/Redesigned/Player/PlayerLyricFit.m "$SRC"/Redesigned/Player/PlayerProgress.m \
     "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGLocalize.m \

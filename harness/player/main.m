@@ -5707,6 +5707,7 @@ static NSUInteger metalLayersIn(CALayer *layer) {
 
 static __weak CAMetalLayer *captureLayer;
 static int presentedPixel[3];
+static NSUInteger capturedWidth;
 
 // Sample the first drawable queued for presentation on its own command buffer. Neither a later
 // Smooth frame nor the Light copies can satisfy this check.
@@ -5719,6 +5720,7 @@ static void captureNextFrame(CAMetalLayer *layer) {
 void SGRProbeFluidFrame(CAMetalLayer *layer, id<CAMetalDrawable> drawable, id<MTLCommandBuffer> command) {
     if (layer != captureLayer) return;
     captureLayer = nil;
+    capturedWidth = drawable.texture.width;
     id<MTLBuffer> pixel = [layer.device newBufferWithLength:256 options:MTLResourceStorageModeShared];
     id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
     [blit copyFromTexture:drawable.texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
@@ -5892,6 +5894,51 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
         [self expect:presentedPixel[1] > 240 && presentedPixel[2] < 10
                 step:@"first Smooth frame after interrupted fade is current green"
               detail:[NSString stringWithFormat:@"first drawable RGB %d,%d,%d", presentedPixel[0], presentedPixel[1], presentedPixel[2]]];
+        probe.covered = YES;
+        [probe setArtwork:solid(UIColor.redColor) identity:@"replacement" animated:YES];
+    });
+    step(1, ^{
+        // Hold Metal submissions through the screenshot so a later drawable cannot satisfy it.
+        [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+        probe.covered = NO;
+        NSData *surface = fieldBand(probe);
+        const uint8_t *pixel = (const uint8_t *)surface.bytes + 4 * (40 + 28 * 80);
+        [self expect:pixel[0] > pixel[1] && pixel[0] > pixel[2]
+                step:@"visible uncover is the replacement red before a new drawable"
+                detail:[NSString stringWithFormat:@"surface RGB %u,%u,%u", pixel[0], pixel[1], pixel[2]]];
+        captureNextFrame(gpu);
+        [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+    });
+    step(1, ^{
+        [self expect:presentedPixel[0] > presentedPixel[1] && hiddenCopiesIn(gpu.superlayer) == 4
+                step:@"presented replacement takes over without stale pixels" detail:state()];
+        // Resize during this probe's acquisition, then suppress ticks. Only an immediate
+        // handoff from the old acquisition can submit a drawable of the new size.
+        IMP original = class_getMethodImplementation(CAMetalLayer.class, @selector(nextDrawable));
+        __block BOOL resize = YES;
+        SGRFluidGPULayer *target = gpu;
+        IMP intercept = imp_implementationWithBlock(^id(CAMetalLayer *layer) {
+            if (layer == target && resize) {
+                resize = NO;
+                dispatch_block_t duringAcquire = ^{
+                    CGFloat before = gpu.drawableSize.width;
+                    gpu.bounds = CGRectMake(0, 0, 112, 256);
+                    [[gpu valueForKey:@"link"] setPaused:YES];
+                    [self expect:gpu.drawableSize.width == before step:@"resize deferred during acquisition" detail:state()];
+                };
+                if (NSThread.isMainThread) duringAcquire();
+                else dispatch_sync(dispatch_get_main_queue(), duringAcquire);
+            }
+            return ((id (*)(id, SEL))original)(layer, @selector(nextDrawable));
+        });
+        class_addMethod(SGRFluidGPULayer.class, @selector(nextDrawable), intercept,
+                        method_getTypeEncoding(class_getInstanceMethod(CAMetalLayer.class, @selector(nextDrawable))));
+        captureNextFrame(gpu);
+        gpu.warp += .01;
+    });
+    step(1, ^{
+        [self expect:capturedWidth == 112 && captureLayer == nil
+                step:@"resized frame submitted without another tick" detail:state()];
         [probe removeFromSuperview];
         SGSetInt(SGRKeyPlayerArtworkBackground, SGRPlayerBackgroundFluid);
         SGRSetPlayerBackground(SGRPlayerBackgroundPhoto);

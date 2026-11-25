@@ -10,7 +10,7 @@
 // and a hidden section's cells all answer height 0, down to the next heading. The headings are
 // told apart by their English titles.
 #import <objc/runtime.h>
-#import <CoreImage/CoreImage.h>
+#import "Core/SGImageContext.h"
 #import "Core/SGCore.h"
 #import "Artist.h"
 #import "Native/Declutter/Declutter.h"
@@ -114,8 +114,6 @@ static void closeUpTitle(UIView *header) {
 static const CGFloat kBlurSigmaPerWidth = 1.0 / 18, kBlurLeastSigmaPixels = 6, kBlurSamplesPerSigma = 16;
 
 static UIImage *blurred(UIImage *image) {
-    static CIContext *context;
-    if (!context) context = [CIContext contextWithOptions:nil];
     CGImageRef source = image.CGImage;
     size_t width = CGImageGetWidth(source), height = CGImageGetHeight(source);
     if (!width || !height) return nil;
@@ -134,7 +132,7 @@ static UIImage *blurred(UIImage *image) {
     CGImageRelease(small);
     if (!input) return nil;
     CIImage *output = [[input imageByClampingToExtent] imageByApplyingGaussianBlurWithSigma:sigma * smallWidth / width];
-    CGImageRef cg = [context createCGImage:[output imageByCroppingToRect:input.extent] fromRect:input.extent];
+    CGImageRef cg = [SGOneOffImageContext() createCGImage:[output imageByCroppingToRect:input.extent] fromRect:input.extent];
     UIImage *result = cg ? [UIImage imageWithCGImage:cg] : nil;
     CGImageRelease(cg);
     return result;

@@ -17,7 +17,7 @@
 // nothing. The shader compiles once, off the main thread, from source; until it is ready, or if it fails, the
 // layer draws nothing and `drawn` is never called, and SGRFluidLayer keeps the Light renderer in its place.
 //
-// Threading: main thread only.
+// Main-thread API and render state. Drawable acquisition may wait on a worker.
 #import <QuartzCore/QuartzCore.h>
 
 // A Metal device exists (every iPhone the mod runs on; checked so a simulator without one falls back).
@@ -37,6 +37,6 @@ BOOL SGRFluidGPUAvailable(void);
 @property (nonatomic) float grain;
 // As SGRFluidLayer's: the part on screen, in this layer's coordinates. The whole layer while empty.
 @property (nonatomic) CGRect visibleRect;
-// Called once, after the first frame has been handed to the screen.
+// The first Smooth frame is presented, including the replacement of a picture changed while held.
 @property (nonatomic, copy) void (^drawn)(void);
 @end

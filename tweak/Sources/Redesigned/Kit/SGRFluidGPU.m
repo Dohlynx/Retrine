@@ -204,6 +204,9 @@ static id<MTLTexture> textureOf(id picture) {
     double _time;
     CADisplayLink *_link;
     BOOL _ready, _dirty, _drewOnce, _firstPending;
+    BOOL _acquiring;
+    CGSize _wantedSize;
+    NSUInteger _pictureRevision;
     BOOL _resigning;
     int _misses;   // ticks in a row whose frame could not be drawn, once nothing else keeps the link
     int _firstFailures;   // first frames the GPU failed; after three, Light stays and none is tried again
@@ -217,6 +220,7 @@ static id<MTLTexture> textureOf(id picture) {
     _progress = 1;
     self.pixelFormat = MTLPixelFormatBGRA8Unorm;
     self.framebufferOnly = YES;
+    self.maximumDrawableCount = 2;
     self.opaque = YES;
     self.contentsScale = 1;
     CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
@@ -266,6 +270,9 @@ static id<MTLTexture> textureOf(id picture) {
 
 - (void)setPicture:(CGImageRef)picture animated:(BOOL)animated {
     if (!picture) return;
+    _pictureRevision++;
+    _firstPending = NO;
+    if (_held) _drewOnce = NO;
     if (animated && _toPicture && _drewOnce && [self mayDraw]) {
         // One still running in is cut short: the new one runs in over the one it was bringing.
         _fromPicture = _toPicture;
@@ -295,6 +302,13 @@ static id<MTLTexture> textureOf(id picture) {
 - (void)setHeld:(BOOL)held {
     if (held == _held) return;
     _held = held;
+    if (held) {
+        // Keep the presented surface: it is visible again before the first resume tick.
+        _to = _from = nil;
+        _dirty = YES;
+    } else {
+        _misses = 0;
+    }
     [self update];
 }
 
@@ -337,8 +351,9 @@ static id<MTLTexture> textureOf(id picture) {
 - (void)fit {
     CGSize bounds = self.bounds.size;
     CGSize size = CGSizeMake(MAX(1, round(bounds.width * self.contentsScale)), MAX(1, round(bounds.height * self.contentsScale)));
-    if (CGSizeEqualToSize(size, self.drawableSize)) return;
-    self.drawableSize = size;
+    if (CGSizeEqualToSize(size, _wantedSize)) return;
+    _wantedSize = size;
+    if (!_acquiring) self.drawableSize = size;
     _dirty = YES;
     [self update];
 }
@@ -355,9 +370,8 @@ static id<MTLTexture> textureOf(id picture) {
         _dirty = YES;
     }
     BOOL eligible = _ready && _toPicture && [self mayDraw] && _firstFailures < 3;
-    BOOL wants = eligible && (_moving || _progress < 1);
-    if (eligible && !wants && _dirty && self.bounds.size.width >= 1 && self.bounds.size.height >= 1)
-        wants = ![self draw] && _misses < 30;
+    BOOL wants = eligible && (_moving || _progress < 1 || _dirty)
+        && self.bounds.size.width >= 1 && self.bounds.size.height >= 1;
     if (wants && !_link) {
         SGRFluidTicker *ticker = [SGRFluidTicker new];
         ticker.layer = self;
@@ -391,19 +405,42 @@ static id<MTLTexture> textureOf(id picture) {
         }
     }
     _dirty = YES;
-    BOOL drew = [self draw];
-    if (_moving || _progress < 1) return;
-    // The last frame of a running-in is tried again for a moment if no drawable was free, rather than left half mixed.
-    if (!drew && ++_misses < 30) return;
-    [self update];
-    _misses = 0;
+    [self acquireFrame];
 }
 
-- (BOOL)draw {
+- (void)acquireFrame {
+    if (_acquiring || _firstPending) return;
+    _acquiring = YES;
+    // nextDrawable can wait up to a second. Coalesce ticks rather than queuing stale
+    // frames; all render state and the clock still belong to the main run loop.
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+        id<CAMetalDrawable> drawable = [self nextDrawable];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self->_acquiring = NO;
+            if (!CGSizeEqualToSize(self.drawableSize, self->_wantedSize)) {
+                self.drawableSize = self->_wantedSize;
+                // The old-size drawable cannot be used. Ask again now, not on the next display tick.
+                if ([self mayDraw]) [self acquireFrame];
+                return;
+            }
+            if (![self mayDraw]) return;
+            CGSize size = self.drawableSize;
+            if (drawable && drawable.texture.width == (NSUInteger)size.width &&
+                drawable.texture.height == (NSUInteger)size.height && [self draw:drawable])
+                self->_misses = 0;
+            else if (!self->_moving && self->_progress >= 1 && ++self->_misses >= 30) {
+                // Give up on this still, not on the next picture or resize.
+                self->_dirty = NO;
+                self->_misses = 0;
+            }
+            [self update];
+        });
+    });
+}
+
+- (BOOL)draw:(id<CAMetalDrawable>)drawable {
     CGRect bounds = self.bounds;
     if (bounds.size.width < 1 || bounds.size.height < 1) return NO;
-    id<CAMetalDrawable> drawable = [self nextDrawable];
-    if (!drawable) return NO;
     if (!_to) _to = textureOf(_toPicture);
     if (_fromPicture && !_from) _from = textureOf(_fromPicture);
     if (!_to) return NO;
@@ -436,20 +473,27 @@ static id<MTLTexture> textureOf(id picture) {
     [encoder setFragmentSamplerState:sSampler atIndex:0];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
-    if (!_drewOnce && !_firstPending && _firstFailures < 3) {
+    self.presentsWithTransaction = !_drewOnce;
+    if (!_drewOnce) {
         _firstPending = YES;
-        // Settled once the GPU has finished it and a frame or so later, when it is on screen: the layer lies under
-        // the copies, so going a little late shows nothing missing, and going early would show the black under
-        // both. A frame the GPU failed leaves the copies, and the next frame tries again.
+        // Present the finished surface in the same CA transaction that uncovers it.
+        // Waiting for the GPU here on main would stall the player's own animations.
         __weak SGRFluidGPULayer *weakSelf = self;
+        NSUInteger revision = _pictureRevision;
         [buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
-            BOOL completed = done.status == MTLCommandBufferStatusCompleted;
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((completed ? 0.1 : 0) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [weakSelf firstFrameCompleted:completed];
+            BOOL success = done.status == MTLCommandBufferStatusCompleted;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                SGRFluidGPULayer *layer = weakSelf;
+                if (!layer || revision != layer->_pictureRevision) return;
+                layer->_firstPending = NO;
+                if (![layer mayDraw]) { layer->_dirty = YES; return; }
+                [CATransaction begin];
+                if (success) [drawable present];
+                [layer firstFrameCompleted:success];
+                [CATransaction commit];
             });
         }];
-    }
-    [buffer presentDrawable:drawable];
+    } else [buffer presentDrawable:drawable];
 #ifdef SGR_FLUID_FRAME_PROBE
     extern void SGRProbeFluidFrame(CAMetalLayer *, id<CAMetalDrawable>, id<MTLCommandBuffer>);
     SGRProbeFluidFrame(self, drawable, buffer);
@@ -460,7 +504,6 @@ static id<MTLTexture> textureOf(id picture) {
 }
 
 - (void)firstFrameCompleted:(BOOL)completed {
-    _firstPending = NO;
     if (_drewOnce) return;
     if (!completed) {
         SGLog(@"redesign kit: Smooth fluid's first frame failed on the GPU (%d), Light stays", ++_firstFailures);
@@ -472,7 +515,6 @@ static id<MTLTexture> textureOf(id picture) {
     _drewOnce = YES;
     SGLog(@"redesign kit: Smooth fluid drew its first frame at %.0fx%.0f", self.drawableSize.width, self.drawableSize.height);
     void (^drawn)(void) = _drawn;
-    _drawn = nil;
     if (drawn) drawn();
 }
 

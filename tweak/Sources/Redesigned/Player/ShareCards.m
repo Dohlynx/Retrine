@@ -2,7 +2,7 @@
 // lyrics over its cover blurred and darkened, so white reads over any cover. What goes on it (the cover, the title
 // and the artist as the player shows them) is read on the main thread; the drawing runs on a worker, and the share
 // sheet comes up once it is done.
-#import <CoreImage/CoreImage.h>
+#import "Core/SGImageContext.h"
 #import "Core/SGCore.h"
 #import "Core/SGGlass.h"
 #import "Settings/SGPageStyle.h"
@@ -67,10 +67,7 @@ static UIImage *blurred(UIImage *cover) {
     [blur setValue:input.imageByClampingToExtent forKey:kCIInputImageKey];
     [blur setValue:@(kBlurPixels * kBlurRadiusShare) forKey:kCIInputRadiusKey];
     CIImage *output = [blur.outputImage imageByCroppingToRect:input.extent];
-    static CIContext *context;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ context = [CIContext contextWithOptions:nil]; });
-    CGImageRef image = output ? [context createCGImage:output fromRect:input.extent] : NULL;
+    CGImageRef image = output ? [SGOneOffImageContext() createCGImage:output fromRect:input.extent] : NULL;
     if (!image) return nil;
     UIImage *result = [UIImage imageWithCGImage:image];
     CGImageRelease(image);

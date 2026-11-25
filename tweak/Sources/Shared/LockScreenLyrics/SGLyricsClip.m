@@ -780,7 +780,7 @@ static BOOL writeReady(AVAssetWriter *writer, AVAssetWriterInput *input, CMTime 
     [writer addObserver:status forKeyPath:@"status" options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew context:NULL];
     [input requestMediaDataWhenReadyOnQueue:queue usingBlock:^{
         if (finished) return;
-        while (input.readyForMoreMediaData) {
+        while (input.readyForMoreMediaData) @autoreleasepool {
             NSInteger result = (!current || current()) && writer.status == AVAssetWriterStatusWriting ? frame() : -1;
             if (result > 0) continue;
             [input markAsFinished];

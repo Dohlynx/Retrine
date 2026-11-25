@@ -218,7 +218,10 @@ static UIImage *previewFor(NSString *artworkID, SGLockLine *line, CGSize size) {
     }
     @synchronized (sg_lock) {
         if (!currentLineLocked(line)) return nil;
-        if (miss && preview) [sg_previews setObject:preview forKey:artworkID];
+        if (miss && preview) {
+            CGImageRef image = preview.CGImage;
+            [sg_previews setObject:preview forKey:artworkID cost:CGImageGetBytesPerRow(image) * CGImageGetHeight(image)];
+        }
         // Even a late outgoing frame is a usable synchronous fallback when this generation has none yet.
         if (preview && (!sg_stillPreview || [artworkID isEqual:sg_shownID])) sg_stillPreview = preview;
     }
@@ -710,6 +713,7 @@ static void tick(void) {
         sg_previews = [NSCache new];
         sg_failedMotion = [NSMutableOrderedSet orderedSet];
         sg_previews.countLimit = 4;
+        sg_previews.totalCostLimit = 16 * 1024 * 1024;
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:nil
             usingBlock:^(NSNotification *note) {
                 // Keep the displayed still and outstanding system requests, not speculative lines.

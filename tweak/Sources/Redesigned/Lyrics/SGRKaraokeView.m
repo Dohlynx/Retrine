@@ -1932,6 +1932,9 @@ typedef struct {
     UIButton *_loadFailure;
     CGFloat _builtWidth, _placedHeight;
     BOOL _showing;
+    BOOL _detached, _restoringRows;
+    SGKaraokeLine *_detachedAnchor;
+    CGFloat _detachedAnchorY;
     CAGradientLayer *_fade;
     SGRCreditLabel *_credit;
     NSString *_creditSource;   // the source the credit was settled on, nil until the lyrics name one
@@ -2497,12 +2500,35 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     if (!self.window) {
-        // The scroll goes back with the browsing: lines are placed for an offset of 0, and one left from a page
-        // scrolled and closed before followSong drew every line off the anchor, none of them lit.
+        NSNumber *anchor = [self browseAnchorAt:&_detachedAnchorY];
+        _detachedAnchor = anchor ? _shown[anchor].line : nil;
+        _detached = YES;
         [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(followSong) object:nil];
-        _browsing = NO;
         [self leaveTranslationPage];
-        _scroll.contentOffset = CGPointZero;
+        [self dropLineViews];
+    } else if (_detached) {
+        _detached = NO;
+        // Place the viewport before UIKit presents it. Keep the measured stack,
+        // including a hand-scrolled anchor; offscreen padding can wait for ticks.
+        _restoringRows = YES;
+        if (_browsing && _detachedAnchor && _tops) {
+            NSUInteger index = [_lines indexOfObjectIdenticalTo:_detachedAnchor];
+            if (index == NSNotFound) {
+                // A provider translation can replace the line objects without replacing the lyrics.
+                NSString *text = SGKaraokeLineText(_detachedAnchor);
+                index = [_lines indexOfObjectPassingTest:^BOOL(SGKaraokeLine *line, NSUInteger i, BOOL *stop) {
+                    return line.start == self->_detachedAnchor.start && [SGKaraokeLineText(line) isEqual:text];
+                }];
+            }
+            if (index != NSNotFound) [self restoreAnchor:index viewportY:_detachedAnchorY];
+        }
+        _detachedAnchor = nil;
+        [self tick];
+        [self showLinesInSight];
+        for (SGRKaraokeLineView *row in _shown.allValues) [row.layer removeAnimationForKey:@"blur"];
+        _restoringRows = NO;
+        _sightOffset = -CGFLOAT_MAX;
+        if (_browsing && !_plain) [self performSelector:@selector(followSong) withObject:nil afterDelay:kBrowseHold];
     }
     [self scheduleLink];
     [self refreshTranslationStatus];
@@ -2733,8 +2759,13 @@ static NSInteger plainRestPosition(SPTPlayerState *state) {
     for (UIView *view in _shown.allValues) [self letGoOfLineView:(SGRKaraokeLineView *)view];
     [self letGoOfHeldLine];
     [_shown removeAllObjects];
-    _tops = nil;
     _sightArrangement = NSUIntegerMax;
+}
+
+- (void)dropMeasuredLines {
+    [self dropLineViews];
+    _detachedAnchor = nil;
+    _tops = nil;
     _build++;
     [self forgetSung];
 }
@@ -2838,7 +2869,7 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
 // until then, since the page shows nothing of its own before it has lines to show.
 - (void)rebuild {
     if (!_languageReady) return;
-    [self dropLineViews];
+    [self dropMeasuredLines];
     _browsing = NO;
     _scroll.contentOffset = CGPointZero;
     _builtWidth = self.bounds.size.width;
@@ -2917,34 +2948,44 @@ static NSArray<SGKaraokeLine *> *withoutMade(NSArray<SGKaraokeLine *> *lines) {
     }
 }
 
-- (void)showStyle:(SGRKaraokeStyle *)style tops:(NSArray<NSNumber *> *)tops {
+- (NSNumber *)browseAnchorAt:(CGFloat *)viewportY {
     NSNumber *anchor = nil;
-    CGFloat viewportY = CGFLOAT_MAX;
+    *viewportY = CGFLOAT_MAX;
     if (_browsing) {
         CGRect viewport = _scroll.bounds;
         for (NSNumber *key in _shown) {
             CGRect frame = _shown[key].frame;
             CGFloat y = CGRectGetMinY(frame) - CGRectGetMinY(viewport);
-            if (y >= 0 && y < viewportY && CGRectGetMaxY(frame) <= CGRectGetMaxY(viewport)) {
+            if (y >= 0 && y < *viewportY && CGRectGetMaxY(frame) <= CGRectGetMaxY(viewport)) {
                 anchor = key;
-                viewportY = y;
+                *viewportY = y;
             }
         }
     }
-    CATransition *fade = [CATransition animation];
-    fade.type = kCATransitionFade;
-    fade.duration = kRestyleFade;
-    [_scroll.layer addAnimation:fade forKey:@"restyle"];
+    return anchor;
+}
+
+- (void)restoreAnchor:(NSUInteger)index viewportY:(CGFloat)y {
+    UIView *line = [self viewForLine:index];
+    _scroll.contentOffset = CGPointMake(_scroll.contentOffset.x, CGRectGetMinY(line.frame) - y);
+}
+
+- (void)showStyle:(SGRKaraokeStyle *)style tops:(NSArray<NSNumber *> *)tops {
+    CGFloat viewportY;
+    NSNumber *anchor = [self browseAnchorAt:&viewportY];
+    if (!_detached) {
+        CATransition *fade = [CATransition animation];
+        fade.type = kCATransitionFade;
+        fade.duration = kRestyleFade;
+        [_scroll.layer addAnimation:fade forKey:@"restyle"];
+    }
     for (UIView *view in _shown.allValues) [self letGoOfLineView:(SGRKaraokeLineView *)view];
     [_shown removeAllObjects];
     _style = style;
     [self takeTops:tops];
     _sightArrangement = NSUIntegerMax;
     [self placeLinesAnimated:NO];
-    if (anchor) {
-        UIView *line = [self viewForLine:anchor.integerValue];
-        _scroll.contentOffset = CGPointMake(_scroll.contentOffset.x, CGRectGetMinY(line.frame) - viewportY);
-    }
+    if (anchor) [self restoreAnchor:anchor.unsignedIntegerValue viewportY:viewportY];
     [self showLinesInSight];   // placing stands still while the page is scrolled by hand; the views do not
     // A restyle's blur starts in place rather than easing in from sharp.
     for (SGRKaraokeLineView *view in _shown.allValues) [view.layer removeAnimationForKey:@"blur"];
@@ -3583,7 +3624,7 @@ static char kTranslationCoverContext;
     _lines = nil;
     _builtWidth = 0;
     [self creditTo:nil];
-    [self dropLineViews];
+    [self dropMeasuredLines];
     [self offerExtras];
 }
 
@@ -3634,7 +3675,7 @@ static char kTranslationCoverContext;
 // The view of a line, made the first time it is asked for and placed where the stack has it.
 - (SGRKaraokeLineView *)viewForLine:(NSInteger)index {
     __block SGRKaraokeLineView *view = _shown[@(index)];
-    if (view || !_tops || index < 0 || index >= (NSInteger)_tops.count) return view;
+    if (view || _detached || !_tops || index < 0 || index >= (NSInteger)_tops.count) return view;
     // Made where it belongs even inside an animation of the page's (a new height), not flown in from the corner.
     [UIView performWithoutAnimation:^{
         view = [[SGRKaraokeLineView alloc] initWithLine:self->_lines[index] width:self->_builtWidth - 2 * self->_margin style:self->_style under:nil
@@ -3691,14 +3732,16 @@ static char kTranslationCoverContext;
 - (void)showLinesInSight {
     CFTimeInterval started = [self lineCreationClock];
     const CFTimeInterval creationBudgetSeconds = 0.001;
-    if (!_tops.count) return;
+    if (_detached || !_tops.count) return;
     CGFloat offset = ((CALayer *)_scroll.layer.presentationLayer ?: _scroll.layer).bounds.origin.y;
+    if (_restoringRows) offset = _scroll.contentOffset.y;
     if (offset == _sightOffset && _focusTop == _sightFocus && _arrangement == _sightArrangement) return;
     _sightOffset = offset;
     _sightFocus = _focusTop;
     _sightArrangement = _arrangement;
     CGFloat height = self.bounds.size.height;
     CGFloat from = offset - kSightBehind * height, to = offset + (1 + kSightAhead) * height, slack = kSightSlack * height;
+    if (_restoringRows) { from = offset; to = offset + height; }
     NSMutableArray<NSNumber *> *gone = [NSMutableArray array];
     id focusedElement = UIAccessibilityIsVoiceOverRunning() ? UIAccessibilityFocusedElement(UIAccessibilityNotificationVoiceOverIdentifier) : nil;
     for (NSNumber *key in _shown) {
@@ -3730,7 +3773,7 @@ static char kTranslationCoverContext;
     }];
     NSUInteger made = 0;
     for (NSNumber *index in wanted) {
-        if (made == kLinesPerFrame || (made && [self lineCreationClock] - started >= creationBudgetSeconds)) {
+        if (!_restoringRows && (made == kLinesPerFrame || (made && [self lineCreationClock] - started >= creationBudgetSeconds))) {
             _sightOffset = -CGFLOAT_MAX;
             break;
         }
@@ -3998,7 +4041,7 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
                 // the translated lines are built below as new ones.
                 _lines = nil;
                 _builtWidth = 0;
-                [self dropLineViews];
+                [self dropMeasuredLines];
             }
         } else {
             // Selection and deferred replacements belong to the keeper, not the view.
@@ -4006,7 +4049,7 @@ static NSString *breakName(NSInteger line, NSArray<SGKaraokeLine *> *lines) {
             _lines = nil;
             _builtWidth = 0;
             [self creditTo:nil];
-            [self dropLineViews];
+            [self dropMeasuredLines];
         }
     }
     if (!_lines && track && (_lines = [self linesFor:track])) {

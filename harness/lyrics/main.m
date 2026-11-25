@@ -682,6 +682,48 @@ static void checkFailureUI(SGRKaraokeView *view) {
     }];
     self.window.rootViewController = root;
     [self.window makeKeyAndVisible];
+    if ([args boolForKey:@"detachCheck"]) after(1, ^{
+        UIScrollView *scroll = [karaoke valueForKey:@"scroll"];
+        [karaoke removeFromSuperview];
+        [host addSubview:karaoke];
+        NSUInteger blurred = 0;
+        for (UIView *row in [[karaoke valueForKey:@"shown"] allValues]) {
+            if ([[row.layer valueForKeyPath:@"filters.gaussianBlur.inputRadius"] doubleValue] <= 0) continue;
+            blurred++;
+            HARNESS_CHECK(![row.layer animationForKey:@"blur"]);
+        }
+        HARNESS_CHECK(blurred);
+        [(id<UIScrollViewDelegate>)karaoke scrollViewWillBeginDragging:scroll];
+        NSNumber *targetKey = shownLines(karaoke).lastObject;
+        UIView *target = [karaoke valueForKey:@"shown"][targetKey];
+        HARNESS_CHECK(target);
+        scroll.contentOffset = CGPointMake(0, CGRectGetMinY(target.frame) - 5);
+        after(.3, ^{
+            NSArray *before = shownLines(karaoke);
+            CGPoint offset = scroll.contentOffset;
+            NSNumber *focus = [karaoke valueForKey:@"focus"];
+            SGKaraokeLine *line = [target valueForKey:@"line"];
+            CGFloat y = CGRectGetMinY(target.frame) - offset.y;
+            HARNESS_CHECK(y >= 0 && y <= 6);
+            // A real async remeasurement lands after all the rows have gone.
+            NSArray *oldTops = [karaoke valueForKey:@"tops"];
+            [karaoke setValue:@74 forKey:@"fontSize"];
+            ((void (*)(id, SEL))objc_msgSend)(karaoke, NSSelectorFromString(@"restyle"));
+            [karaoke removeFromSuperview];
+            after(.4, ^{
+                HARNESS_CHECK(!shownLines(karaoke).count && oldTops != [karaoke valueForKey:@"tops"]);
+                [host addSubview:karaoke];
+                UIView *restored = [karaoke valueForKey:@"shown"][targetKey];
+                CGFloat restoredY = CGRectGetMinY(restored.frame) - scroll.contentOffset.y;
+                HARNESS_CHECK([restored valueForKey:@"line"] == line && fabs(restoredY - y) < 1
+                              && !CGPointEqualToPoint(scroll.contentOffset, offset)
+                              && [focus isEqual:[karaoke valueForKey:@"focus"]]);
+                NSLog(@"detach PASS: %lu rows -> 0 -> %lu, lyric %@ at %.1f -> %.1f pt, %lu blurred without animation",
+                      before.count, shownLines(karaoke).count, SGKaraokeLineText(line), y, restoredY, blurred);
+                exit(0);
+            });
+        });
+    });
 #ifdef SGRKeyLyricsFullRate
     if ([args boolForKey:@"frameRateCheck"]) after(1, ^{
         HARNESS_CHECK(![args objectForKey:SGRKeyLyricsFullRate]);

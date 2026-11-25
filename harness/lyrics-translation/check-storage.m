@@ -183,6 +183,13 @@ static void checkTransferMerge(void) {
 static void checkTransferRejection(void) {
     NSError *error = nil;
     CHECK(!SGTranslationReadJSON([@"{\"x\":1,\"\\u0078\":2}" dataUsingEncoding:NSUTF8StringEncoding], &error) && error);
+    for (NSString *bad in @[@"\\q", @"\\u12xz", @"\\uD800", @"\\uDFFF"]) {
+        NSString *json = [NSString stringWithFormat:@"{\"value\":\"%@\"}", bad];
+        error = nil;
+        CHECK(!SGTranslationReadJSON([json dataUsingEncoding:NSUTF8StringEncoding], &error) &&
+              [error.localizedDescription isEqualToString:@"Invalid JSON or duplicate keys."]);
+    }
+    CHECK([SGTranslationReadJSON([@"{\"value\":\"\\uD83D\\uDE03\"}" dataUsingEncoding:NSUTF8StringEncoding], nil)[@"value"] isEqual:@"😃"]);
     CHECK(!SGTranslationRecordKeyValid(@"../escape.json"));
     CHECK(!SGTranslationRecordKeyValid(@"a\\b.json"));
     CHECK(!SGTranslationEnvelopeValid(@{@"type":@"vitrine.saved-record", @"version":@YES, @"namespace":@"AI", @"key":@"a.json", @"lines":@{}, @"recovery":@NO}));
