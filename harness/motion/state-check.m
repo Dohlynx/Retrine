@@ -588,7 +588,10 @@ int main(int argc, char **argv) {
         CHECK(requested.count == 2);
         state.future = @[b]; advanceAllowed = NO; publish(state);
         CHECK(requested.count == 2);
+        // Paused, nothing is fetched ahead; playing again fetches the next track's clip.
         advanceAllowed = YES; state.isPaused = YES; publish(state);
+        CHECK(requested.count == 2);
+        state.isPaused = NO; publish(state);
         CHECK(requested.count == 3 && [requested.lastObject isEqual:b.URI]);
         old = tickets[b.URI];
         state.track = b; publish(state);
