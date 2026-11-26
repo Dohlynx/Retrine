@@ -82,7 +82,7 @@ static const double kSilentFor = 1;
 // How often the outputs are checked for that while two or more run.
 static const double kCheckEvery = 0.5;
 
-enum { kMaxOutputs = 8, kMaxWatchers = 4 };
+enum { kMaxOutputs = 8, kMaxWatchers = 5 }; // Effects, Haptics, Sing, sleep timer and Fluid
 
 #pragma mark - shared between the threads
 
@@ -136,6 +136,7 @@ static pthread_mutex_t sg_outputsLock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
 static dispatch_queue_t sg_outputsQueue;
 static SGPlayerOutputWatcher sg_watchers[kMaxWatchers];
 static BOOL sg_reachable;                    // Spotify's AudioOutputUnitStart could be rebound or hooked
+static BOOL sg_observesDisposal;
 static _Atomic(SGPlayerOutputEffects) sg_outputEffects;
 static _Atomic(SGPlayerOutputProcessor) sg_outputReader;
 // Under sg_outputsLock. Coefficients are made off render for each hardware rate.
@@ -816,7 +817,7 @@ static NSString *describe(Output *output) {
 static void tellWatchers(void) {
     Output *output = music();
     AudioUnit unit = output ? atomic_load(&output->unit) : NULL;
-    for (int i = 0; i < kMaxWatchers && sg_watchers[i]; i++) sg_watchers[i](unit);
+    for (int i = 0; i < kMaxWatchers; i++) if (sg_watchers[i]) sg_watchers[i](unit);
 }
 
 static void applyToFormat(void);
@@ -1404,6 +1405,7 @@ static void rebind(void) {
         // a read-only lifecycle slot fails. Non-jailbroken installs keep the original rebind path.
         if (SGJailbroken()) {
             sg_reachable = hookInline();
+            sg_observesDisposal = sg_reachable; // disposal is one of the required lifecycle hooks
             if (!sg_reachable) SGLog(@"audio: the jailbreak's output hooks did not all take, its output cannot be reached");
             else if (!sg_setProperty) SGLog(@"redesign speed: AudioUnitSetProperty could not be hooked, the menu offers pitch only");
             return;
@@ -1418,23 +1420,41 @@ static void rebind(void) {
             return;
         }
         if (!SGRebindImport("AudioOutputUnitStop", stopOutput, (void **)&sg_stopOutput) || !sg_stopOutput) sg_stopOutput = AudioOutputUnitStop;
-        if (!SGRebindImport("AudioComponentInstanceDispose", disposeUnit, (void **)&sg_dispose) || !sg_dispose) {
+        sg_observesDisposal = SGRebindImport("AudioComponentInstanceDispose", disposeUnit, (void **)&sg_dispose) && sg_dispose;
+        if (!sg_observesDisposal) {
             sg_dispose = AudioComponentInstanceDispose;
             SGLog(@"audio: Spotify does not import AudioComponentInstanceDispose, a disposed output is not seen");
         }
     });
 }
 
-BOOL SGPlayerWatchMusicOutput(SGPlayerOutputWatcher watcher) {
+static BOOL setWatcher(SGPlayerOutputWatcher watcher, BOOL on, BOOL replay) {
+    if (!watcher) return NO;
     rebind();
+    // A demand watcher retains its unit to detach the render notify later.
+    if (!sg_reachable || (replay && !sg_observesDisposal)) return NO;
     pthread_mutex_lock(&sg_outputsLock);
+    int slot = -1;
     for (int i = 0; i < kMaxWatchers; i++) {
-        if (sg_watchers[i]) continue;
-        sg_watchers[i] = watcher;
-        break;
+        if (sg_watchers[i] == watcher) { slot = i; break; }
+        if (on && slot < 0 && !sg_watchers[i]) slot = i;
+    }
+    if (slot >= 0) {
+        sg_watchers[slot] = on ? watcher : NULL;
+        // A screen can open mid-song. Its first/last callback needs the same unit
+        // lifetime guarantee as a route-change callback, not an unlocked snapshot.
+        if (replay) watcher(on ? SGPlayerMusicOutput() : NULL);
     }
     pthread_mutex_unlock(&sg_outputsLock);
-    return sg_reachable;
+    return slot >= 0;
+}
+
+BOOL SGPlayerWatchMusicOutput(SGPlayerOutputWatcher watcher) {
+    return setWatcher(watcher, YES, NO);
+}
+
+BOOL SGPlayerSetDemandWatcher(SGPlayerOutputWatcher watcher, BOOL on) {
+    return setWatcher(watcher, on, YES);
 }
 
 #pragma mark - Spotify's clock

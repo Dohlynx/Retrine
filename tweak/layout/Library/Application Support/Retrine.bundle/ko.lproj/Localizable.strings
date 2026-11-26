@@ -4,6 +4,23 @@
 "settings.lyrics.retry" = "다시 시도";
 "settings.lyrics.pip.open_retry" = "Spotify를 열어 다시 시도";
 
+"settings.player.queue.autoplay" = "자동 재생";
+"settings.player.queue.autoplaying" = "비슷한 음악 자동 재생 중";
+"settings.player.queue.clear" = "지우기";
+"settings.player.queue.clear_history.message" = "이 페이지에 표시된 재생 기록을 숨길까요? Spotify의 재생 기록과 다음에 재생할 곡은 바뀌지 않습니다.";
+"settings.player.queue.continue" = "계속 재생";
+"settings.player.queue.playing_next" = "다음 재생";
+"settings.player.queue.sleep" = "수면 타이머";
+"settings.player.queue.sleep.album" = "앨범 또는 플레이리스트가 끝나면";
+"settings.player.queue.sleep.left" = "수면 타이머, %@ 남음";
+"settings.player.queue.sleep.minutes" = "%ld분";
+"settings.player.queue.sleep.track" = "곡이 끝나면";
+"settings.player.queue_style.music" = "Apple Music";
+"settings.player.queue_style.music_note" = "Apple Music처럼 대기열이 플레이어 안에서 작은 커버 아래에 열리고, 그 위에 셔플, 반복, 수면 타이머, AutoMix가 있습니다. 곡의 손잡이를 끌어 순서를 바꿀 수 있습니다. 버튼을 다시 누르면 커버가 돌아옵니다.";
+"settings.player.queue_style.spotify" = "Spotify";
+"settings.player.queue_style.spotify_note" = "Spotify의 대기열 화면이 플레이어 위에 열리며, 곡의 순서를 바꾸거나 뺄 수 있습니다.";
+"settings.player.queue_style.subtitle" = "다시 시작한 뒤 대기열을 여는 방식을 선택합니다. iPad의 두 열 플레이어에서는 항상 옆 열에 표시됩니다.";
+"settings.player.queue_style.title" = "대기열";
 "settings.sponsorblock.enabled" = "팟캐스트 구간 건너뛰기";
 "settings.sponsorblock.subtitle" = "SponsorBlock 커뮤니티가 표시한 구간을 건너뜁니다. 음악에는 영향을 주지 않습니다.";
 "settings.sponsorblock.title" = "SponsorBlock";
@@ -403,7 +420,7 @@
 "settings.artwork.source.canvas.detail" = "트랙 자체의 반복 동영상";
 "settings.artwork.source.canvas.name" = "Spotify Canvas";
 "settings.artwork.sources.first.canvas" = "Canvas";
-"settings.artwork.sources.intro" = "트랙의 클립을 찾을 때까지 위에서 아래 순서로 요청합니다. Apple Music에서 앨범 이름으로 먼저 찾고, 필요하면 앨범 바코드나 수록곡의 녹음 코드로 찾습니다. 회원님의 계정 정보는 전달되지 않습니다.";
+"settings.artwork.sources.intro" = "클립을 찾을 때까지 위에서부터 차례로 확인합니다. Apple Music에서 새로 찾을 때는 앨범 바코드를 먼저 확인하고, 다음으로 곡의 녹음 코드를 확인합니다. 둘 다 일치하지 않으면 이름으로 검색합니다. Apple Music에는 회원님의 계정 정보가 전달되지 않습니다.";
 "settings.artwork.sources.row.title" = "아트워크 소스";
 "settings.artwork.sources.summary.format" = "%@ +%lu";
 "settings.artwork.sources.title" = "아트워크 소스";
@@ -1393,6 +1410,8 @@
 "settings.lyrics.hide_controls.off_note" = "컨트롤을 계속 표시합니다";
 "settings.lyrics.hide_controls.room" = "마지막 터치 후 몇 초가 지나면 가사 표시 영역이 넓어집니다";
 "settings.lyrics.hide_controls.title" = "컨트롤 숨기기";
+"settings.lyrics.keep_mic.subtitle" = "컨트롤이 숨겨져도 Sing 마이크 버튼을 남깁니다. 끄면 Apple Music처럼 컨트롤과 함께 숨고, Sing이 켜져 있을 때만 남습니다.";
+"settings.lyrics.keep_mic.title" = "마이크 유지";
 "settings.lyrics.hide_controls.title_note" = "커버, 제목, 상단 줄을 유지합니다. 가로 모드에서는 제목을 유지합니다";
 "settings.lyrics.hold.card" = "카드로 공유";
 "settings.lyrics.hold.card.line" = "카드로 공유";
@@ -2685,6 +2704,8 @@
 "settings.player.queue.blend.crossfade" = "크로스페이드, %ld초";
 "settings.player.queue.blend.spotify" = "Spotify AutoMix";
 "settings.player.queue.empty" = "다음에 재생할 항목이 없습니다.";
+"settings.player.queue.empty_music" = "대기열에 음악이 없습니다.";
+"settings.player.queue.from" = "제공: %@";
 "settings.player.queue.header" = "대기열";
 "settings.player.queue.history" = "최근 재생";
 "settings.player.queue.menu" = "다음 재생";

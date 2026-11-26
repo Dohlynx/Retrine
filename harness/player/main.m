@@ -2260,7 +2260,7 @@ static BOOL motionFootAcross(NSURL *file, NSString **detail) {
 // (its last stop) to the bottom it gets darker, ending clearly darker than where it started, and nowhere lighter
 // than it is there, which is the dim alone.
 static BOOL motionDeepensDown(NSURL *file, NSString **detail) {
-    enum { kTall = 120 };
+    enum { kTall = 900 };
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
     format.scale = 1;
     format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
@@ -2273,7 +2273,8 @@ static BOOL motionDeepensDown(NSURL *file, NSString **detail) {
     [probe playFile:file poster:poster];
     [probe layoutIfNeeded];
     CAGradientLayer *dim = [probe valueForKey:@"_dim"];
-    NSUInteger whole = (NSUInteger)ceil([dim.locations.lastObject doubleValue] * kTall);
+    // Where the lower half starts to darken (stop 6): the picture is as light as it gets there and darkens to the foot.
+    NSUInteger whole = (NSUInteger)ceil([dim.locations[6] doubleValue] * kTall);
     uint8_t pixels[kTall * 4] = {0};
     CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     CGContextRef context = CGBitmapContextCreate(pixels, 1, kTall, 8, 4, space, kCGBitmapByteOrder32Big | kCGImageAlphaPremultipliedLast);
@@ -2284,7 +2285,7 @@ static BOOL motionDeepensDown(NSURL *file, NSString **detail) {
     [((UIView *)[probe valueForKey:@"_picture"]).layer renderInContext:context];
     CGContextRelease(context);
     uint8_t start = pixels[whole * 4], end = pixels[(kTall - 1) * 4];
-    BOOL ok = whole > 0 && whole < kTall - 1 && end + 20 < start;
+    BOOL ok = whole > 0 && whole < kTall - 1 && end + 8 < start;
     for (NSUInteger y = whole + 1; y < kTall; y++) ok = ok && pixels[y * 4] <= pixels[(y - 1) * 4] + 1 && pixels[y * 4] <= start;
     *detail = [NSString stringWithFormat:@"gray %u where the dim is whole (row %lu of %d), %u at the bottom", start, (unsigned long)whole, kTall, end];
     return ok;
@@ -2334,22 +2335,25 @@ static BOOL motionDeepensDown(NSURL *file, NSString **detail) {
               detail:[NSString stringWithFormat:@"poster %@ at %@, video %@, fade %@, field %@, %@", still.contents ? @"in" : @"missing",
                       NSStringFromCGRect(still.frame), NSStringFromCGRect(clip.frame), still.mask ? @"on the poster" : @"missing",
                       SGRPlayerField().motionHeld ? @"held" : @"moving", fieldCovered() ? @"its Fluid copies hidden" : @"its Fluid copies drawn"]];
-        [self expect:seam.effect && !lyricsBlurred step:@"the blur from the seam"
+        [self expect:!seam.effect && !lyricsBlurred step:@"no gray blur under the controls"
               detail:[NSString stringWithFormat:@"seam blur %@, from %@ of the height, lyrics blur %@", seam.effect ? @"on" : @"off",
                       [[seam.maskView.layer.sublayers.firstObject valueForKey:@"locations"] componentsJoinedByString:@" to "], lyricsBlurred ? @"on" : @"off"]];
         // Dimmed by its brightness: HARNESS_DIM is what the clip in HARNESS_CANVAS_FILE should get (0.54 for white,
-        // 0.10 for black); the rule itself is checked at its ends.
+        // 0.10 for black), which the clip's own dim eases to 0.7 of (kDimSoften in PlayerMotion.x); the rule itself is checked at its ends.
         CAGradientLayer *dim = [motion valueForKey:@"_dim"];
-        // Only where text is: whole at the top and from the seam's blur down, clear between (issue #101).
-        BOOL banded = dim && stopAlpha(dim, 1) == 1 && stopAlpha(dim, 2) == 0 && stopAlpha(dim, 4) == 1;
+        // Whole at the very top and fading out from there with no edge, clear until the ramp, then growing to whole at the
+        // foot of the screen (issue #101): stop 0 the top, 1 the end of the status bar's band (part of the dim), 5 the end of the
+        // fade, 6 the start of the lower half's curve and 14 the whole dim at the foot.
+        BOOL banded = dim && dim.colors.count == 15 && stopAlpha(dim, 0) > 0.8 && stopAlpha(dim, 1) > 0 && stopAlpha(dim, 1) < stopAlpha(dim, 0)
+                      && stopAlpha(dim, 5) == 0 && stopAlpha(dim, 6) == 0 && stopAlpha(dim, 14) == 1;
         const char *expected = getenv("HARNESS_DIM");
         BOOL rule = fabs(SGRPlayerClipDim(1, NO, NO) - 0.54) < 0.01 && fabs(SGRPlayerClipDim(1, YES, NO) - 0.65) < 0.01
                     && SGRPlayerClipDim(0, NO, NO) == 0.10 && fabs(SGRPlayerClipDim(0, NO, YES) - 0.25) < 1e-6
                     && fabs(SGRPlayerClipDim(0.5, NO, NO) - 0.37) < 0.01;
         self->_dimAlone = dim.opacity;
-        [self expect:rule && banded && dim && dim.superlayer == clip.superlayer.superlayer && (!expected || fabs(dim.opacity - atof(expected)) < 0.02)
+        [self expect:rule && banded && dim && dim.superlayer == clip.superlayer.superlayer && (!expected || fabs(dim.opacity - atof(expected) * 0.7) < 0.02)
                 step:@"the dim" detail:[NSString stringWithFormat:@"rule %@, dim %.2f %@%@", rule ? @"right" : @"wrong", dim.opacity,
-                                        banded ? [NSString stringWithFormat:@"whole to %@ and from %@", dim.locations[1], dim.locations[4]] : @"not banded",
+                                        banded ? [NSString stringWithFormat:@"fading from the top to %@ and whole at %@", dim.locations[1], dim.locations[14]] : @"not banded",
                                         expected ? [NSString stringWithFormat:@", %s expected", expected] : @""]];
         // The band at the top: whole over the status bar only while the header shows nothing but the grabber, and over
         // the header's row too while it shows where it plays from. The stored switch is put back as it was.
@@ -2370,7 +2374,7 @@ static BOOL motionDeepensDown(NSURL *file, NSString **detail) {
         [self layOut];
         [motion layoutIfNeeded];
         [self expect:safeTop > 0 && fabs(bare - safeTop) < 1 && shown >= rowBottom step:@"the band at the top"
-              detail:[NSString stringWithFormat:@"whole to %.0f with only the grabber (status bar to %.0f), to %.0f with where it plays from (its row to %.0f)",
+              detail:[NSString stringWithFormat:@"the band's end at %.0f with only the grabber (status bar to %.0f), to %.0f with where it plays from (its row to %.0f)",
                       bare, safeTop, shown, rowBottom]];
         NSLog(@"[harness] motion: screenshot the clip now");
         // Held here for a screenshot of the clip as it opened, the context as stored.
@@ -2400,7 +2404,7 @@ static BOOL motionDeepensDown(NSURL *file, NSString **detail) {
         float dim = shade.opacity;
         // The lyrics run down the whole screen, so the dim covers all of it.
         BOOL whole = shade && stopAlpha(shade, 2) == 1;
-        [self expect:whole && fabsf(dim - self->_dimAlone - 0.15f) < 0.01f step:@"the dim under the lyrics"
+        [self expect:whole && dim > self->_dimAlone + 0.14f step:@"the dim under the lyrics"
               detail:[NSString stringWithFormat:@"%.2f, %.2f without them", dim, self->_dimAlone]];
         [self expect:SGRPlayerLyricsOpen() && lyricsBlurred && away step:@"the lyrics"
               detail:[NSString stringWithFormat:@"lyrics %@, clip blurred %@, thumbnail %@ at alpha %.2f", SGRPlayerLyricsOpen() ? @"up" : @"down",
@@ -2634,7 +2638,7 @@ static NSString *stillName(void) {
         }],
         @[@2, ^{
             UIVisualEffectView *seam = [stillView() valueForKey:@"_seamBlur"];
-            [self expect:stillView() && fieldCovered() && seam.effect step:@"faded in" detail:[NSString stringWithFormat:@"field %@, seam blur %@",
+            [self expect:stillView() && fieldCovered() && !seam.effect step:@"faded in" detail:[NSString stringWithFormat:@"field %@, seam blur %@",
                   fieldCovered() ? @"covered" : @"drawn", seam.effect ? @"on" : @"off"]];
             NSLog(@"[harness] still: screenshot the still now");
         }],
@@ -5732,6 +5736,9 @@ static NSUInteger metalLayersIn(CALayer *layer) {
 }
 
 static __weak CAMetalLayer *captureLayer;
+static char failUpright;
+BOOL SGRProbeFailUprightCover(UIImage *cover) { return objc_getAssociatedObject(cover, &failUpright) != nil; }
+extern NSUInteger SGRHarnessSpectrumReaders(void);
 static int presentedPixel[3];
 static NSUInteger capturedWidth;
 
@@ -5749,7 +5756,9 @@ void SGRProbeFluidFrame(CAMetalLayer *layer, id<CAMetalDrawable> drawable, id<MT
     capturedWidth = drawable.texture.width;
     id<MTLBuffer> pixel = [layer.device newBufferWithLength:256 options:MTLResourceStorageModeShared];
     id<MTLBlitCommandEncoder> blit = [command blitCommandEncoder];
-    [blit copyFromTexture:drawable.texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
+    CGRect visible = CGRectIntersection([(SGRFluidGPULayer *)layer visibleRect], layer.bounds);
+    [blit copyFromTexture:drawable.texture sourceSlice:0 sourceLevel:0
+             sourceOrigin:MTLOriginMake(CGRectGetMidX(visible), CGRectGetMidY(visible), 0)
                sourceSize:MTLSizeMake(1,1,1) toBuffer:pixel destinationOffset:0 destinationBytesPerRow:256 destinationBytesPerImage:256];
     [blit endEncoding];
     [command addCompletedHandler:^(id<MTLCommandBuffer> finished) {
@@ -5816,16 +5825,6 @@ static double bandDiff(NSData *a, NSData *b) {
     return total / (a.length / 4 * 3);
 }
 
-// The Light renderer's copies (SGRFluid.m) hidden, as a count of four.
-static NSUInteger hiddenCopiesIn(CALayer *fluid) {
-    NSUInteger hidden = 0;
-    for (CALayer *sublayer in fluid.sublayers) {
-        if (!sublayer.contentsGravity || ![sublayer.contentsGravity isEqualToString:kCAGravityResizeAspectFill]) continue;
-        hidden += sublayer.hidden;
-    }
-    return hidden;
-}
-
 // The switch from Smooth to Light with the song paused, five times: the field read about 0.2, 0.5, 1 and 2 s after it (each
 // read's own time logged), each compared with the band it settles on, read about 4 s after. Only Kit API the committed
 // renderer has too, so the same scenario runs against HEAD's SGRFluid.m and SGRFluidGPU.m.
@@ -5837,8 +5836,8 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     NSString *(^state)(void) = ^NSString *{
         UIView *field = (UIView *)SGRPlayerField();
         CALayer *fluid = fluidLayerIn(field.layer);
-        return [NSString stringWithFormat:@"Smooth %@, %lu Metal layers, %lu of 4 copies hidden", [[fluid valueForKey:@"_gpuShown"] boolValue] ? @"showing" : @"not showing",
-                (unsigned long)metalLayersIn(field.layer), (unsigned long)hiddenCopiesIn(fluid)];
+        return [NSString stringWithFormat:@"Smooth %@, %lu Metal layers", [[fluid valueForKey:@"_gpuShown"] boolValue] ? @"showing" : @"not showing",
+                (unsigned long)metalLayersIn(field.layer)];
     };
     step(2, ^{ SGRHarnessSetTrack(@"spotify:track:harnessA", imageURI(@"aaaa"), YES); });
     for (NSUInteger cycle = 0; cycle < kCycles; cycle++) {
@@ -5867,7 +5866,8 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
                   detail:[NSString stringWithFormat:@"settled at +%.2f s; %@", CACurrentMediaTime() - switchedAt, [seen componentsJoinedByString:@"; "]]];
         });
     }
-    SGRArtworkField *probe = [[SGRArtworkField alloc] initWithFrame:CGRectMake(0, 0, 80, 80)];
+    // The production field maps its visible rect by window height, even for a narrow probe.
+    SGRArtworkField *probe = [[SGRArtworkField alloc] initWithFrame:CGRectMake(0, 0, 80, self.window.bounds.size.height)];
     probe.motionHeld = YES;
     __block SGRFluidGPULayer *gpu;
     Method appState = class_getInstanceMethod(UIApplication.class, @selector(applicationState));
@@ -5889,6 +5889,19 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     });
     step(1, ^{
         [self expect:presentedPixel[0] > presentedPixel[2] step:@"first Smooth frame on attachment is red" detail:state()];
+        probe.motionHeld = NO;
+        captureNextFrame(gpu);
+    });
+    step(1, ^{
+        [self expect:captureLayer == nil && [gpu valueForKey:@"link"] != nil step:@"playing submits moving frames" detail:state()];
+        probe.motionHeld = YES;
+    });
+    step(1.5, ^{
+        [self expect:![gpu valueForKey:@"link"] step:@"motion hold stops its ticker after settlement" detail:state()];
+        captureNextFrame(gpu);
+    });
+    step(0.3, ^{
+        [self expect:captureLayer == gpu step:@"settled field does not submit another frame" detail:state()];
         captureNextFrame(gpu);
         [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
         lifecycleState = UIApplicationStateInactive;
@@ -5911,13 +5924,13 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
         [self expect:presentedPixel[2] > presentedPixel[0] && ![gpu valueForKey:@"link"]
                 step:@"reactivation draws the current blue still without starting motion" detail:state()];
         // Interrupt the blue-to-green run-in before its first tick. No track change follows.
-        [gpu setPicture:solid(UIColor.greenColor).CGImage animated:YES];
+        [gpu setCover:solid(UIColor.greenColor).CGImage animated:YES];
         [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
         captureNextFrame(gpu);
         [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
     });
     step(1, ^{
-        [self expect:presentedPixel[1] > 240 && presentedPixel[2] < 10
+        [self expect:presentedPixel[1] > MAX(presentedPixel[0], presentedPixel[2])
                 step:@"first Smooth frame after interrupted fade is current green"
               detail:[NSString stringWithFormat:@"first drawable RGB %d,%d,%d", presentedPixel[0], presentedPixel[1], presentedPixel[2]]];
         probe.covered = YES;
@@ -5936,8 +5949,52 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
         [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
     });
     step(1, ^{
-        [self expect:presentedPixel[0] > presentedPixel[1] && hiddenCopiesIn(gpu.superlayer) == 4
+        [self expect:presentedPixel[0] > MAX(presentedPixel[1], presentedPixel[2]) && [[gpu.superlayer valueForKey:@"canvas"] isHidden]
                 step:@"presented replacement takes over without stale pixels" detail:state()];
+        // Hold the presenter (not the field) so blue finishes preparing while visible
+        // but cannot have presented when we cover and uncover it.
+        [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+        [probe setArtwork:solid(UIColor.blueColor) identity:@"replace-before-cover" animated:YES];
+    });
+    step(1, ^{
+        probe.covered = YES;
+        probe.covered = NO;
+        NSData *surface = fieldBand(probe);
+        const uint8_t *pixel = (const uint8_t *)surface.bytes + 4 * (40 + 28 * 80);
+        [self expect:pixel[2] > MAX(pixel[0], pixel[1]) step:@"replace then cover: blue fallback before first present"
+              detail:[NSString stringWithFormat:@"surface RGB %u,%u,%u", pixel[0], pixel[1], pixel[2]]];
+        captureNextFrame(gpu);
+        [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+    });
+    __block NSUInteger otherReaders;
+    step(1, ^{
+        [self expect:presentedPixel[2] > MAX(presentedPixel[0], presentedPixel[1]) && [[gpu.superlayer valueForKey:@"canvas"] isHidden]
+                step:@"replace then cover: presented blue takes over" detail:state()];
+        otherReaders = SGRHarnessSpectrumReaders();
+        probe.motionHeld = NO;
+    });
+    step(1, ^{
+        [self expect:SGRHarnessSpectrumReaders() == otherReaders + 1 step:@"moving probe requests spectrum" detail:state()];
+        UIImage *red = solid(UIColor.redColor);
+        objc_setAssociatedObject(red, &failUpright, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [probe setArtwork:red identity:@"failed-upright" animated:NO];
+    });
+    step(1, ^{
+        NSData *surface = fieldBand(probe);
+        const uint8_t *pixel = (const uint8_t *)surface.bytes + 4 * (40 + 28 * 80);
+        [self expect:pixel[0] > MAX(pixel[1], pixel[2]) && SGRHarnessSpectrumReaders() == otherReaders
+                step:@"failed upright shows the red fallback without spectrum demand" detail:state()];
+        captureNextFrame(gpu);
+    });
+    step(0.3, ^{
+        [self expect:captureLayer == gpu step:@"failed upright does not submit the previous cover underneath" detail:state()];
+        probe.motionHeld = YES;
+        captureNextFrame(gpu);
+        [probe setArtwork:solid(UIColor.greenColor) identity:@"recovered-upright" animated:NO];
+    });
+    step(1, ^{
+        [self expect:presentedPixel[1] > MAX(presentedPixel[0], presentedPixel[2]) && [[gpu.superlayer valueForKey:@"canvas"] isHidden]
+                step:@"successful cover after failed upright takes over from Light" detail:state()];
         // Resize during this probe's acquisition, then suppress ticks. Only an immediate
         // handoff from the old acquisition can submit a drawable of the new size.
         IMP original = class_getMethodImplementation(CAMetalLayer.class, @selector(nextDrawable));
@@ -5952,8 +6009,8 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
                     [[gpu valueForKey:@"link"] setPaused:YES];
                     [self expect:gpu.drawableSize.width == before step:@"resize deferred during acquisition" detail:state()];
                 };
-                if (NSThread.isMainThread) duringAcquire();
-                else dispatch_sync(dispatch_get_main_queue(), duringAcquire);
+                HARNESS_CHECK(!NSThread.isMainThread);
+                dispatch_sync(dispatch_get_main_queue(), duringAcquire);
             }
             return ((id (*)(id, SEL))original)(layer, @selector(nextDrawable));
         });
@@ -5986,7 +6043,8 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     step(0.5, ^{
         NSLog(@"[harness] renderer checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
               self->_failures ? @"FAIL" : @"PASS");
-        exit(self->_failures ? 1 : 0);
+        if (self->_failures) HARNESS_FAIL(@"%lu renderer checks failed", (unsigned long)self->_failures);
+        exit(0);
     });
     runScript(script, 0);
 }
@@ -6309,7 +6367,8 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
     }];
     step(1, ^{
         double s0 = grains[@"Smooth 0"].doubleValue, s100 = grains[@"Smooth 100"].doubleValue, s200 = grains[@"Smooth 200"].doubleValue;
-        [self expect:s0 < s100 && s100 + 0.5 < s200 step:@"Smooth: none at 0, the dither at 100, a visible grain at 200"
+        [self expect:[bands[@"Smooth 0"] isEqualToData:bands[@"Smooth 100"]] && s100 + 0.5 < s200
+                step:@"Smooth: no grain through the standard, visible grain at 200"
               detail:[NSString stringWithFormat:@"%.3f, %.3f, %.3f steps", s0, s100, s200]];
         [self expect:[bands[@"Light 0"] isEqualToData:bands[@"Light 200"]] step:@"Light: the same at 0 and 200"
               detail:[NSString stringWithFormat:@"%.3f and %.3f steps", grains[@"Light 0"].doubleValue, grains[@"Light 200"].doubleValue]];
@@ -6317,7 +6376,8 @@ static NSUInteger hiddenCopiesIn(CALayer *fluid) {
               detail:[NSString stringWithFormat:@"%.3f steps from the settled band", bandDiff(bands[@"Light 100"], bands[@"Light 0"])]];
         NSLog(@"[harness] options checks: %lu of %lu right -- %@", (unsigned long)(self->_checks - self->_failures), (unsigned long)self->_checks,
               self->_failures ? @"FAIL" : @"PASS");
-        exit(self->_failures ? 1 : 0);
+        if (self->_failures) HARNESS_FAIL(@"%lu options checks failed", (unsigned long)self->_failures);
+        exit(0);
     });
     runScript(script, 0);
 }

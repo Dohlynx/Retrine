@@ -30,13 +30,15 @@ hero() {
     # An earlier revision may have no cover read.
     cover=""
     clip=""
+    baseline=0
+    if [ "$dir" = "$OUT/baseline/hero" ]; then baseline=1; fi
     if [ -f "$SRC/Redesigned/Kit/SGRHeaderClip.m" ]; then clip="$SRC/Redesigned/Kit/SGRHeaderClip.m"; fi
     if [ -f "$SRC/Redesigned/Kit/SGRCoverRead.m" ]; then
         cover="$SRC/Redesigned/Kit/SGRCoverRead.m"
         # Provider timing, player readiness and a recycled cache address are simulated at external boundaries.
-        python3 "$HERE/cover-mutation.py" "$dir/gen/AlbumHeader.m" seams
+        python3 "$HERE/cover-mutation.py" "$dir/gen/AlbumHeader.m" seams "$baseline"
     fi
-    $CC -I"$SRC" -I"$SRC/Redesigned/Album" -I"$SRC/Redesigned/Kit" -I"$dir/gen" \
+    $CC -DSGR_COVER_BASELINE="$baseline" -I"$SRC" -I"$SRC/Redesigned/Album" -I"$SRC/Redesigned/Kit" -I"$dir/gen" \
         "$HERE/cover-hero-check.m" "$HERE/stubs.m" "$dir"/gen/*.m $cover $clip \
         "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGFileHash.m \
         "$SRC"/Core/SGBackdrop.m "$SRC"/Core/SGFlagForce.m "$SRC"/Core/SGUIMode.m "$HERE/../page-style-with-presenter-stubs.m" \
@@ -51,13 +53,15 @@ hero() {
         "$SRC"/Redesigned/Album/AlbumNotes.m "$SRC"/Shared/AnimatedArtwork/SGMotionClip.m "$SRC"/Shared/AdBlock/Protobuf.m \
         "$SRC"/Redesigned/Album/AlbumPlaysPlace.m "$SRC"/Redesigned/Kit/SGRRollingDigits.m "$SRC"/Redesigned/Kit/SGRRefinements.m \
         $FRAMEWORKS -framework Metal -framework Symbols -framework CoreText -framework AVFoundation -framework CoreMedia -framework CoreVideo \
-        "$SRC/Core/SGDataRoot.m" -o "$dir/cover-hero-check"
+        -o "$dir/cover-hero-check"
 }
 
 hero "$OUT/hero"
+export SGR_COVER_ROOT="$OUT/data"
 "$OUT/hero/cover-hero-check" rebuilt
 "$OUT/hero/cover-hero-check" motion-row
 "$OUT/hero/cover-hero-check" motion-identifiers -spotifyglass.redesign.album.adaptiveCover YES
+SGR_COVER_ROOT="$OUT/verified" "$OUT/hero/cover-hero-check" motion-verified
 "$OUT/hero/cover-hero-check" on -spotifyglass.redesign.album.adaptiveCover YES
 "$OUT/hero/cover-hero-check" swap -spotifyglass.redesign.album.adaptiveCover YES
 "$OUT/hero/cover-hero-check" still-swap -spotifyglass.redesign.album.adaptiveCover YES

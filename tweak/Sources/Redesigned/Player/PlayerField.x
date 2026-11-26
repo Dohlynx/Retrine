@@ -59,6 +59,8 @@ CGRect SGRSettledPlayerRect(UIWindow *window) {
 
 static void visibilityChanged(void) {
     BOOL visible = SGRPlayerIsVisible();
+    BOOL sampling = visible && sg_appeared && UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
+    SGRBackdropInkSetSource(sampling ? sg_field : nil);
     UIWindow *window = sg_appeared && visible && !sg_followedMorph ? sg_field.window : nil;
     CGRect rect = window ? SGRVisibleRectInWindow(sg_field) : CGRectNull;
     if (visible == sg_wasVisible && window == sg_coveredWindow &&
@@ -350,6 +352,12 @@ static SGRPlayerCoverWatcher *sg_coverWatcher;
     if (!SGRedesignedUI()) return;
     %init;
     %init(SGRFieldMorphCoverage);
+    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        SGRBackdropInkSetSource(nil);
+    }];
+    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        visibilityChanged();
+    }];
     sg_coverWatcher = [SGRPlayerCoverWatcher new];
     SGAddPlayerStateObserver(sg_coverWatcher);
     [NSNotificationCenter.defaultCenter addObserverForName:SGRNowPlayingArtworkDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
