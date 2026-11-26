@@ -48,7 +48,7 @@
 
 static const CGFloat kThumbSide = 72;          // the cover once the lyrics are up
 static const CGFloat kThumbGap = 16;           // between the thumbnail and the title beside it
-static const CGFloat kThumbTop = 8;            // below the top of the artwork band (no window to measure the grabber by)
+static const CGFloat kThumbTop = 8;            // inset below the header-aware content top
 // The Music app's collapsed artwork, as its player lays it out: the grabber 7 pt under the content's top (the safe
 // area's top over 20) and 4 pt tall, and the artwork 22 pt under it, 72 pt square, at the content's leading margin. PlayerHeader.x draws the grabber at the same 7 pt under the safe area.
 static const CGFloat kGrabberTopSpacing = 7, kGrabberHeight = 4, kArtworkToGrabberSpacing = 22;
@@ -499,6 +499,8 @@ static SGRLyricsLayout layoutIn(UIView *host, BOOL wide) {
     UIView *header = sg_header.viewIfLoaded;
     CGFloat contentTop = CGRectGetMinY(area);
     if ([header isDescendantOfView:host]) contentTop = MAX(contentTop, CGRectGetMaxY(SGFrameIn(header, host)));
+    // During a resize the artwork band can extend behind the stationary header.
+    BOOL bandBehindHeader = contentTop > CGRectGetMinY(area);
     if (host.window) contentTop = MAX(contentTop, CGRectGetMinY(SGRPlayerVisibleSafeArea(host)));
     CGRect row = untransformed(info, host), bar = untransformed(duration, host);
     if (wide) {
@@ -530,8 +532,11 @@ static SGRLyricsLayout layoutIn(UIView *host, BOOL wide) {
     CGFloat leading = rtl ? CGRectGetMaxX(titleFrame) - kThumbSide : CGRectGetMinX(titleFrame);
     l.cover = cover;
     CGFloat thumbTop = contentTop + kThumbTop;
-    if (host.window)
+    if (host.window) {
+        CGFloat headerAwareTop = thumbTop;
         thumbTop = CGRectGetMinY(SGRPlayerVisibleSafeArea(host)) + kGrabberTopSpacing + kGrabberHeight + kArtworkToGrabberSpacing;
+        if (bandBehindHeader) thumbTop = MAX(thumbTop, headerAwareTop);
+    }
     l.thumb = CGRectMake(leading, thumbTop, kThumbSide, kThumbSide);
     // Beside the thumbnail when the title can be moved clear of it, under it when it cannot be found.
     CGFloat top = title ? CGRectGetMidY(l.thumb) - row.size.height / 2 : CGRectGetMaxY(l.thumb) + SGRGrid;
