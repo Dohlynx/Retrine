@@ -3,6 +3,11 @@
 #import "Core/SGPrefs.h"
 #import "Core/SGLocalize.h"
 #import "Shared/Lyrics/Lyrics.h"
+#import "Shared/Lyrics/PixieLyricsQueue.h"
+#import "Settings/SGPageStyle.h"
+
+NSDictionary<NSString *, NSNumber *> *SGPixieLyricsCounts(void) { return @{}; }
+UIViewController *SGTopController(void) { return nil; }
 
 @implementation SGModRow
 @end

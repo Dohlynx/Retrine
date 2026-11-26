@@ -225,7 +225,9 @@ int main(int argc, const char **argv) {
         placement = 1;
 
         __block NSUInteger done = 0;
-        SGMotionAlbumCover(@"Fixture Echo", @"Signals", 720, ^(NSURL *file) {
+        // Only Deluxe has a unique title. The two plain Signals releases cannot be
+        // distinguished by the presence of motion, but their notes have edition facts.
+        SGMotionAlbumCover(@"Fixture Echo", @"Signals (Deluxe)", 720, ^(NSURL *file) {
             CHECK([file.path isEqual:@"/fixture/clip.mp4"]); done++;
         });
         SGMotionAlbumNotes(@"Fixture Echo", @"Signals", edition, ^(NSDictionary *value) {
@@ -233,6 +235,11 @@ int main(int argc, const char **argv) {
         });
         CatalogWait(^BOOL { return done == 2; });
         CHECK(CatalogSearches == 1);
+        __block BOOL ambiguous = NO;
+        SGMotionAlbumCover(@"Fixture Echo", @"Signals", 720, ^(NSURL *file) {
+            CHECK(file == nil); ambiguous = YES;
+        });
+        CatalogWait(^BOOL { return ambiguous; });
         SGMotionAlbumNotes(@"Fixture Echo", @"Signals (Deluxe)", deluxe, ^(NSDictionary *value) {
             CHECK([value[@"short"] isEqual:@"The expanded edition."]); done++;
         });

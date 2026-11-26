@@ -9,7 +9,7 @@ python3 - "$SRC/Redesigned/Player/PlayerLyrics.x" "$OUT/lyrics-layout-production
 import pathlib
 import sys
 source = pathlib.Path(sys.argv[1]).read_text()
-constants = source[source.index("static const CGFloat kThumbSide"):source.index("static char kOverlayKey")]
+constants = source[source.index("static const CGFloat kThumbSide"):source.index("static BOOL sg_open;")]
 measurements = source[source.index("typedef struct {", source.index("#pragma mark - the measurements")):
                       source.index("#pragma mark - the title row")]
 fade = source[source.index("static void fadeControls("):source.index("// Where the lines go on their own")]
@@ -19,7 +19,7 @@ pathlib.Path(sys.argv[2]).write_text(constants + "\n" + safe + "\n" + measuremen
 PY
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 xcrun clang -target arm64-apple-ios17.0-macabi -fobjc-arc -isysroot "$SDK" \
-    -iframework "$SDK/System/iOSSupport/System/Library/Frameworks" -I"$OUT" \
+    -iframework "$SDK/System/iOSSupport/System/Library/Frameworks" -I"$OUT" -I"$SRC" \
     "$HERE/lyrics-layout-check.m" -framework UIKit -framework Foundation -framework QuartzCore -framework CoreGraphics \
     -o "$OUT/lyrics-layout-check"
 "$OUT/lyrics-layout-check"

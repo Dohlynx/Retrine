@@ -90,6 +90,7 @@ NSUInteger SGRSetPlayerBackground(SGRPlayerBackgroundKind kind) { return 0; }
 SGRArtworkField *SGRPlayerField(void) { return nil; }
 void SGRPlayerHoldField(void) {}
 BOOL SGRPlayerLyricsOpen(void) { return NO; }
+BOOL SGRPlayerPageOpen(void) { return NO; }
 BOOL SGRPlayerMotionShowing(void) { return NO; }
 // PlayerMotion.x's no-clip fallback and the shuffle and heat switches (Core/SGPrefs.m): all off, as unset.
 BOOL SGHidden(NSString *key) { return NO; }

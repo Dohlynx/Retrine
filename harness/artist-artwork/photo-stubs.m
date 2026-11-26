@@ -2,6 +2,7 @@
 // Follow, About, the logo), which the harness never runs, and the hooks the field leans on elsewhere.
 #import <UIKit/UIKit.h>
 #import "motion-view-stubs.h"
+#import "../shared/no-music-spectrum.h"
 #import "Redesigned/Kit/SGRHeaderInfo.h"
 
 const CGFloat SGRHeaderInfoBottom = 14;
@@ -17,6 +18,8 @@ const CGFloat SGRHeaderInfoTitleRise = 56;
 void SGPlayFeedback(SGFeedback feedback) {}
 BOOL SGRActivate(UIView *source) { return NO; }
 BOOL SGRSourceEnabled(UIView *source) { return NO; }
+BOOL SGRPlayButtonPlaying(UIView *button, BOOL *playing) { return NO; }
+NSDictionary<NSString *, NSSet<NSString *> *> *SGRSpotifyControlWords(void) { return @{}; }
 
 // Core/SGLocalize.m: English.
 NSString *SGL(NSString *key, NSString *english) { return english; }

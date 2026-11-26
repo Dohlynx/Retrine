@@ -2,14 +2,7 @@
 
 #import "motion-player-double.h"
 
-// No Spotify audio output in the header fixture.
-#if __has_include("Shared/Player/SGMusicSpectrum.h")
-#import "Shared/Player/SGMusicSpectrum.h"
-void SGMusicSpectrumAddReader(void) {}
-void SGMusicSpectrumRemoveReader(void) {}
-uint64_t SGMusicSpectrumReadings(void) { return 0; }
-BOOL SGMusicSpectrumReading(uint64_t index, float levels[3]) { return NO; }
-#endif
+#import "../shared/no-music-spectrum.h"
 
 // Shared/Fonts/FontImport.m: no font of the user's own in the harness.
 NSString *SGRegisterCustomFont(void) { return nil; }

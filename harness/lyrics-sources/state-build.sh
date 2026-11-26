@@ -8,7 +8,7 @@ trap 'rm -rf "$OUT"' EXIT HUP INT TERM
 sed '/^%hook SPTEsperantoPlayer/,$d' "$SRC/Shared/Lyrics/KaraokeSource.x" > "$OUT/karaoke.inc"
 sed -n '/^static NSArray<SGKaraokeLine \*> \*timedLinesForCard(/,/^}/p' "$SRC/Shared/LiveActivity/LiveActivity.x" > "$OUT/activity-lines.inc"
 sed -n '/^SPTPlayerTrack \*SGPlayerUpNextIn/,/^}/p' "$SRC/Shared/Player/PlayerState.x" > "$OUT/player-up-next.inc"
-sed -n '/^static const NSTimeInterval kLyricsGrace =/p; /^#pragma mark - the track changing under them/,/^%ctor {/ { /^%ctor {/!p; }' \
+sed -n '/^static const NSTimeInterval kLyricsGrace =/p; /^static const NSTimeInterval kRest =/p; /^#pragma mark - the track changing under them/,/^%ctor {/ { /^%ctor {/!p; }' \
     "$SRC/Redesigned/Player/PlayerLyrics.x" > "$OUT/player-lyrics-watcher.inc"
 sed '/^#pragma mark - hooks/,$d' "$SRC/Shared/LyricsSources/LyricsHook.x" > "$OUT/lyrics-hook.inc"
 SDK=$(xcrun --sdk macosx --show-sdk-path)

@@ -2,6 +2,8 @@
 // lyrics-layout-check.sh includes the production measurement section unchanged.
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import "Redesigned/Kit/SGRRestyle.h"
+#import "../harness-fail.h"
 
 static UIViewController *sg_info, *sg_duration, *sg_floating, *sg_header;
 static UIView *sg_titleElement;
@@ -13,7 +15,9 @@ static CGRect SGRPlayerArtworkAreaIn(UIView *host) { return artworkArea; }
 static CGRect SGRPlayerCoverFrameIn(UIView *host) { return artworkCover; }
 static BOOL wideIn(UIView *host) { return NO; }
 static CGRect wideColumn(UIView *host) { return CGRectZero; }
-static BOOL sg_alone;
+static BOOL sg_alone, sg_queuePage;
+static BOOL keepsTitle(void) { return NO; }
+UIView *SGRFindByIdentifier(UIView *root, NSString *identifier, const void *key) { return nil; }
 static NSHashTable<UIView *> *sg_faded;
 static NSArray<UIView *> *fadingViews(void) { return @[]; }
 
@@ -35,28 +39,29 @@ int main(void) {
             artworkArea = CGRectMake(x.doubleValue, 106, 393, 444);
             artworkCover = CGRectMake(x.doubleValue + 24, 150, 345, 345);
             SGRLyricsLayout layout = layoutIn(host, NO);
-            CGRect expected = CGRectMake(0, 206, 393, 400);
+            // Lyrics start at the bottom of the collapsed cover (114 + 72),
+            // and end 8 pt above the duration unit when there is no slider.
+            CGRect expected = CGRectMake(0, 186, 393, 420);
             if (!layout.ok || !CGRectEqualToRect(layout.stage, expected)) {
-                NSLog(@"FAIL artwork x=%@: lyric viewport %@, expected %@", x,
-                      NSStringFromCGRect(layout.stage), NSStringFromCGRect(expected));
-                return 1;
+                HARNESS_FAIL(@"artwork x=%@: lyric viewport %@, expected %@", x,
+                             NSStringFromCGRect(layout.stage), NSStringFromCGRect(expected));
             }
         }
-        NSLog(@"PASS lyric viewport stays at {0,206,393,400} throughout cover paging");
+        NSLog(@"PASS lyric viewport stays at {0,186,393,420} throughout cover paging");
         // A newly laid-out row was not in the original fade set; it must stay hidden and wake only if it fits.
         UIView *volume = [UIView new];
         sg_alone = YES;
         SGRPlayerLyricsFadeView(volume, YES);
-        if (volume.alpha != 0) { NSLog(@"FAIL new volume row covers lyrics"); return 1; }
+        if (volume.alpha != 0) HARNESS_FAIL(@"new volume row covers lyrics");
         sg_alone = NO;
         fadeControls(NO);
-        if (volume.alpha != 1) { NSLog(@"FAIL fitting volume row did not wake"); return 1; }
+        if (volume.alpha != 1) HARNESS_FAIL(@"fitting volume row did not wake");
         sg_alone = YES;
         SGRPlayerLyricsFadeView(volume, YES);
         SGRPlayerLyricsFadeView(volume, NO);
         sg_alone = NO;
         fadeControls(NO);
-        if (volume.alpha != 0) { NSLog(@"FAIL volume without room woke over controls"); return 1; }
+        if (volume.alpha != 0) HARNESS_FAIL(@"volume without room woke over controls");
         NSLog(@"PASS volume created while lyrics are alone stays hidden and wakes only with room");
     }
     return 0;

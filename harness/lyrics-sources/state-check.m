@@ -131,12 +131,13 @@ static NSString *sg_missingLyrics;
 #import "activity-lines.inc"
 // The production watcher, with only its drawing/rest effects replaced. The full player simulator
 // harness needs unrelated AI/view services; this check drives the state machine without those.
-static BOOL sg_open, sg_alone, sg_wide;
+static BOOL sg_open, sg_alone, sg_wide, sg_queuePage;
 static NSTimer *sg_rest;
 static NSUInteger sg_closed;
 static void setOpen(BOOL open, BOOL animated) { sg_open = open; if (!open) sg_closed++; }
 static void setAlone(BOOL alone, BOOL animated) { sg_alone = alone; }
-static void restartRest(void) {}
+static BOOL singing(void) { return NO; }
+static void restartRestAfter(NSTimeInterval wait) {}
 static void refreshSide(BOOL animated) {}
 // The preview tap waiting for lyrics (PlayerLyrics.x) belongs to the player's view, which this check has none of.
 static id sg_pendingPreview;
