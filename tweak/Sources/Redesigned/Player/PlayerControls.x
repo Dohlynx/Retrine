@@ -918,7 +918,9 @@ static void colorTrack(UISlider *slider, BOOL minimum, UIColor *color) {
 static void colorBar(UISlider *slider) {
     if (slider == sg_scrubSlider || !objc_getAssociatedObject(slider, &kBarKey)) return;
     // Over a light backdrop the bar is drawn at the alpha the Music app's added white comes to there; a new reading of
-    // the backdrop colors it again.
+    // the backdrop colors it again, at once and without a layout: readings come every 0.125 s through a cover's
+    // crossfade, and one that leaves the bar's colors as they were (colorTrack) must cost nothing. The next layout
+    // still checks the colors.
     if (!objc_getAssociatedObject(slider, &kBarInkKey)) {
         objc_setAssociatedObject(slider, &kBarInkKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         __weak UISlider *weak = slider;
@@ -926,7 +928,7 @@ static void colorBar(UISlider *slider) {
             UISlider *shown = weak;
             if (!shown) return;
             invalidateColor(shown);
-            [shown setNeedsLayout];
+            colorBar(shown);
         });
     }
     colorTrack(slider, YES, SGRPlayerBarFillOver(slider, NO, NO));
