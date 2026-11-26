@@ -13,7 +13,7 @@ import threading
 HERE = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--udid", help="use this booted simulator instead of creating one")
-parser.add_argument("scenarios", nargs="+", choices=["settings", "automix", "share", "share-system", "volumebar", "preview-tap", "preview-pending", "shuffle", "heat"])
+parser.add_argument("scenarios", nargs="+", choices=["settings", "automix", "share", "share-system", "volumebar", "preview-tap", "preview-pending", "shuffle", "heat", "landscape-owner"])
 args = parser.parse_args()
 
 def terminate(signum, frame):

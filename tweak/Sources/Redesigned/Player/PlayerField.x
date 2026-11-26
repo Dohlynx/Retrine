@@ -129,7 +129,8 @@ NSArray<NSString *> *SGRPlayerBackgroundNames(void) {
 // the field: an animated artwork's clip, which covers it (PlayerMotion.x), or the Visualizer's hills, which are
 // the one thing moving.
 static BOOL fieldHeld(void) {
-    return SGPlayerState().isPaused || SGRPlayerMotionShowing() || SGRPlayerVisualiserShowing() || SGRPlayerBackdropShowing();
+    return !SGRPlayerIsVisible() || SGRPlayerLandscapeCovers(sg_field.window) || SGPlayerState().isPaused ||
+        SGRPlayerMotionShowing() || SGRPlayerVisualiserShowing() || SGRPlayerBackdropShowing();
 }
 
 void SGRPlayerHoldField(void) {
@@ -360,6 +361,9 @@ static SGRPlayerCoverWatcher *sg_coverWatcher;
     }];
     sg_coverWatcher = [SGRPlayerCoverWatcher new];
     SGAddPlayerStateObserver(sg_coverWatcher);
+    [NSNotificationCenter.defaultCenter addObserverForName:SGRPlayerVisibilityDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        SGRPlayerHoldField();
+    }];
     [NSNotificationCenter.defaultCenter addObserverForName:SGRNowPlayingArtworkDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
         showArtwork(sg_field, YES);
     }];

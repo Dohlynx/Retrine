@@ -64,6 +64,8 @@ SPTPlayerState *SGPlayerState(void) { return (SPTPlayerState *)playback; }
 BOOL SGRedesignedUI(void) { return NO; } // install on the scheduler double, not the system scheduler
 BOOL SGRPlayerTwoColumns(void) { return twoColumns; }
 BOOL SGRPlayerLyricsOpen(void) { return lyrics; }
+BOOL SGRPlayerLandscapeCovers(UIWindow *window) { return NO; }
+BOOL SGRPlayerInteractiveMorph(void) { return YES; }
 CGRect SGRSettledPlayerRect(UIWindow *window) { return cover; }
 void SGRObserveVisibility(UIView *view, dispatch_block_t changed) {
     HARNESS_CHECK(NSThread.isMainThread);

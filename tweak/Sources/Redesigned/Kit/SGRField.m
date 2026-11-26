@@ -268,7 +268,7 @@ UIColor *SGRFieldShownColor(UIColor *color) {
     BOOL may = visible && front && !SGRPlayerIsTransitioning() && !SGRReduceMotion()
             && !SGRMotionHeldForPowerOrHeat() && !_motionHeld;
     _fluidLayer.moving = may && _fluid && !_covered;
-    BOOL moving = may && _flows && !_flow.hidden;
+    BOOL moving = may && _flows && !_covered && !_flow.hidden;
     if (!_flow || moving == _flow.moving) return;
     _flow.moving = moving;
     static NSUInteger logged;

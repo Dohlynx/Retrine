@@ -327,6 +327,9 @@ void SGRPlayerLookChanged(void);
 #define SGRKeyPlayerLandscape @"spotifyglass.redesign.player.landscape"
 // Goes up only over the player on screen, in its scene.
 void SGRPlayerShowLandscape(BOOL show);
+BOOL SGRPlayerLandscapeCovers(UIWindow *window);
+void SGRPlayerPreparePortraitLyricsForReveal(void);
+BOOL SGRPlayerInteractiveMorph(void);
 // The playing track's lines came in, or turned out to be none: the landscape screen lays out for it.
 void SGRPlayerLandscapeLinesChanged(void);
 

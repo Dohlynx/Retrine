@@ -210,6 +210,27 @@ static void checkTextSize(void) {
     HARNESS_CHECK([textLook(kept) isEqualToString:small]);
 }
 
+// The pager lays out its neighbour before scrolling it into view. No placeText or
+// title layout occurs between that scroll and the first visible frame.
+static void checkPagedMarquee(void) {
+    UIView *host = [(id)UIApplication.sharedApplication.delegate window].rootViewController.view;
+    UIScrollView *pager = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, 300, 60)];
+    [host addSubview:pager];
+    pager.contentSize = CGSizeMake(600, 60);
+    UIView *page = makePage(@"A very long neighbouring title that will not fit into the mini bar on one line",
+                            nil, NO, @"Artist");
+    page.frame = CGRectMake(300, 0, 300, 60);
+    [pager addSubview:page];
+    placeText(page);
+    SGRBarText *text = objc_getAssociatedObject(page, &kTextKey);
+    [text.title layoutIfNeeded];
+    pager.contentOffset = CGPointMake(300, 0);
+    CALayer *label = text.title.subviews.firstObject.layer;
+    HARNESS_CHECK([label animationForKey:@"sg.marquee"] && label.speed == 1);
+    sg_checks++;
+    [pager removeFromSuperview];
+}
+
 #pragma mark - the artist under the title in the minimized row
 
 static UIView *sg_rowHost;
@@ -842,6 +863,7 @@ static void runDisabled(void) {
 
     checkInlineArtist();
     checkTextSize();
+    checkPagedMarquee();
     checkNextButton();
     checkConnectButton();
     checkArtworkShape();

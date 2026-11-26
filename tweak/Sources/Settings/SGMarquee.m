@@ -52,6 +52,22 @@ static NSString *const kScroll = @"sg.marquee";
     _label.textColor = textColor;
 }
 
+- (void)setScrollingPaused:(BOOL)paused {
+    if (_scrollingPaused == paused) return;
+    _scrollingPaused = paused;
+    CALayer *layer = _label.layer;
+    CFTimeInterval offset = [layer convertTime:CACurrentMediaTime() fromLayer:nil];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    layer.speed = paused ? 0 : 1;
+    layer.timeOffset = paused ? offset : 0;
+    if (!paused) {
+        layer.beginTime = 0;
+        layer.beginTime = [layer convertTime:CACurrentMediaTime() fromLayer:nil] - offset;
+    }
+    [CATransaction commit];
+}
+
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     // A view out of its window loses its animations; back in one, it scrolls again.

@@ -2532,7 +2532,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 
 - (void)followSong {
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(followSong) object:nil];
-    if (!_browsing) return;
+    if (!_browsing || _renderingSuspended) return;
     _browsing = NO;
     [UIView animateWithDuration:0.7 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:0
                         options:UIViewAnimationOptionAllowUserInteraction
@@ -2589,7 +2589,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
             if (index != NSNotFound) [self restoreAnchor:index viewportY:_detachedAnchorY];
         }
         _detachedAnchor = nil;
-        [self tick];
+        if (!_renderingSuspended) [self tick];
         [self showLinesInSight];
         for (SGRKaraokeLineView *row in _shown.allValues) [row.layer removeAnimationForKey:@"blur"];
         _restoringRows = NO;
@@ -2598,6 +2598,27 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
     }
     [self scheduleLink];
     [self refreshTranslationStatus];
+}
+
+- (void)resumeBrowseReturn {
+    if (!_browsing || _plain || _renderingSuspended || !self.window || _scroll.isTracking || _scroll.isDecelerating) return;
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(followSong) object:nil];
+    [self performSelector:@selector(followSong) withObject:nil afterDelay:kBrowseHold];
+}
+
+- (void)setRenderingSuspended:(BOOL)suspended {
+    if (_renderingSuspended == suspended) return;
+    _renderingSuspended = suspended;
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(followSong) object:nil];
+    if (!suspended && self.window && !_inactive && UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
+        // The next link may be delayed by the transition. Paint the current song position
+        // before the reveal, without discarding measured rows or a hand-scrolled anchor.
+        _clockTime = CACurrentMediaTime();
+        _clock = [self positionMs];
+        [self tick];
+        [self resumeBrowseReturn];
+    }
+    [self scheduleLink];
 }
 
 // The player opens and closes in animations that run at 120 Hz, and while a display link asked
@@ -2622,7 +2643,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
     [_link invalidate];
     _link = nil;
     [self holdAwake:NO];   // held again by the next frame, while the song plays
-    if (!self.window) return;
+    if (_renderingSuspended || !self.window) return;
     NSTimeInterval wait = SGPlayerTransitionEnds() - CACurrentMediaTime();
     if (wait <= 0) [self startLink];
     else [self performSelector:@selector(startLink) withObject:nil afterDelay:wait + kTransitionSlack inModes:@[NSRunLoopCommonModes]];
@@ -2636,6 +2657,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 
 - (void)becomeActive {
     _inactive = NO;
+    [self resumeBrowseReturn];
     [self scheduleLink];
     [self presentPendingTranslationAlert];
 }
@@ -2649,7 +2671,7 @@ NSString *SGRLyricsShareText(NSString *line, NSString *title, NSString *artist, 
 
 // Smooth lyrics asks for 80–120 Hz by default; switching it off asks for 30–60 Hz, preferring 60.
 - (void)startLink {
-    if (!self.window || _link) return;
+    if (_renderingSuspended || !self.window || _link) return;
     if (_inactive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
     _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick)];
     _link.preferredFrameRateRange = lyricsFrameRate();

@@ -965,7 +965,25 @@ static const CGFloat kRowLinesGap = 1, kRowLinesMargin = 6;
     [self applyFonts];
     [self addSubview:_title];
     [self addSubview:_artists];
+    __weak SGRBarText *weakSelf = self;
+    SGRObserveVisibility(self, ^{ [weakSelf updateScrolling]; });
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updateScrolling)
+                                               name:SGRPlayerVisibilityDidChangeNotification object:nil];
     return self;
+}
+
+- (void)updateScrolling {
+    UIWindow *window = self.window;
+    // A pager changes its offset without laying the neighbouring title out again.
+    // Coverage belongs to the bar, not to a page's momentary clipped rect.
+    BOOL paused = !window || SGRPlayerLandscapeCovers(window);
+    for (UIView *v = self; !paused && v; v = v.superview) {
+        paused = v.hidden || v.alpha <= 0;
+        if (!paused && v == sgr_nowPlayingRoot)
+            paused = CGRectContainsRect(SGRSettledPlayerRect(window), [v convertRect:v.bounds toView:window]);
+    }
+    _title.scrollingPaused = paused;
+    _artists.scrollingPaused = paused || _artists.alpha == 0;
 }
 
 // Capped at Large, so a bar made at one text size and shown at another needs them made again.
@@ -995,6 +1013,7 @@ static const CGFloat kRowLinesGap = 1, kRowLinesMargin = 6;
     _title.frame = CGRectMake(0, top, size.width, titleHeight);
     _artists.frame = CGRectMake(0, top + titleHeight - overlap, size.width, artistsHeight);
     _artists.alpha = two ? 1 : 0;
+    [self updateScrolling];
 }
 @end
 

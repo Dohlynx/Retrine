@@ -19,6 +19,8 @@
 @property (nonatomic, copy) NSString *sampleStyleIdentifier;
 // Hides Spotify's own lyrics next to this view while it has lyrics to show, and brings them back when not.
 - (void)syncSiblings;
+// A retained but covered player page keeps its viewport, not its rendering clocks.
+@property (nonatomic) BOOL renderingSuspended;
 // Called as a finger starts to scroll the lines, for a host that hides its controls then.
 @property (nonatomic, copy) void (^browsingBegan)(void);
 // Called as the finger lifts from a scroll of the lines, with the scroll's vertical velocity (positive toward the

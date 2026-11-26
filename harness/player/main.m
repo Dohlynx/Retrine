@@ -1146,29 +1146,34 @@ static void loadLyrics(void) {
                 HARNESS_CHECK(lyrics.window && scroll && SGRPlayerLyricsOpen());
                 [scroll.delegate scrollViewWillBeginDragging:scroll];
                 scroll.contentOffset = CGPointMake(0, 67);
-                for (NSNumber *cancel in @[@YES, @NO]) {
+                void (^dismiss)(BOOL) = ^(BOOL cancel) {
                     HarnessDismissal *transition = [HarnessDismissal new];
-                    transition.cancelled = cancel.boolValue;
+                    transition.cancelled = cancel;
                     player.dismissal = transition;
                     [player viewWillDisappear:YES];
                     HARNESS_CHECK(covers.alpha == 1);
+                    if (cancel) [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationWillResignActiveNotification object:nil];
                     if (transition.finish) transition.finish((id)transition);
                     player.dismissal = nil;
                     [player viewWillAppear:YES];
                     [self layOut];
-                    if (cancel.boolValue)
+                    if (cancel)
                         HARNESS_CHECK(SGRPlayerLyricsOpen() && lyrics.window && covers.alpha == 0 && scroll.contentOffset.y == 67);
                     else HARNESS_CHECK(!SGRPlayerLyricsOpen() && covers.alpha == 1);
-                }
-                SGRPlayerToggleLyrics();
+                };
+                dismiss(YES);
+                [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
                 HarnessDismissal *held = [HarnessDismissal new];
-                held.cancelled = YES;
-                player.dismissal = held;
-                [player viewWillDisappear:YES];
-                SGKaraokeKeepLines(SGKaraokePlayingTrack(), nil);
-                SGRHarnessSetTrack(@"spotify:track:instrumental", nil, NO);
-                SGRSetNowPlayingArtwork(artwork(), @"spotify:track:instrumental", SGRArtworkQualityHigh);
-                runScript(@[@[^BOOL { return SGRPlayerLyricsNone(); }, ^{
+                runScript(@[@[^BOOL { return scroll.contentOffset.y == 0; }, ^{
+                    dismiss(NO);
+                    SGRPlayerToggleLyrics();
+                    held.cancelled = YES;
+                    player.dismissal = held;
+                    [player viewWillDisappear:YES];
+                    SGKaraokeKeepLines(SGKaraokePlayingTrack(), nil);
+                    SGRHarnessSetTrack(@"spotify:track:instrumental", nil, NO);
+                    SGRSetNowPlayingArtwork(artwork(), @"spotify:track:instrumental", SGRArtworkQualityHigh);
+                }], @[^BOOL { return SGRPlayerLyricsNone(); }, ^{
                     HARNESS_CHECK(held.finish && SGRNowPlayingArtwork(NULL,NULL));
                     held.finish((id)held);
                     player.dismissal = nil;
@@ -1305,6 +1310,7 @@ static void loadLyrics(void) {
     else if ([scenario() isEqualToString:@"look"]) [self runLook];
     else if ([scenario() isEqualToString:@"scroll"]) [self runScrollChecks];
     else if ([scenario() isEqualToString:@"controls"]) [self runControlsChecks];
+    else if ([scenario() isEqualToString:@"landscape-owner"]) [self runLandscapeOwner];
     else if ([scenario() isEqualToString:@"landscape"]) [self runLandscape];
     else if ([scenario() isEqualToString:@"motion"]) [self runMotionChecks];
     else if ([scenario() hasPrefix:@"lyric-line"]) after(4, ^{
@@ -2031,7 +2037,57 @@ static void logLandscape(NSString *step, NSString *want) {
 // The landscape lyrics as a turned phone shows them: a line's meanings over them as a card on the bottom
 // edge, the controls staying up behind the sheet and fading once it is gone, the shield taking the touch
 // that brings them back, and a pause and a resume from elsewhere starting the clock again.
+// Count deliveries to the actual pages. Advance each sample by frames of the page that
+// should be running, so a stalled run loop or two stopped links cannot give a false pass.
+- (void)runLandscapeOwner {
+    __block UIView *portrait, *landscape;
+    __block NSUInteger p = 0, l = 0, startP, startL, covered;
+    __block NSUInteger pIn = 0, lIn = 0, pOut = 0, lOut = 0;
+    __block BOOL returning = NO;
+    Method tick = class_getInstanceMethod(NSClassFromString(@"SGRKaraokeView"), @selector(tick));
+    void (*draw)(id, SEL) = (void *)method_getImplementation(tick);
+    method_setImplementation(tick, imp_implementationWithBlock(^(UIView *page) {
+        if (page == portrait) p++;
+        if (page == landscape) l++;
+        float opacity = landscape.window.layer.presentationLayer.opacity;
+        if (opacity > 0 && opacity < 1) {
+            if (returning) { pOut += page == portrait; lOut += page == landscape; }
+            else { pIn += page == portrait; lIn += page == landscape; }
+        }
+        draw(page, @selector(tick));
+    }));
+    runScript(@[
+        @[^BOOL { return SGRPlayerLyricsAvailable() && self.window.isKeyWindow; }, ^{
+            SGRPlayerToggleLyrics();
+            portrait = firstOfClass(self.window, @"SGRKaraokeView");
+        }],
+        @[^BOOL { return p >= 10; }, ^{
+            SGRPlayerShowLandscape(YES);
+            landscape = firstOfClass(landscapeScreen().view, @"SGRKaraokeView");
+        }],
+        @[^BOOL { return l >= 10 && landscape.window.alpha == 1 && landscape.window.layer.presentationLayer.opacity == 1; },
+            ^{ startL = l; }],
+        @[^BOOL { return l >= startL + 10; }, ^{ startP = p; startL = l; }],
+        @[^BOOL { return l >= startL + 15; }, ^{
+            covered = p - startP;
+            returning = YES;
+            SGRPlayerShowLandscape(NO);
+        }],
+        @[^BOOL { return self.window.isKeyWindow; }, ^{ startP = p; startL = l; }],
+        @[^BOOL { return p >= startP + 15; }, ^{
+            NSUInteger retired = l - startL;
+            NSLog(@"[harness] covered portrait %lu, retired landscape %lu ticks", covered, retired);
+            NSLog(@"[harness] mid-fade portrait/landscape: in %lu/%lu out %lu/%lu", pIn, lIn, pOut, lOut);
+            NSUInteger right = (covered == 0) + (retired == 0) + (pIn && lIn) + (pOut && lOut);
+            NSLog(@"[harness] landscape-owner checks: %lu of 4 right -- %@", right, right == 4 ? @"PASS" : @"FAIL");
+            exit(right == 4 ? 0 : 1);
+        }],
+    ], 0);
+}
+
 - (void)runLandscape {
+    // With portrait lyrics closed this is the bare landscape player, which never hides controls.
+    after(2, ^{ SGRPlayerToggleLyrics(); });
     after(3, ^{ SGRPlayerShowLandscape(YES); });
     // The window comes up clear and fades in with the turn; it and what it presents are dark; the
     // controls say what they do and are 44pt.
@@ -2081,10 +2137,11 @@ static void logLandscape(NSString *step, NSString *want) {
     after(17, ^{ logLandscape(@"just resumed", @"lines"); });
     after(21, ^{ logLandscape(@"rested after the resume", @"shield"); });
     // VoiceOver's escape turns the screen back, and the player is key once it has faded.
-    after(22, ^{ NSLog(@"[harness] landscape escape answered %d", [landscapeScreen() accessibilityPerformEscape]); });
-    after(23, ^{
-        BOOL gone = !landscapeScreen(), key = self.window.isKeyWindow;
-        NSLog(@"[harness] landscape after the escape: gone %d, the player key %d -- %@", gone, key, gone && key ? @"ok" : @"WRONG");
+    after(22, ^{
+        NSLog(@"[harness] landscape escape answered %d", [landscapeScreen() accessibilityPerformEscape]);
+        runScript(@[@[^BOOL { return !landscapeScreen() && self.window.isKeyWindow; }, ^{
+            NSLog(@"[harness] landscape after the escape: gone 1, the player key 1 -- ok");
+        }]], 0);
     });
 }
 

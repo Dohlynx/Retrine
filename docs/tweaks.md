@@ -1540,6 +1540,7 @@ Redesigned:
                   the scroll's steps checked by harness/tabbar/minimize-check.c
     NowPlayingBar/ the glass now playing bar (NowPlayingBar.x). Video artwork that is not square is masked to the
                   centred square in the chosen artwork shape until a square cover returns (harness/now-playing-bar).
+                  A hidden or covered title or artist holds its marquee at its current offset and continues there on reveal.
                   A regular-width iPad automatically gets a capsule
                   with shuffle, repeat, lyrics and queue alongside artwork, title and play. Shuffle and repeat use
                   Spotify's player commands; lyrics opens the player on its embedded lyrics, and queue opens the
@@ -1654,7 +1655,9 @@ Redesigned:
                   PlayerProgress.m stops the work upstream when a NowPlaying_ElementsImpl duration tracker
                   has written only invisible views. The mini bar rests under the settled player, detached
                   time labels rest until mounted, and the player's own slider rests after the lyrics controls
-                  finish fading, not merely because lyrics opened. A reveal refreshes from Spotify's clock
+                  finish fading, not merely because lyrics opened. The landscape player's own window covers
+                  the portrait rails. During an interactive compact morph the player rail is live; the mini bar is a snapshot.
+                  A reveal refreshes from Spotify's clock
                   before the controls return. Spotify's own pause request is kept independently; the sticky
                   header, unrecognized links and links with no known output stay under Spotify's control.
                   Visibility and layout events drive this; there is no polling timer.
@@ -1845,7 +1848,8 @@ Redesigned:
                   or Critical thermal state, the player clears the clip and shows the cover over the still field.
                   Once those holds clear, the moving field continues from where it stopped; the player looks up the clip
                   again and plays it from the beginning. The Colors field (Kit/SGRFlow.m) is moved 15 times a second
-                  by a timer and drawn at half a pixel to a point, then stretched to the screen: played by the render
+                  by a timer that stops under the landscape window or a hidden player and resumes at the same phase.
+                  It is drawn at half a pixel to a point, then stretched to the screen: played by the render
                   server at full resolution it was drawn again on every frame, 21% of an iPhone 13 Pro's GPU under the
                   player against 9% so (1.4% held still, 6.5% for Spotify's own player). A black gradient dims the clip by its brightness (the 75th
                   percentile of the linear luminance of three frames), so white text keeps 4.5:1 (7:1 with Increase
@@ -1997,7 +2001,11 @@ Redesigned:
                   as the Music app's): line views only for the lines in and near sight, built nearest
                   the middle first, at most four a pass and none after the first once the pass has spent 1 ms, the
                   next pass picking up the rest (a work budget; the display link is never slowed); lines sung over each other lit together, the stack moving on
-                  once the first is sung out; an instrumental break of 7 s or more held by three dots
+                  once the first is sung out. Both pages render through a landscape fade. Portrait rests once the
+                  landscape window is opaque; landscape retires its link, fallback poll and boundary wake after fading out.
+                  A held interactive dismissal keeps
+                  the hidden page and its browse position, not its clocks; cancel paints from song time before reveal.
+                  An instrumental break of 7 s or more is held by three dots
                   that breathe and fill over its length on a Core Animation timeline laid against the song's clock; and
                   a line's pronunciation (under the words it spells) and translation, switched on from a glass button in
                   the lyrics' corner (its translate glyph an ellipsis for a song with neither), whose menu also has Sync

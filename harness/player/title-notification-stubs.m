@@ -77,6 +77,8 @@ BOOL SGFlag(NSString *key, BOOL fallback) {
     return fallback;
 }
 BOOL SGRPlayerIsTransitioning(void) { return NO; }
+void SGRPlayerPreparePortraitLyricsForReveal(void) {}
+NSNotificationName const SGRPlayerVisibilityDidChangeNotification = @"harness.visibility";
 NSString *const SGPlayerTransitionEndedNotification = @"harness.playerTransitionEnded";
 void SGRequireClasses(NSArray<NSString *> *names) {}
 id SGKaraokePlayer(void) { return nil; }

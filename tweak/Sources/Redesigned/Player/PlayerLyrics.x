@@ -106,6 +106,10 @@ static __weak UIView *sg_host;              // SPTNowPlayingView
 static __weak UIViewController *sg_info, *sg_duration, *sg_floating, *sg_header;
 static __weak UIView *sg_titleElement;      // the arranged element view holding the title and the artist
 static __weak UIViewController *sg_player;  // NowPlayingViewController, whose units the controls are
+BOOL SGRPlayerInteractiveMorph(void) {
+    return sg_player.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact &&
+        sg_player.transitionCoordinator.initiallyInteractive;
+}
 static BOOL sg_alone;                       // the lines have the player to themselves
 static BOOL sg_touching;                    // a finger is on the player, which holds the clock (SGRPlayerTouchWatcher)
 static NSTimer *sg_rest;
@@ -368,7 +372,23 @@ static BOOL keepsTitle(void) {
     _stage = [[UIView alloc] initWithFrame:CGRectZero];
     [self addSubview:_stage];
     [self addSubview:_thumb];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updateRendering)
+                                               name:SGRPlayerVisibilityDidChangeNotification object:nil];
     return self;
+}
+
+- (void)updateRendering {
+    _lyrics.renderingSuspended = self.hidden || SGRPlayerLandscapeCovers(self.window);
+}
+
+- (void)setHidden:(BOOL)hidden {
+    [super setHidden:hidden];
+    [self updateRendering];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    [self updateRendering];
 }
 
 - (void)sgr_thumbTapped {
@@ -421,6 +441,7 @@ static BOOL keepsTitle(void) {
         // Sing's mic goes with the controls when the lines are on their own unless Keep the mic is on or Sing is
         // (setAlone sets it each time).
         _lyrics.keepsSing = YES;
+        [self updateRendering];
     }
     if (_lyrics.superview != _stage) [_stage addSubview:_lyrics];
     _lyrics.frame = _stage.bounds;
@@ -442,6 +463,11 @@ static SGRPlayerLyricsOverlay *overlayIn(UIView *host) {
     if (overlay.superview != host) [host addSubview:overlay];
     else if (host.subviews.lastObject != overlay) [host bringSubviewToFront:overlay];
     return overlay;
+}
+
+void SGRPlayerPreparePortraitLyricsForReveal(void) {
+    SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
+    [overlay updateRendering];
 }
 
 #pragma mark - the measurements
@@ -1567,7 +1593,7 @@ static void replace(void) {
             if (![coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
                 if (sg_dismissingPage != page) return;
                 sg_dismissingPage = nil;
-                page.hidden = NO;
+                // Shown again only at the end (below), so the held page stays suspended until the restore is placed.
                 if (context.isCancelled && sg_host == host && !sg_wide && host.bounds.size.height > host.bounds.size.width && queuePage) {
                     [UIView performWithoutAnimation:^{
                         sg_queuePage = YES;
@@ -1582,6 +1608,7 @@ static void replace(void) {
                     }];
                 }
                 if (page.superview != sg_host || !sg_open) [page removeFromSuperview];
+                page.hidden = NO;
             }]) sg_dismissingPage = nil;
         }
         setOpen(NO, NO);
