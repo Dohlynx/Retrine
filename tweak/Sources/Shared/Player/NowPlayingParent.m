@@ -3,7 +3,8 @@
 //
 // What it does, and only this: once at launch, and again each time the app becomes active, it asks
 // MediaRemote to take the app's own CFBundleIdentifier, read from the Info.plist on disk, as the parent
-// application of the local origin. It runs after Spotify's setter has finished, so the song info is never
+// application of the local origin, and only for an installed app signed for another id than its Info.plist
+// names (parentNeeded). It runs after Spotify's setter has finished, so the song info is never
 // touched, and a failure of any step leaves playback and now playing exactly as they were.
 //
 // Adapted from BitChord-iOS 1.0.3 (App/BitChord/ProxyNative/BitChordNowPlayingFix.m, GPL-3.0, as is Retrine):
@@ -39,7 +40,7 @@ static NSString *sg_parentID;       // CFBundleIdentifier from the Info.plist on
 // Main thread only, as everything below runs there.
 static BOOL sg_dirty = YES;
 static BOOL sg_failed;              // an exception, or a call that cannot be made: no more calls
-static BOOL sg_loggedWaiting, sg_loggedNoOrigin, sg_loggedSigning;
+static BOOL sg_loggedWaiting, sg_loggedNoOrigin;
 static unsigned sg_requests;
 
 // The running process is the app, not one of its extensions, which have their own Info.plist and
@@ -55,28 +56,33 @@ static NSString *plistBundleID(void) {
     return [value isKindOfClass:NSString.class] && [value length] ? value : nil;
 }
 
-// For the log only: the signed application-identifier next to the Info.plist's. The value reads
-// "<prefix>.<id>", where the prefix is the App ID prefix (usually the Team ID, not always) and the id can be
-// a wildcard; it is split at the first dot and nothing else is assumed. It never decides a call.
-static void logSigning(void) {
-    if (sg_loggedSigning) return;
-    sg_loggedSigning = YES;
+// The signed application-identifier, nil when it cannot be read. It reads "<prefix>.<id>", where the prefix is the
+// App ID prefix (usually the Team ID, not always) and the id can be a wildcard; it is split at the first dot and
+// nothing else is assumed.
+static NSString *signedApplicationID(void) {
     void *security = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY);
     CFTypeRef (*create)(CFAllocatorRef) = security ? dlsym(security, "SecTaskCreateFromSelf") : NULL;
     CFTypeRef (*copy)(CFTypeRef, CFStringRef, CFErrorRef *) = security ? dlsym(security, "SecTaskCopyValueForEntitlement") : NULL;
-    if (!create || !copy) {
-        SGLog(@"nowplaying: parent %@, signed application-identifier unreadable (no Security symbols)", sg_parentID);
-        return;
-    }
+    if (!create || !copy) return nil;
     CFTypeRef task = create(kCFAllocatorDefault);
-    CFTypeRef raw = task ? copy(task, CFSTR("application-identifier"), NULL) : NULL;
-    NSString *signedID = [(__bridge id)raw isKindOfClass:NSString.class] ? (__bridge NSString *)raw : nil;
+    id value = task ? CFBridgingRelease(copy(task, CFSTR("application-identifier"), NULL)) : nil;
+    if (task) CFRelease(task);
+    return [value isKindOfClass:NSString.class] ? value : nil;
+}
+
+// Only where the card's tap goes astray: an app installed under its own bundle, signed for another id than its
+// Info.plist names. A signature for the same id, or a wildcard one, already opens this app; and under a loader such as
+// LiveContainer the bundle is a guest's, whose id names no installed app, so the card would then open nothing.
+static BOOL parentNeeded(void) {
+    NSString *path = NSBundle.mainBundle.bundlePath;
+    BOOL installed = [path hasPrefix:@"/var/containers/Bundle/"] || [path hasPrefix:@"/private/var/containers/Bundle/"];
+    NSString *signedID = signedApplicationID();
     NSRange dot = [signedID rangeOfString:@"."];
     NSString *suffix = dot.location == NSNotFound ? signedID : [signedID substringFromIndex:NSMaxRange(dot)];
-    SGLog(@"nowplaying: parent %@, signed application-identifier %@ (%@)", sg_parentID, signedID ?: @"unreadable",
-          !signedID ? @"unknown" : [suffix isEqualToString:sg_parentID] ? @"same id" : [suffix isEqualToString:@"*"] ? @"wildcard" : @"differs");
-    if (raw) CFRelease(raw);
-    if (task) CFRelease(task);
+    BOOL differs = suffix.length && ![suffix hasSuffix:@"*"] && ![suffix isEqualToString:sg_parentID];
+    SGLog(@"nowplaying: parent %@, signed application-identifier %@: %@", sg_parentID, signedID ?: @"unreadable",
+          !installed ? @"not an installed app's bundle, left alone" : differs ? @"differs, the parent is set" : @"no mismatch, left alone");
+    return installed && differs;
 }
 
 static BOOL loadMediaRemote(void) {
@@ -113,7 +119,6 @@ static void tryBind(void) {
     }
     sg_dirty = NO;
     if (++sg_requests <= 5) SGLog(@"nowplaying: parent application requested for %@ (request %u)", sg_parentID, sg_requests);
-    logSigning();
 }
 
 static void onMain(void (^block)(void)) {
@@ -124,7 +129,7 @@ static void onMain(void (^block)(void)) {
 __attribute__((constructor)) static void installParent(void) {
     if (!SGFlag(SGKeyNowPlayingParent, YES) || !runningAsApp()) return;
     sg_parentID = plistBundleID();
-    if (!sg_parentID || !loadMediaRemote()) return;
+    if (!sg_parentID || !parentNeeded() || !loadMediaRemote()) return;
     // queue:nil, then main: both notifications are posted by whoever posts them, and main may be waiting on
     // Spotify's CoreThread at launch (AGENTS.md).
     [NSNotificationCenter.defaultCenter addObserverForName:SGNowPlayingInfoDidChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {

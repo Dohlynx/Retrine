@@ -928,7 +928,10 @@ Shared:
     Player/       the player's open and close announced (PlayerEvents.x), what the player is doing read through
                   one hook for every feature that wants it (PlayerState.x, which also names the up-next track, SGPlayerUpNextIn, and tells its
                   observers when it changes), the last track played for the settings
-                  pages' previews to show when nothing plays (SGLastTrack.m), the lock screen widget's flags, and in the
+                  pages' previews to show when nothing plays (SGLastTrack.m), the lock screen widget's flags, the lock
+                  screen card's parent app named to MediaRemote as the Info.plist's bundle id for an installed app signed
+                  for another id, so a tap on the card opens it (NowPlayingParent.m, spotifyglass.nowplaying.parent, on;
+                  a matching or wildcard signature and a LiveContainer guest are left alone), and in the
                   more button's menu Speed and pitch: both done to Spotify's audio by Apple's time and pitch unit, put
                   between its mixer and its RemoteIO unit by taking over the connection Spotify makes between them
                   (SpeedPitchMenu.x, SpeedPitch.x, SGTimePitch.m). Position reports still detect remote seeks,
