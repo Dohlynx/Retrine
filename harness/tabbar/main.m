@@ -265,6 +265,7 @@ static __weak UIView *sgJamStrip;
 @interface _TtC23NavigationUI_TabBarImpl19TabBarContainerImpl : UIViewController
 + (void)tapped:(UITapGestureRecognizer *)tap;
 @property (nonatomic, strong) UILayoutGuide *compactGuide;
+@property (nonatomic, strong) NSLayoutConstraint *stackLeft, *stackWidth;
 @property (nonatomic, strong) UIView *bar;
 @end
 // Both supported binaries dispatch the one-finger, single tap to -handleTap (v@:).
@@ -421,8 +422,9 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
         [self.compactGuide.bottomAnchor constraintEqualToAnchor:view.bottomAnchor],
         // `regular`: Spotify's regular width bar, 8 pt in and 648 of the container's 1016 pt, leaving the rest to the
         // now playing capsule (9.2.0, iPad Pro 13-inch), and 16 pt above the container's foot (iPad Pro 11-inch).
-        [stack.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:regular ? 8 : 0],
-        regular ? [stack.widthAnchor constraintEqualToAnchor:view.widthAnchor multiplier:648.0 / 1016]
+        self.stackLeft = [stack.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:regular ? 8 : 0],
+        self.stackWidth = [args containsObject:@"panel"] ? [stack.widthAnchor constraintEqualToConstant:784] :
+                regular ? [stack.widthAnchor constraintEqualToAnchor:view.widthAnchor multiplier:648.0 / 1016]
                 : [stack.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
         [stack.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:regular ? -16 : 0],
         [stack.heightAnchor constraintEqualToAnchor:self.compactGuide.heightAnchor],
@@ -452,6 +454,7 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
 @property (nonatomic, strong) _TtC23NavigationUI_TabBarImpl19TabBarContainerImpl *tabs;
 @property (nonatomic, strong) UIView *banner;
 @property (nonatomic, strong) NSLayoutConstraint *bannerHeight;
+@property (nonatomic, strong) NSLayoutConstraint *primaryWidth;
 @property (nonatomic, strong) UIView *npb;
 @property (nonatomic, strong) NSLayoutConstraint *npbHeight;
 @end
@@ -502,7 +505,8 @@ static UIView *item(Class cls, NSString *title, NSString *symbol, BOOL active) {
 
     [NSLayoutConstraint activateConstraints:@[
         [primary.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
-        [primary.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
+        self.primaryWidth = [args containsObject:@"panel"] ? [primary.widthAnchor constraintEqualToConstant:1194] :
+                [primary.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
         [primary.topAnchor constraintEqualToAnchor:view.topAnchor],
         [primary.bottomAnchor constraintEqualToAnchor:self.banner.topAnchor],
         [self.banner.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
@@ -727,8 +731,12 @@ static void runFadeChecks(SGHarnessChrome *chrome) {
     [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
     expectFade(chrome, NO, @"switched off");
     if (first) HARNESS_FAIL(@"the fade switched off is still alive");
-    setFade(chrome, YES);
-    expectFade(chrome, YES, @"switched on again");
+    // Drain UIKit's temporary layout objects from this turn too, before counting
+    // discarded fades. The whole scenario otherwise runs inside one run-loop callback.
+    @autoreleasepool {
+        setFade(chrome, YES);
+        expectFade(chrome, YES, @"switched on again");
+    }
 
     NSPointerArray *made = [NSPointerArray weakObjectsPointerArray];
     for (NSUInteger i = 0; i < 20; i++) {
@@ -1285,6 +1293,50 @@ static void after(double seconds, dispatch_block_t block) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), block);
 }
 
+// Resize the bar before moving its stack, as in Spotify's panel layout. Scrub the real
+// animation in both directions, holding each fraction until its presentation tree is sampled.
+static void samplePanel(SGHarnessChrome *chrome, UIViewPropertyAnimator *animation, int step) {
+    UIView *container = chrome.tabs.view;
+    UIWindow *window = container.window;
+    UIView *fade = viewsNamed(chrome.tabs.bar, @"SGRBarFade").firstObject;
+    HARNESS_CHECK(fade.layer.presentationLayer && container.layer.presentationLayer);
+    CGRect band = shownFrame(fade, window), page = shownFrame(container, window);
+    CGFloat fraction = step <= 10 ? step / 10.0 : (20 - step) / 10.0;
+    HARNESS_CHECK(fabs(page.size.width - (1194 - 407.5 * fraction)) <= 0.5);
+    if (fabs(CGRectGetMinX(band) - CGRectGetMinX(page)) > 0.5 ||
+        fabs(CGRectGetMaxX(band) - CGRectGetMaxX(page)) > 0.5)
+        HARNESS_FAIL(@"panel step %d: fade %@, container %@", step, NSStringFromCGRect(band), NSStringFromCGRect(page));
+    if (step == 20) {
+        puts("[harness] PASS panel fade edges");
+        exit(0);
+    }
+    if (step == 10) {
+        [animation stopAnimation:NO];
+        [animation finishAnimationAtPosition:UIViewAnimatingPositionEnd];
+        animation = nil;
+    }
+    after(step == 10 ? .4 : .12, ^{
+        UIViewPropertyAnimator *move = animation;
+        if (!move) {
+            BOOL open = step == 0;
+            move = [[UIViewPropertyAnimator alloc] initWithDuration:1 curve:UIViewAnimationCurveLinear animations:^{
+                chrome.primaryWidth.constant = open ? 786.5 : 1194;
+                chrome.tabs.stackWidth.constant = open ? 629.5 : 784;
+                [chrome.view layoutIfNeeded];
+                chrome.tabs.stackLeft.constant = open ? 78.5 : 8;
+                [chrome.view layoutIfNeeded];
+            }];
+            [move pauseAnimation];
+        }
+        move.fractionComplete = ((step % 10) + 1) / 10.0;
+        if (step == 19) {
+            [move stopAnimation:NO];
+            [move finishAnimationAtPosition:UIViewAnimatingPositionEnd];
+        }
+        after(.12, ^{ samplePanel(chrome, move, step + 1); });
+    });
+}
+
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options {
     self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
     self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
@@ -1296,6 +1348,10 @@ static void after(double seconds, dispatch_block_t block) {
     // `away` one there from the start sliding away at 1.5 s, `cycle` in at 1.5 s and out at 4.5 s.
     NSArray<NSString *> *args = NSProcessInfo.processInfo.arguments;
     NSString *mode = args.count > 1 ? args[1] : @"none";
+    if ([mode isEqualToString:@"panel"]) {
+        after(.5, ^{ samplePanel(chrome, nil, 0); });
+        return;
+    }
     if ([mode isEqualToString:@"unsupported-tap"]) {
         [chrome.view layoutIfNeeded];
         UIView *bar = chrome.tabs.bar;

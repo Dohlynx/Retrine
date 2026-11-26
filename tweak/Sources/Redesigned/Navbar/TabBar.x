@@ -611,6 +611,8 @@ static void logBarOnce(UITabBar *bar) {
 // stock bar's own subview, behind the glass, so it slides away with the bar when a page hides it; Spotify's
 // bar does not clip, or the glass bar would not have stood over the now playing bar before the room was made.
 @interface SGRBarFade : UIView
+@property (nonatomic, strong) NSArray<NSLayoutConstraint *> *placement;
+@property (nonatomic, strong) NSLayoutConstraint *glassTop;
 @end
 
 @implementation SGRBarFade
@@ -631,34 +633,44 @@ void SGRStyleBarFade(CAGradientLayer *layer) {
 
 static UIViewController *containerOf(UIView *stockBar);
 
-// Switched off (SGRKeyNavbarFade), the fade leaves the bar and is let go, so the bar holds no fade of the redesign's
-// at all, and switching it on again makes one anew. Across, it spans TabBarContainerImpl's view, as Spotify's own
-// TabBarGradientView does: in a regular width Spotify's bar is narrower than that view (648 of 1016 pt beside the
-// now playing capsule, 9.2.0 on an iPad Pro 13-inch), and a fade only as wide as the bar dimmed the page under it as
-// a rectangle with hard sides. In a compact width the bar is as wide as the view. Down, it reaches that view's foot
-// too: Spotify's regular width bar stands 16 pt above it (y 1058, 76 pt tall in 1150, 9.2.0 on an iPad Pro 11-inch),
-// and a fade ending at the bar's foot left the page undimmed below it, a hard edge under the half black.
-static void placeFade(UIView *stockBar, CGRect glass) {
+// The fade hides with the stock bar, but its sides follow the container even when the iPad
+// player moves the bar's stack after the bar has laid out. Anchor its top to the glass
+// (bottom-aligned in the bar) and extend to whichever foot is lower, the glass or the page.
+static void placeFade(UIView *stockBar, CGFloat glassHeightPt) {
     SGRBarFade *fade = objc_getAssociatedObject(stockBar, &kFadeKey);
-    if (!SGEnabled(SGRKeyNavbarFade)) {
+    UIView *container = SGEnabled(SGRKeyNavbarFade) ? containerOf(stockBar).viewIfLoaded : nil;
+    if (!container || ![stockBar isDescendantOfView:container]) {
         if (!fade) return;
+        [NSLayoutConstraint deactivateConstraints:fade.placement];
         [fade removeFromSuperview];
         objc_setAssociatedObject(stockBar, &kFadeKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
     }
     if (!fade) {
         fade = [SGRBarFade new];
+        fade.translatesAutoresizingMaskIntoConstraints = NO;
         fade.userInteractionEnabled = NO;
         SGRStyleBarFade((CAGradientLayer *)fade.layer);
         objc_setAssociatedObject(stockBar, &kFadeKey, fade, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    UIView *container = containerOf(stockBar).view;
-    if (!container) return;
-    CGRect across = [stockBar convertRect:container.bounds fromView:container];
-    CGFloat top = CGRectGetMinY(glass) - SGRBarFadeAbovePt;
-    CGRect frame = CGRectMake(CGRectGetMinX(across), top, CGRectGetWidth(across), MAX(CGRectGetMaxY(glass), CGRectGetMaxY(across)) - top);
-    if (!CGRectEqualToRect(fade.frame, frame)) fade.frame = frame;
-    if (fade.superview != stockBar || stockBar.subviews.firstObject != fade) [stockBar insertSubview:fade atIndex:0];
+    NSLayoutConstraint *leading = fade.placement.firstObject;
+    CGFloat top = -glassHeightPt - SGRBarFadeAbovePt;
+    if (fade.superview != stockBar || leading.secondItem != container || !leading.active) {
+        if (leading) [NSLayoutConstraint deactivateConstraints:fade.placement];
+        if (fade.superview != stockBar) [stockBar insertSubview:fade atIndex:0];
+        fade.glassTop = [fade.topAnchor constraintEqualToAnchor:stockBar.bottomAnchor constant:top];
+        NSLayoutConstraint *foot = [fade.bottomAnchor constraintEqualToAnchor:container.bottomAnchor];
+        foot.priority = UILayoutPriorityDefaultLow;
+        fade.placement = @[
+            [fade.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+            [fade.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+            fade.glassTop, foot,
+            [fade.bottomAnchor constraintGreaterThanOrEqualToAnchor:stockBar.bottomAnchor],
+            [fade.bottomAnchor constraintGreaterThanOrEqualToAnchor:container.bottomAnchor],
+        ];
+        [NSLayoutConstraint activateConstraints:fade.placement];
+    } else if (fade.glassTop.constant != top) fade.glassTop.constant = top;
+    if (stockBar.subviews.firstObject != fade) [stockBar sendSubviewToBack:fade];
 }
 
 // The bar the glass was last laid out on lays out again, and its pass puts the fade on or takes it off. The bar is
@@ -991,7 +1003,7 @@ static void syncBar(UIView *stockBar) {
     CGFloat height = MAX(bounds.size.height, glassHeight(bar, stockBar));
     CGRect frame = CGRectMake(0, CGRectGetMaxY(bounds) - height, width, height);
     if (!CGRectEqualToRect(host.frame, frame)) host.frame = frame;
-    placeFade(stockBar, frame);
+    placeFade(stockBar, height);
     CGRect mainFrame = host.bounds, apartFrame = CGRectZero;
     if (minimized) {
         CGFloat side = SGRBarApartItemWidthPt + 2 * SGRBarPlatterInsetPt;

@@ -1484,13 +1484,12 @@ Redesigned:
     Navbar/       the glass tab bar (TabBar.x) over its own composition (Navbar.x, NavbarLayout.m) and editor, the glass search field.
                   Spotify is made to leave the glass bar its height where its own bar is shorter (a phone with a home button,
                   Offline or Private Session under the bar), so the now playing bar and the pages move up with it. Under both
-                  bars the pages fade to half black (SGRBarFade, the stock bar's own subview, across the tab bar container's
-                  width as Spotify's own fade under its bar is, so in a regular width, where Spotify's bar is narrower than the
-                  screen beside the iPad capsule, it has no sides of its own, and down to that container's foot, 16 pt under
-                  Spotify's regular width bar, so it has no edge under the bar either; Fade under the bar on the Tab bar
-                  page, spotifyglass.redesign.navbar.fade, on until switched off, applies as the bar lays out again and
-                  lets the fade go altogether, and the page's preview draws the same ramp, 88 pt above the bar, over rows
-                  of its own). Apple symbols on the Tab bar page (spotifyglass.redesign.navbar.symbols, on until
+                  bars the pages fade to half black. SGRBarFade sits behind the glass inside the stock bar, so it hides
+                  with the bar. Its sides are constrained to the tab bar container and stay aligned as the iPad player
+                  panel opens or closes. Its top follows the glass 88 pt above it; its bottom reaches the lower of the
+                  glass and container bottoms (16 pt below the stock bar on iPad). Fade under the bar on the Tab bar
+                  page (spotifyglass.redesign.navbar.fade, on by default) removes the fade and its constraints when
+                  switched off. The page's preview draws the same ramp over its own rows. Apple symbols on the Tab bar page (spotifyglass.redesign.navbar.symbols, on until
                   switched off, applies as the bar lays out again) draws each of Spotify's tabs with an SF Symbol for the
                   page it opens, filled on the selected tab where the symbol has a filled variant: Home house, Search
                   magnifyingglass, Your Library books.vertical, Create plus, Premium crown, any other square.grid.2x2. The

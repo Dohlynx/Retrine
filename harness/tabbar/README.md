@@ -153,7 +153,10 @@ hard sides behind the glass. 2026-11-22, before the fix (issue #38): the fade en
 of the container's, so the page showed undimmed in a strip under the half black, a hard edge across the screen.
 
 `ipad-check.sh` runs in an iPad simulator of its own (the harness app is built for both device families):
-`names strict` and `names strict regular`, then `fade toggle regular`. 2026-11-22, iPad Pro 11-inch on iOS 26.5,
+`names strict` and `names strict regular`, then `fade toggle regular` and `panel regular`. The panel check
+scrubs the container from 1194 to 786.5 pt while its stack moves from x 8 to 78.5 and the bar shrinks
+from 784 to 629.5 pt, then slowly scrubs back. At each tenth and at rest the fade's two presentation-layer
+edges must match the container's in window coordinates within 0.5 pt. 2026-11-22, iPad Pro 11-inch on iOS 26.5,
 before the fix: an iPad's bar sets each name beside its glyph, and the names were cut ("Search" 24 pt for 42,
 "Your Library" 24 for 72, "Create" 24 for 40; "홈" 4 for 10.5 and "만…" in Spotify itself), since UIKit gave each tab
 its width as the bar took the items, before they had their glyphs. A split tab's own bar is a circle there too
